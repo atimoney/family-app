@@ -1,19 +1,29 @@
-import Fastify from 'fastify';
-import cors from '@fastify/cors';
-import sensible from '@fastify/sensible';
+import { buildServer } from './server.js';
 
-const PORT = Number(process.env.API_PORT ?? 8787);
-const HOST = process.env.API_HOST ?? '0.0.0.0';
+const app = buildServer();
 
-const app = Fastify({ logger: true });
+const start = async () => {
+  try {
+    await app.ready();
 
-await app.register(cors, {
-  origin: true,
-  credentials: true,
-});
+    const host = app.config.API_HOST;
+    const port = app.config.API_PORT;
 
-await app.register(sensible);
+    await app.listen({ port, host });
+    app.log.info(`Server listening on http://${host}:${port}`);
+  } catch (err) {
+    app.log.error(err);
+    process.exit(1);
+  }
+};
 
-app.get('/healthz', async () => ({ ok: true }));
+const shutdown = async (signal: string) => {
+  app.log.info(`Received ${signal}, shutting down gracefully...`);
+  await app.close();
+  process.exit(0);
+};
 
-await app.listen({ port: PORT, host: HOST });
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+start();
