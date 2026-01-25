@@ -55,7 +55,8 @@
     "react-router": "^7.10.1",
     "simplebar-react": "^3.3.2",
     "stylis": "^4.3.6",
-    "zod": "^4.1.13"
+    "zod": "^4.1.13",
+    "@family/shared": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
