@@ -1,0 +1,68 @@
+# =========================
+# Dependencies
+# =========================
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+
+# =========================
+# Build output
+# =========================
+dist/
+build/
+out/
+
+# Vite cache
+.vite/
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Logs
+# =========================
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# =========================
+# OS / Editor junk
+# =========================
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# JetBrains
+.idea/
+
+# Vim / swap
+*.swp
+*.swo
+
+# =========================
+# TypeScript
+# =========================
+*.tsbuildinfo
+
+# =========================
+# Testing / Coverage
+# =========================
+coverage/
+.playwright/
+
+# =========================
+# Misc
+# =========================
+*.local
+.cache/
+tmp/
+temp/
