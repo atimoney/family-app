@@ -6,6 +6,12 @@
     "dev": "pnpm --filter @family/web dev",
     "build": "pnpm --filter @family/web build",
     "lint": "pnpm --filter @family/web lint",
-    "typecheck": "pnpm --filter @family/web typecheck"
+    "typecheck": "pnpm --filter @family/web typecheck",
+    "dev:web": "pnpm --filter ./apps/web dev",
+    "dev:api": "pnpm --filter ./apps/api dev"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.3.0",
+    "prisma": "^7.3.0"
   }
 }

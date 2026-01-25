@@ -1,7 +1,10 @@
 packages:
   - apps/*
   - packages/*
+
 onlyBuiltDependencies:
+  - '@prisma/engines'
   - '@swc/core'
   - esbuild
+  - prisma
   - unrs-resolver
