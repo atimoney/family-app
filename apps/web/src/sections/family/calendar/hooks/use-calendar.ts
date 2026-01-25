@@ -65,7 +65,7 @@ export function useCalendar({
   const getCalendarApi = useCallback(() => {
     const calendarApi = calendarRef.current?.getApi();
     if (!calendarApi) {
-      console.warn('Calendar API is not available');
+      // Calendar API not available yet - this is expected during initial render
       return null;
     }
     return calendarApi;

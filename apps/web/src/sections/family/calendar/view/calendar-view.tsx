@@ -20,10 +20,9 @@ import DialogTitle from '@mui/material/DialogTitle';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
+import { getCalendarEvents, createCalendarEvent } from 'src/features/calendar/api';
 
 import { Iconify } from 'src/components/iconify';
-
-import { getCalendarEvents, createCalendarEvent } from 'src/features/calendar/api';
 
 import { CalendarRoot } from '../styles';
 import { CalendarForm } from '../calendar-form';
