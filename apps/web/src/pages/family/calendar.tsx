@@ -1,17 +1,17 @@
 import { CONFIG } from 'src/global-config';
 
-import { FamilyDashboardView } from 'src/sections/family/dashboard/view';
+import { CalendarView } from 'src/sections/family/calendar/view';
 
 // ----------------------------------------------------------------------
 
-const metadata = { title: `Family dashboard | Dashboard - ${CONFIG.appName}` };
+const metadata = { title: `Family calendar | ${CONFIG.appName}` };
 
 export default function Page() {
   return (
     <>
       <title>{metadata.title}</title>
 
-      <FamilyDashboardView />
+      <CalendarView />
     </>
   );
 }

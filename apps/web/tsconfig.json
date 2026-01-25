@@ -2,6 +2,10 @@
   "compilerOptions": {
     /* Bundler */
     "baseUrl": ".",
+    "paths": {
+      "@family/shared": ["../../packages/shared/src/index.ts"],
+      "@family/shared/*": ["../../packages/shared/src/*"]
+    },
     "module": "ESNext",
     "jsx": "react-jsx",
     "allowJs": true,

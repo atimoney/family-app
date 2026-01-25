@@ -31,6 +31,15 @@ export default defineConfig({
       },
     ],
   },
+  optimizeDeps: {
+    include: [
+      '@fullcalendar/core',
+      '@fullcalendar/react',
+      '@fullcalendar/daygrid',
+      '@fullcalendar/timegrid',
+      '@fullcalendar/interaction',
+    ],
+  },
   server: { port: PORT, host: true },
   preview: { port: PORT, host: true },
 });

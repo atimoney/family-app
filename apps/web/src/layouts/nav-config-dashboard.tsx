@@ -4,7 +4,7 @@ import { paths } from 'src/routes/paths';
 
 import { CONFIG } from 'src/global-config';
 
-import { Label } from 'src/components/label';
+import { Iconify } from 'src/components/iconify';
 import { SvgColor } from 'src/components/svg-color';
 
 // ----------------------------------------------------------------------
@@ -14,70 +14,33 @@ const icon = (name: string) => (
 );
 
 const ICONS = {
-  job: icon('ic-job'),
-  blog: icon('ic-blog'),
-  chat: icon('ic-chat'),
-  mail: icon('ic-mail'),
-  user: icon('ic-user'),
-  file: icon('ic-file'),
-  lock: icon('ic-lock'),
-  tour: icon('ic-tour'),
   order: icon('ic-order'),
-  label: icon('ic-label'),
-  blank: icon('ic-blank'),
   kanban: icon('ic-kanban'),
-  folder: icon('ic-folder'),
-  course: icon('ic-course'),
-  params: icon('ic-params'),
-  banking: icon('ic-banking'),
-  booking: icon('ic-booking'),
-  invoice: icon('ic-invoice'),
-  product: icon('ic-product'),
   calendar: icon('ic-calendar'),
-  disabled: icon('ic-disabled'),
-  external: icon('ic-external'),
-  subpaths: icon('ic-subpaths'),
-  menuItem: icon('ic-menu-item'),
-  ecommerce: icon('ic-ecommerce'),
-  analytics: icon('ic-analytics'),
   dashboard: icon('ic-dashboard'),
+  settings: <Iconify icon="solar:settings-bold-duotone" width={24} />,
 };
 
 // ----------------------------------------------------------------------
 
 export const navData: NavSectionProps['data'] = [
   /**
-   * Overview
+   * Family
    */
   {
-    subheader: 'Overview',
+    subheader: 'Family',
     items: [
-      {
-        title: 'One',
-        path: paths.dashboard.root,
-        icon: ICONS.dashboard,
-        info: <Label>v{CONFIG.appVersion}</Label>,
-      },
-      { title: 'Two', path: paths.dashboard.two, icon: ICONS.ecommerce },
-      { title: 'Three', path: paths.dashboard.three, icon: ICONS.analytics },
+      { title: 'Home', path: paths.family.root, icon: ICONS.dashboard },
+      { title: 'Calendar', path: paths.family.calendar, icon: ICONS.calendar },
+      { title: 'Tasks', path: paths.family.tasks, icon: ICONS.kanban },
+      { title: 'Shopping', path: paths.family.shopping, icon: ICONS.order },
     ],
   },
   /**
-   * Management
+   * Settings
    */
   {
-    subheader: 'Management',
-    items: [
-      {
-        title: 'Group',
-        path: paths.dashboard.group.root,
-        icon: ICONS.user,
-        children: [
-          { title: 'Four', path: paths.dashboard.group.root },
-          { title: 'Five', path: paths.dashboard.group.five },
-          { title: 'Six', path: paths.dashboard.group.six },
-        ],
-      },
-    ],
+    subheader: 'Settings',
+    items: [{ title: 'Settings', path: paths.settings, icon: ICONS.settings }],
   },
 ];
