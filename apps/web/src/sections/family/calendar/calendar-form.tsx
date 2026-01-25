@@ -83,8 +83,8 @@ export function CalendarForm({
       id: currentEvent?.id || uuidv4(),
       title: data.title,
       allDay: data.allDay,
-      start: typeof data.start === 'string' ? data.start : dayjs(data.start).format(),
-      end: typeof data.end === 'string' ? data.end : dayjs(data.end).format(),
+      start: dayjs(data.start).toISOString(),
+      end: dayjs(data.end).toISOString(),
     };
 
     try {
