@@ -5,12 +5,15 @@ export type FamilyMember = {
   role?: string;
 };
 
+export type TaskStatus = 'todo' | 'doing' | 'done';
+
 export type Task = {
   id: string;
   title: string;
   assigneeId?: string;
   dueDate?: string;
-  completed: boolean;
+  status?: TaskStatus;
+  completed?: boolean;
   createdAt: string;
 };
 

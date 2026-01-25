@@ -6,7 +6,6 @@ import dayjs from 'dayjs';
 import { useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { uuidv4 } from 'minimal-shared/utils';
-import { zodResolver } from '@hookform/resolvers/zod';
 
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -17,7 +16,7 @@ import DialogActions from '@mui/material/DialogActions';
 
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
-import { Form, Field } from 'src/components/hook-form';
+import { Form, Field, zodResolver } from 'src/components/hook-form';
 
 // ----------------------------------------------------------------------
 

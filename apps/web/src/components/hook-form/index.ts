@@ -12,6 +12,8 @@ export * from './rhf-checkbox';
 
 export * from './schema-utils';
 
+export * from './zod-adapter';
+
 export * from './form-provider';
 
 export * from './rhf-text-field';

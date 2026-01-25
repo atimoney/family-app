@@ -17,6 +17,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@family/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@fastify/cors':
         specifier: ^10.0.0
         version: 10.1.0
