@@ -3,7 +3,7 @@ import * as dotenv from 'dotenv';
 import { defineConfig } from 'prisma/config';
 
 // Load .env from the api directory
-const envPath = path.join(import.meta.dirname, '..', '.env');
+const envPath = path.join(import.meta.dirname, '.env');
 dotenv.config({ path: envPath });
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -12,9 +12,9 @@ if (!databaseUrl) {
 }
 
 export default defineConfig({
-  schema: path.join(import.meta.dirname, 'schema.prisma'),
+  schema: path.join(import.meta.dirname, 'prisma', 'schema.prisma'),
   migrations: {
-    path: path.join(import.meta.dirname, 'migrations'),
+    path: path.join(import.meta.dirname, 'prisma', 'migrations'),
   },
   datasource: {
     url: databaseUrl,

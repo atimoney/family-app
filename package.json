@@ -8,7 +8,11 @@
     "lint": "pnpm --filter @family/web lint",
     "typecheck": "pnpm --filter @family/web typecheck",
     "dev:web": "pnpm --filter ./apps/web dev",
-    "dev:api": "pnpm --filter ./apps/api dev"
+    "dev:api": "pnpm --filter ./apps/api dev",
+    "db:generate": "pnpm --filter ./apps/api exec prisma generate",
+    "db:migrate": "pnpm --filter ./apps/api exec prisma migrate dev",
+    "db:push": "pnpm --filter ./apps/api exec prisma db push",
+    "db:studio": "pnpm --filter ./apps/api exec prisma studio"
   },
   "dependencies": {
     "@prisma/client": "^7.3.0",

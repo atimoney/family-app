@@ -7,19 +7,23 @@ import Calendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { useState, useCallback, startTransition } from 'react';
+import { useState, useEffect, useCallback, startTransition } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import { useTheme } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import DialogTitle from '@mui/material/DialogTitle';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { Iconify } from 'src/components/iconify';
+
+import { getCalendarEvents, createCalendarEvent } from 'src/features/calendar/api';
 
 import { CalendarRoot } from '../styles';
 import { CalendarForm } from '../calendar-form';
@@ -28,58 +32,31 @@ import { CalendarToolbar } from '../calendar-toolbar';
 
 // ----------------------------------------------------------------------
 
-// Mock events using shared CalendarEvent type
-const MOCK_EVENTS: CalendarEvent[] = [
-  {
-    id: 'event-1',
-    title: 'Morning drop-off',
-    start: '2026-01-25T08:00:00.000Z',
-    end: '2026-01-25T08:30:00.000Z',
-    allDay: false,
-  },
-  {
-    id: 'event-2',
-    title: 'Swim practice',
-    start: '2026-01-25T16:30:00.000Z',
-    end: '2026-01-25T18:00:00.000Z',
-    allDay: false,
-  },
-  {
-    id: 'event-3',
-    title: 'Family dinner',
-    start: '2026-01-26T18:00:00.000Z',
-    end: '2026-01-26T20:00:00.000Z',
-    allDay: false,
-  },
-  {
-    id: 'event-4',
-    title: 'School holiday',
-    start: '2026-01-27T00:00:00.000Z',
-    end: '2026-01-27T23:59:59.000Z',
-    allDay: true,
-  },
-  {
-    id: 'event-5',
-    title: 'Doctor appointment',
-    start: '2026-01-28T10:00:00.000Z',
-    end: '2026-01-28T11:00:00.000Z',
-    allDay: false,
-  },
-  {
-    id: 'event-6',
-    title: 'Birthday party',
-    start: '2026-01-31T14:00:00.000Z',
-    end: '2026-01-31T17:00:00.000Z',
-    allDay: false,
-  },
-];
-
-// ----------------------------------------------------------------------
-
 export function CalendarView() {
   const theme = useTheme();
 
-  const [events, setEvents] = useState<CalendarEvent[]>(MOCK_EVENTS);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load events from API on mount
+  useEffect(() => {
+    const loadEvents = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await getCalendarEvents();
+        setEvents(data);
+      } catch (err) {
+        console.error('Failed to load events:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load events');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadEvents();
+  }, []);
 
   const {
     calendarRef,
@@ -106,15 +83,32 @@ export function CalendarView() {
   const currentEvent = selectedEventId ? events.find((e) => e.id === selectedEventId) : null;
 
   // Event handlers
-  const handleCreateEvent = useCallback((newEvent: CalendarEvent) => {
-    setEvents((prev) => [...prev, newEvent]);
-  }, []);
+  const handleCreateEvent = useCallback(
+    async (newEvent: CalendarEvent) => {
+      try {
+        const created = await createCalendarEvent({
+          title: newEvent.title,
+          start: newEvent.start,
+          end: newEvent.end,
+          allDay: newEvent.allDay,
+        });
+        setEvents((prev) => [...prev, created]);
+        onCloseForm();
+      } catch (err) {
+        console.error('Failed to create event:', err);
+        // Optionally show error to user
+      }
+    },
+    [onCloseForm]
+  );
 
   const handleUpdateEvent = useCallback((updatedEvent: CalendarEvent) => {
+    // TODO: Add API call for update when backend supports it
     setEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
   }, []);
 
   const handleDeleteEvent = useCallback((eventId: string) => {
+    // TODO: Add API call for delete when backend supports it
     setEvents((prev) => prev.filter((e) => e.id !== eventId));
   }, []);
 
@@ -176,6 +170,24 @@ export function CalendarView() {
     </Dialog>
   );
 
+  // Loading state
+  if (loading) {
+    return (
+      <DashboardContent maxWidth="xl" sx={{ ...flexStyles }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '50vh',
+          }}
+        >
+          <CircularProgress />
+        </Box>
+      </DashboardContent>
+    );
+  }
+
   return (
     <>
       <DashboardContent maxWidth="xl" sx={{ ...flexStyles }}>
@@ -197,12 +209,18 @@ export function CalendarView() {
           </Button>
         </Box>
 
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+
         <Card sx={{ ...flexStyles, minHeight: '50vh' }}>
           <CalendarRoot sx={{ ...flexStyles }}>
             <CalendarToolbar
               view={view}
               title={title}
-              loading={false}
+              loading={loading}
               onChangeView={onChangeView}
               onDateNavigation={onDateNavigation}
               viewOptions={[
