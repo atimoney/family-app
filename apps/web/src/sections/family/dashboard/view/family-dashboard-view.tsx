@@ -1,4 +1,4 @@
-import type { CalendarEvent, ShoppingItem, Task } from '@family/shared';
+import type { Task, ShoppingItem, CalendarEvent } from '@family/shared';
 
 import { useMemo, useState } from 'react';
 
