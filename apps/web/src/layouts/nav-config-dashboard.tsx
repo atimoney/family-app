@@ -41,6 +41,7 @@ const ICONS = {
   ecommerce: icon('ic-ecommerce'),
   analytics: icon('ic-analytics'),
   dashboard: icon('ic-dashboard'),
+  settings: icon('ic-params'),
 };
 
 // ----------------------------------------------------------------------
@@ -79,5 +80,23 @@ export const navData: NavSectionProps['data'] = [
         ],
       },
     ],
+  },
+  /**
+   * Family
+   */
+  {
+    subheader: 'Family',
+    items: [
+      { title: 'Calendar', path: paths.family.calendar, icon: ICONS.calendar },
+      { title: 'Tasks', path: paths.family.tasks, icon: ICONS.kanban },
+      { title: 'Shopping', path: paths.family.shopping, icon: ICONS.order },
+    ],
+  },
+  /**
+   * Settings
+   */
+  {
+    subheader: 'Settings',
+    items: [{ title: 'Settings', path: paths.settings, icon: ICONS.settings }],
   },
 ];

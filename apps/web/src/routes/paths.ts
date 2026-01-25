@@ -51,4 +51,11 @@ export const paths = {
       six: `${ROOTS.DASHBOARD}/group/six`,
     },
   },
+  family: {
+    root: '/family',
+    calendar: '/family/calendar',
+    tasks: '/family/tasks',
+    shopping: '/family/shopping',
+  },
+  settings: '/settings',
 };

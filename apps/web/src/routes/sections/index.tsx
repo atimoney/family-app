@@ -6,6 +6,8 @@ import { Navigate } from 'react-router';
 import { CONFIG } from 'src/global-config';
 
 import { authRoutes } from './auth';
+import { familyRoutes } from './family';
+import { settingsRoutes } from './settings';
 import { dashboardRoutes } from './dashboard';
 
 // ----------------------------------------------------------------------
@@ -23,6 +25,12 @@ export const routesSection: RouteObject[] = [
 
   // Dashboard
   ...dashboardRoutes,
+
+  // Family
+  ...familyRoutes,
+
+  // Settings
+  ...settingsRoutes,
 
   // No match
   { path: '*', element: <Page404 /> },
