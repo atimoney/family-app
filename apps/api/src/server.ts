@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import envPlugin from './plugins/env.js';
 import prismaPlugin from './plugins/prisma.js';
+import routes from './routes/index.js';
 
 export function buildServer() {
   const fastify = Fastify({
@@ -19,10 +20,8 @@ export function buildServer() {
     };
   });
 
-  // Health check route
-  fastify.get('/healthz', async () => {
-    return { ok: true };
-  });
+  // Register all routes
+  fastify.register(routes);
 
   return fastify;
 }

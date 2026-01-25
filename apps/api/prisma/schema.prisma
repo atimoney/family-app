@@ -8,3 +8,34 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model CalendarEvent {
+  id        String   @id @default(cuid())
+  title     String
+  start     DateTime
+  end       DateTime
+  allDay    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Task {
+  id         String   @id @default(cuid())
+  title      String
+  assigneeId String?
+  dueDate    DateTime?
+  status     String   @default("todo")
+  completed  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ShoppingItem {
+  id        String   @id @default(cuid())
+  name      String
+  quantity  String?
+  category  String?
+  purchased Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
