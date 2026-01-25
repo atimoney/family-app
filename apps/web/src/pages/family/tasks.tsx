@@ -1,6 +1,6 @@
 import { CONFIG } from 'src/global-config';
 
-import { BlankView } from 'src/sections/blank/view';
+import { TasksView } from 'src/sections/family/tasks/view';
 
 // ----------------------------------------------------------------------
 
@@ -11,7 +11,7 @@ export default function Page() {
     <>
       <title>{metadata.title}</title>
 
-      <BlankView title="Family tasks" />
+      <TasksView />
     </>
   );
 }
