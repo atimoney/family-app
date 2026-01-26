@@ -48,6 +48,7 @@
     "@mui/x-data-grid": "^8.22.0",
     "@mui/x-date-pickers": "^8.22.0",
     "@mui/x-tree-view": "^8.22.0",
+    "@supabase/supabase-js": "^2.91.1",
     "autosuggest-highlight": "^3.3.4",
     "axios": "^1.13.2",
     "dayjs": "^1.11.19",

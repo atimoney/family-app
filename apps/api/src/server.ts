@@ -14,8 +14,17 @@ export function buildServer() {
   fastify.register(prismaPlugin);
 
   fastify.register(cors, (instance) => {
+    // Support comma-separated list of origins or allow all if not set
+    const corsOrigin = instance.config.CORS_ORIGIN;
+    let origin: string[] | boolean = true;
+
+    if (corsOrigin) {
+      // Split by comma and trim whitespace
+      origin = corsOrigin.split(',').map((o) => o.trim());
+    }
+
     return {
-      origin: instance.config.CORS_ORIGIN ?? true,
+      origin,
       credentials: true,
     };
   });

@@ -49,6 +49,38 @@ const authJwt = {
   ],
 };
 
+/** **************************************
+ * Supabase
+ *************************************** */
+const Supabase = {
+  SignInPage: lazy(() => import('src/pages/auth/supabase/sign-in')),
+  CallbackPage: lazy(() => import('src/pages/auth/supabase/callback')),
+};
+
+const authSupabase = {
+  path: 'supabase',
+  children: [
+    {
+      path: 'sign-in',
+      element: (
+        <GuestGuard>
+          <AuthSplitLayout
+            slotProps={{
+              section: { title: 'Hi, Welcome back' },
+            }}
+          >
+            <Supabase.SignInPage />
+          </AuthSplitLayout>
+        </GuestGuard>
+      ),
+    },
+    {
+      path: 'callback',
+      element: <Supabase.CallbackPage />,
+    },
+  ],
+};
+
 // ----------------------------------------------------------------------
 
 export const authRoutes: RouteObject[] = [
@@ -59,6 +91,6 @@ export const authRoutes: RouteObject[] = [
         <Outlet />
       </Suspense>
     ),
-    children: [authJwt],
+    children: [authJwt, authSupabase],
   },
 ];

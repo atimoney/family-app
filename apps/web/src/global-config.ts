@@ -1,5 +1,7 @@
 import { paths } from 'src/routes/paths';
 
+import { env } from 'src/config/env';
+
 import packageJson from '../package.json';
 
 // ----------------------------------------------------------------------
@@ -7,6 +9,7 @@ import packageJson from '../package.json';
 export type ConfigValue = {
   appName: string;
   appVersion: string;
+  appUrl: string;
   serverUrl: string;
   assetsDir: string;
   auth: {
@@ -33,6 +36,7 @@ export type ConfigValue = {
 export const CONFIG: ConfigValue = {
   appName: 'Family Hub',
   appVersion: packageJson.version,
+  appUrl: env.app.url,
   serverUrl: import.meta.env.VITE_SERVER_URL ?? '',
   assetsDir: import.meta.env.VITE_ASSETS_DIR ?? '',
   /**
@@ -40,9 +44,9 @@ export const CONFIG: ConfigValue = {
    * @method jwt | amplify | firebase | supabase | auth0
    */
   auth: {
-    method: 'jwt',
+    method: 'supabase',
     skip: false,
-    redirectPath: paths.family.root,
+    redirectPath: env.app.authRedirectPath || paths.family.root,
   },
   /**
    * Firebase
@@ -76,7 +80,7 @@ export const CONFIG: ConfigValue = {
    * Supabase
    */
   supabase: {
-    url: import.meta.env.VITE_SUPABASE_URL ?? '',
-    key: import.meta.env.VITE_SUPABASE_ANON_KEY ?? '',
+    url: env.supabase.url,
+    key: env.supabase.anonKey,
   },
 };

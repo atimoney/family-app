@@ -13,6 +13,14 @@ export const paths = {
       signIn: `${ROOTS.AUTH}/jwt/sign-in`,
       signUp: `${ROOTS.AUTH}/jwt/sign-up`,
     },
+    supabase: {
+      signIn: `${ROOTS.AUTH}/supabase/sign-in`,
+      signUp: `${ROOTS.AUTH}/supabase/sign-up`,
+      callback: `${ROOTS.AUTH}/supabase/callback`,
+      verify: `${ROOTS.AUTH}/supabase/verify`,
+      resetPassword: `${ROOTS.AUTH}/supabase/reset-password`,
+      updatePassword: `${ROOTS.AUTH}/supabase/update-password`,
+    },
   },
   // FAMILY
   family: {

@@ -1,0 +1,96 @@
+import type { SupabaseClient, AuthChangeEvent, Session } from '@supabase/supabase-js';
+
+import { createClient } from '@supabase/supabase-js';
+
+import { CONFIG } from 'src/global-config';
+import { env, validateSupabaseEnv, buildRedirectUrl } from 'src/config/env';
+
+// ----------------------------------------------------------------------
+
+const isSupabase = CONFIG.auth.method === 'supabase';
+
+// Validate env vars when Supabase auth is enabled
+if (isSupabase) {
+  validateSupabaseEnv();
+}
+
+/**
+ * Supabase client singleton.
+ * Only initialized when CONFIG.auth.method === 'supabase'.
+ */
+export const supabase: SupabaseClient = isSupabase
+  ? createClient(env.supabase.url, env.supabase.anonKey)
+  : ({} as SupabaseClient);
+
+// ----------------------------------------------------------------------
+// Auth Helpers
+// ----------------------------------------------------------------------
+
+/**
+ * Get the current session (if any).
+ */
+export async function getSession(): Promise<Session | null> {
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error) {
+    console.error('Error getting session:', error);
+    return null;
+  }
+
+  return data.session;
+}
+
+/**
+ * Subscribe to auth state changes.
+ *
+ * @param callback - Called with event type and session on auth state change
+ * @returns Unsubscribe function
+ *
+ * @example
+ * const unsubscribe = onAuthStateChange((event, session) => {
+ *   if (event === 'SIGNED_IN') console.log('User signed in:', session?.user);
+ *   if (event === 'SIGNED_OUT') console.log('User signed out');
+ * });
+ * // Later: unsubscribe();
+ */
+export function onAuthStateChange(
+  callback: (event: AuthChangeEvent, session: Session | null) => void
+): () => void {
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange(callback);
+
+  return () => subscription.unsubscribe();
+}
+
+/**
+ * Sign in with Google OAuth.
+ * Redirects the user to Google for authentication.
+ *
+ * @param redirectTo - Optional path to redirect to after sign-in (defaults to env.app.authRedirectPath)
+ */
+export async function signInWithGoogle(redirectTo?: string): Promise<void> {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: buildRedirectUrl(redirectTo),
+    },
+  });
+
+  if (error) {
+    console.error('Error signing in with Google:', error);
+    throw error;
+  }
+}
+
+/**
+ * Sign out the current user.
+ */
+export async function signOut(): Promise<void> {
+  const { error } = await supabase.auth.signOut();
+
+  if (error) {
+    console.error('Error signing out:', error);
+    throw error;
+  }
+}
