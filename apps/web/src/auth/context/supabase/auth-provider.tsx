@@ -81,26 +81,33 @@ export function AuthProvider({ children }: Props) {
   const status = state.loading ? 'loading' : checkAuthenticated;
 
   const memoizedValue = useMemo(
-    () => ({
-      user: state.user
-        ? {
-            ...state.user,
-            id: state.user?.id,
-            accessToken: state.user?.access_token,
-            displayName:
-              state.user?.user_metadata?.display_name ||
-              state.user?.user_metadata?.full_name ||
-              state.user?.email,
-            email: state.user?.email,
-            photoURL: state.user?.user_metadata?.avatar_url,
-            role: state.user?.role ?? 'user',
-          }
-        : null,
-      checkUserSession,
-      loading: status === 'loading',
-      authenticated: status === 'authenticated',
-      unauthenticated: status === 'unauthenticated',
-    }),
+    () => {
+      const photoURL =
+        state.user?.user_metadata?.avatar_url ||
+        state.user?.user_metadata?.picture;
+
+      return {
+        user: state.user
+          ? {
+              ...state.user,
+              id: state.user?.id,
+              accessToken: state.user?.access_token,
+              displayName:
+                state.user?.user_metadata?.display_name ||
+                state.user?.user_metadata?.full_name ||
+                state.user?.user_metadata?.name ||
+                state.user?.email,
+              email: state.user?.email,
+              photoURL,
+              role: state.user?.role ?? 'user',
+            }
+          : null,
+        checkUserSession,
+        loading: status === 'loading',
+        authenticated: status === 'authenticated',
+        unauthenticated: status === 'unauthenticated',
+      };
+    },
     [checkUserSession, state.user, status]
   );
 
