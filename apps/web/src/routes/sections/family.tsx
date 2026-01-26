@@ -1,7 +1,7 @@
 import type { RouteObject } from 'react-router';
 
+import { Outlet } from 'react-router';
 import { lazy, Suspense } from 'react';
-import { Outlet, Navigate } from 'react-router';
 
 import { CONFIG } from 'src/global-config';
 import { DashboardLayout } from 'src/layouts/dashboard';
@@ -14,6 +14,7 @@ import { usePathname } from '../hooks';
 
 // ----------------------------------------------------------------------
 
+const FamilyDashboardPage = lazy(() => import('src/pages/family/dashboard'));
 const FamilyCalendarPage = lazy(() => import('src/pages/family/calendar'));
 const FamilyTasksPage = lazy(() => import('src/pages/family/tasks'));
 const FamilyShoppingPage = lazy(() => import('src/pages/family/shopping'));
@@ -40,7 +41,7 @@ export const familyRoutes: RouteObject[] = [
     path: 'family',
     element: CONFIG.auth.skip ? dashboardLayout() : <AuthGuard>{dashboardLayout()}</AuthGuard>,
     children: [
-      { index: true, element: <Navigate to="calendar" replace /> },
+      { index: true, element: <FamilyDashboardPage /> },
       { path: 'calendar', element: <FamilyCalendarPage /> },
       { path: 'tasks', element: <FamilyTasksPage /> },
       { path: 'shopping', element: <FamilyShoppingPage /> },
