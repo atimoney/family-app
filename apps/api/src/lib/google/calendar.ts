@@ -18,15 +18,25 @@ export async function listEvents(options: {
   timeMax: string;
 }) {
   const calendar = getCalendarClient(options.auth);
-  const response = await calendar.events.list({
-    calendarId: options.calendarId,
-    timeMin: options.timeMin,
-    timeMax: options.timeMax,
-    singleEvents: true,
-    orderBy: 'startTime',
-  });
+  const allEvents: calendar_v3.Schema$Event[] = [];
+  let pageToken: string | undefined;
 
-  return response.data.items ?? [];
+  do {
+    const response = await calendar.events.list({
+      calendarId: options.calendarId,
+      timeMin: options.timeMin,
+      timeMax: options.timeMax,
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 2500,
+      pageToken,
+    });
+
+    allEvents.push(...(response.data.items ?? []));
+    pageToken = response.data.nextPageToken ?? undefined;
+  } while (pageToken);
+
+  return allEvents;
 }
 
 export async function createEvent(options: {
