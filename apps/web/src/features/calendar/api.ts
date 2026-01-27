@@ -26,13 +26,45 @@ export async function getCalendarEvents(
   const headers = await getAuthHeaders();
   const params = new URLSearchParams();
 
-  if (query.from) params.set('from', query.from);
-  if (query.to) params.set('to', query.to);
-  if (query.tags?.length) params.set('tags', query.tags.join(','));
+  if (query.from) params.set('timeMin', query.from);
+  if (query.to) params.set('timeMax', query.to);
 
   const suffix = params.toString() ? `?${params.toString()}` : '';
-  return apiClient.get<CalendarEventApi[]>(`/events${suffix}`, { headers });
+  
+  // Fetch directly from Google Calendar API
+  const response = await apiClient.get<GoogleCalendarEvent[]>(`/v1/calendar/events${suffix}`, { headers });
+  
+  // Transform to CalendarEventApi format
+  return response.map((event) => ({
+    id: event.id,
+    googleEventId: event.id,
+    startsAt: event.start,
+    endsAt: event.end,
+    title: event.title,
+    status: null,
+    metadata: event.extraData ? {
+      tags: event.extraData.tags ?? [],
+      notes: event.extraData.notes ?? null,
+      color: event.extraData.color ?? null,
+      customJson: {},
+    } : null,
+  }));
 }
+
+type GoogleCalendarEvent = {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  calendarId: string;
+  extraData?: {
+    tags?: string[];
+    category?: string | null;
+    notes?: string | null;
+    color?: string | null;
+  };
+};
 
 export async function updateCalendarEventMetadata(
   eventId: string,
