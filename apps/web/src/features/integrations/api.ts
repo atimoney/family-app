@@ -32,10 +32,10 @@ export type GoogleOAuthUrl = {
 
 export async function getGoogleConnectionStatus(): Promise<GoogleConnectionStatus> {
   const headers = await getAuthHeaders();
-  return apiClient.get<GoogleConnectionStatus>('/calendar/oauth/status', { headers });
+  return apiClient.get<GoogleConnectionStatus>('/v1/calendar/oauth/status', { headers });
 }
 
 export async function getGoogleOAuthUrl(): Promise<GoogleOAuthUrl> {
   const headers = await getAuthHeaders();
-  return apiClient.get<GoogleOAuthUrl>('/calendar/oauth/url', { headers });
+  return apiClient.get<GoogleOAuthUrl>('/v1/calendar/oauth/url', { headers });
 }
