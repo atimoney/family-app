@@ -83,3 +83,30 @@ model ShoppingItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model GoogleAccount {
+  id           String   @id @default(cuid())
+  userId       String
+  googleUserId String
+  email        String?
+  refreshToken String
+  scopes       String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, googleUserId])
+  @@index([userId])
+}
+
+model EventLink {
+  id         String   @id @default(cuid())
+  userId     String
+  calendarId String
+  eventId    String
+  extraData  Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, calendarId, eventId])
+  @@index([userId, calendarId])
+}

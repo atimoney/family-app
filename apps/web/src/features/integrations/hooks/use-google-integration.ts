@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-import { getGoogleConnectionStatus, getGoogleOAuthUrl, type GoogleConnectionStatus } from '../api';
+import { getGoogleOAuthUrl, getGoogleConnectionStatus, type GoogleConnectionStatus } from '../api';
 
 // ----------------------------------------------------------------------
 

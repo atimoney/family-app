@@ -1,3 +1,4 @@
+import type { FastifyInstance } from 'fastify';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import envPlugin from './plugins/env.js';
@@ -13,14 +14,14 @@ export function buildServer() {
   fastify.register(envPlugin);
   fastify.register(prismaPlugin);
 
-  fastify.register(cors, (instance) => {
+  fastify.register(cors, (instance: FastifyInstance) => {
     // Support comma-separated list of origins or allow all if not set
     const corsOrigin = instance.config.CORS_ORIGIN;
     let origin: string[] | boolean = true;
 
     if (corsOrigin) {
       // Split by comma and trim whitespace
-      origin = corsOrigin.split(',').map((o) => o.trim());
+      origin = corsOrigin.split(',').map((o: string) => o.trim());
     }
 
     return {

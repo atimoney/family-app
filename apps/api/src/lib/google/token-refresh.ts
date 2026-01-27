@@ -11,16 +11,17 @@ export async function refreshAccessToken(options: {
   refreshToken: string;
 }): Promise<RefreshedTokenResult> {
   options.oauthClient.setCredentials({ refresh_token: options.refreshToken });
-  const response = await options.oauthClient.refreshToken(options.refreshToken);
-  const tokens = response.tokens;
+  const response = await options.oauthClient.getAccessToken();
 
-  if (!tokens.access_token || !tokens.expiry_date) {
+  if (!response.token) {
     throw new Error('Failed to refresh access token');
   }
 
+  const credentials = options.oauthClient.credentials;
+
   return {
-    accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token,
-    expiresAt: tokens.expiry_date,
+    accessToken: response.token,
+    refreshToken: credentials.refresh_token ?? undefined,
+    expiresAt: credentials.expiry_date ?? Date.now() + 3600 * 1000,
   };
 }

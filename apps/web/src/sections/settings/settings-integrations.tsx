@@ -1,8 +1,8 @@
 import type { IconifyProps } from 'src/components/iconify';
 
 import { useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { varAlpha } from 'minimal-shared/utils';
+import { useSearchParams as useRouterSearchParams } from 'react-router';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -13,6 +13,8 @@ import Skeleton from '@mui/material/Skeleton';
 import CardHeader from '@mui/material/CardHeader';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
+
+import { useRouter } from 'src/routes/hooks';
 
 import { useGoogleIntegration } from 'src/features/integrations';
 
@@ -60,19 +62,19 @@ const INTEGRATIONS: Integration[] = [
 // ----------------------------------------------------------------------
 
 export function SettingsIntegrations() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const router = useRouter();
+  const [searchParams] = useRouterSearchParams();
   const { status: googleStatus, loading: googleLoading, connect: connectGoogle, refresh } = useGoogleIntegration();
 
   // Refresh status when redirected back from Google OAuth
   useEffect(() => {
     if (searchParams.get('google') === 'connected') {
-      // Remove the query param
-      searchParams.delete('google');
-      setSearchParams(searchParams, { replace: true });
+      // Remove the query param by replacing URL
+      router.replace('/settings');
       // Refresh status
       refresh();
     }
-  }, [searchParams, setSearchParams, refresh]);
+  }, [searchParams, router, refresh]);
 
   const renderGoogleCalendarIntegration = () => (
     <Box
@@ -101,7 +103,7 @@ export function SettingsIntegrations() {
               justifyContent: 'center',
             }}
           >
-            <Iconify icon="logos:google-calendar" width={28} />
+            <Iconify icon="solar:calendar-date-bold" width={28} />
           </Box>
           <Box sx={{ flexGrow: 1 }}>
             <Stack direction="row" alignItems="center" spacing={1}>

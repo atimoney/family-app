@@ -206,12 +206,13 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    const metadataMap = new Map(metadata.map((link) => [link.eventId, link.extraData as CalendarEventExtraDataV1]));
+    const metadataMap = new Map(metadata.map((link: { eventId: string; extraData: unknown }) => [link.eventId, link.extraData as CalendarEventExtraDataV1]));
 
     return events.map((event) => {
       const start = event.start?.dateTime ?? event.start?.date ?? '';
       const end = event.end?.dateTime ?? event.end?.date ?? '';
       const allDay = Boolean(event.start?.date);
+      const eventExtraData = metadataMap.get(event.id ?? '');
 
       return {
         id: event.id ?? '',
@@ -220,7 +221,7 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
         end: new Date(end).toISOString(),
         allDay,
         calendarId: resolvedCalendarId,
-        extraData: metadataMap.get(event.id ?? '') ?? undefined,
+        extraData: eventExtraData,
       };
     });
   });
