@@ -1,8 +1,8 @@
 import type FullCalendar from '@fullcalendar/react';
-import type { CalendarEvent } from '@family/shared';
 import type { Breakpoint } from '@mui/material/styles';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
 import type { ViewApi, CalendarApi, EventDropArg, DateSelectArg, EventClickArg } from '@fullcalendar/core';
+import type { CalendarEventItem } from 'src/features/calendar/types';
 
 import { useRef, useState, useEffect, useCallback } from 'react';
 
@@ -33,10 +33,10 @@ export type UseCalendarReturn = {
   onSelectRange: (arg: DateSelectArg) => void;
   onChangeView: (view: CalendarView) => void;
   onDateNavigation: (action: DateNavigationAction) => void;
-  onDropEvent: (arg: EventDropArg, updateEvent: (event: Partial<CalendarEvent>) => void) => void;
+  onDropEvent: (arg: EventDropArg, updateEvent: (event: Partial<CalendarEventItem>) => void) => void;
   onResizeEvent: (
     arg: EventResizeDoneArg,
-    updateEvent: (event: Partial<CalendarEvent>) => void
+    updateEvent: (event: Partial<CalendarEventItem>) => void
   ) => void;
 };
 
@@ -164,7 +164,7 @@ export function useCalendar({
   );
 
   const onResizeEvent = useCallback(
-    (arg: EventResizeDoneArg, updateEvent: (eventData: Partial<CalendarEvent>) => void) => {
+    (arg: EventResizeDoneArg, updateEvent: (eventData: Partial<CalendarEventItem>) => void) => {
       const { event } = arg;
 
       updateEvent({
@@ -178,7 +178,7 @@ export function useCalendar({
   );
 
   const onDropEvent = useCallback(
-    (arg: EventDropArg, updateEvent: (eventData: Partial<CalendarEvent>) => void) => {
+    (arg: EventDropArg, updateEvent: (eventData: Partial<CalendarEventItem>) => void) => {
       const { event } = arg;
 
       updateEvent({

@@ -1,13 +1,13 @@
 import '@fullcalendar/core';
 
-import type { CalendarEvent } from '@family/shared';
 import type { Theme, SxProps } from '@mui/material/styles';
+import type { CalendarEventItem } from 'src/features/calendar/types';
 
 import Calendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { useState, useEffect, useCallback, startTransition } from 'react';
+import { useState, useCallback, startTransition } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -20,7 +20,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { getCalendarEvents, createCalendarEvent } from 'src/features/calendar/api';
+import { useCalendarEvents } from 'src/features/calendar/hooks/use-calendar-events';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -34,28 +34,10 @@ import { CalendarToolbar } from '../calendar-toolbar';
 export function CalendarView() {
   const theme = useTheme();
 
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { events, loading, error } = useCalendarEvents();
+  const [localEvents, setLocalEvents] = useState<CalendarEventItem[]>([]);
 
-  // Load events from API on mount
-  useEffect(() => {
-    const loadEvents = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await getCalendarEvents();
-        setEvents(data);
-      } catch (err) {
-        console.error('Failed to load events:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load events');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadEvents();
-  }, []);
+  const mergedEvents = localEvents.length ? localEvents : events;
 
   const {
     calendarRef,
@@ -79,41 +61,27 @@ export function CalendarView() {
   } = useCalendar();
 
   // Find current event for editing
-  const currentEvent = selectedEventId ? events.find((e) => e.id === selectedEventId) : null;
+  const currentEvent = selectedEventId ? mergedEvents.find((e) => e.id === selectedEventId) : null;
 
   // Event handlers
-  const handleCreateEvent = useCallback(
-    async (newEvent: CalendarEvent) => {
-      try {
-        const created = await createCalendarEvent({
-          title: newEvent.title,
-          start: newEvent.start,
-          end: newEvent.end,
-          allDay: newEvent.allDay,
-        });
-        setEvents((prev) => [...prev, created]);
-        onCloseForm();
-      } catch (err) {
-        console.error('Failed to create event:', err);
-        // Optionally show error to user
-      }
-    },
-    [onCloseForm]
-  );
+  const handleCreateEvent = useCallback(() => {
+    // Google events are source-of-truth; creation is not supported here yet.
+    onCloseForm();
+  }, [onCloseForm]);
 
-  const handleUpdateEvent = useCallback((updatedEvent: CalendarEvent) => {
-    // TODO: Add API call for update when backend supports it
-    setEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
+  const handleUpdateEvent = useCallback((updatedEvent: CalendarEventItem) => {
+    // Metadata-only edits should be handled via PATCH /events/:id/metadata.
+    // Keep local UI in sync until metadata editing is wired.
+    setLocalEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
   }, []);
 
   const handleDeleteEvent = useCallback((eventId: string) => {
-    // TODO: Add API call for delete when backend supports it
-    setEvents((prev) => prev.filter((e) => e.id !== eventId));
+    setLocalEvents((prev) => prev.filter((e) => e.id !== eventId));
   }, []);
 
   // Update event on drag/resize
-  const updateEventFromDragResize = useCallback((eventData: Partial<CalendarEvent>) => {
-    setEvents((prev) =>
+  const updateEventFromDragResize = useCallback((eventData: Partial<CalendarEventItem>) => {
+    setLocalEvents((prev) =>
       prev.map((e) =>
         e.id === eventData.id
           ? {
@@ -210,7 +178,7 @@ export function CalendarView() {
 
         {error && (
           <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
+            {error.message}
           </Alert>
         )}
 
@@ -245,7 +213,7 @@ export function CalendarView() {
               eventDisplay="block"
               ref={calendarRef}
               initialView={view}
-              events={events}
+              events={mergedEvents}
               select={onSelectRange}
               eventClick={onClickEvent}
               businessHours={{

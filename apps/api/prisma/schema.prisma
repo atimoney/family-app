@@ -9,14 +9,58 @@ datasource db {
   provider = "postgresql"
 }
 
+model CalendarAccount {
+  id               String   @id @default(cuid())
+  userId           String
+  provider         String
+  googleCalendarId String
+  tokens           Json
+  syncState        Json
+  deletedAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  events CalendarEvent[]
+
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
 model CalendarEvent {
-  id        String   @id @default(cuid())
-  title     String
-  start     DateTime
-  end       DateTime
-  allDay    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  userId        String
+  accountId     String
+  googleEventId String
+  startsAt      DateTime
+  endsAt        DateTime
+  title         String
+  status        String?
+  deletedAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  account   CalendarAccount @relation(fields: [accountId], references: [id])
+  metadata  CalendarEventMetadata?
+
+  @@unique([userId, googleEventId])
+  @@index([userId, startsAt])
+  @@index([userId, endsAt])
+  @@index([accountId, startsAt])
+  @@index([accountId, endsAt])
+}
+
+model CalendarEventMetadata {
+  id         String   @id @default(cuid())
+  eventId    String   @unique
+  tags       String[]
+  notes      String?
+  color      String?
+  customJson Json
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  event CalendarEvent @relation(fields: [eventId], references: [id])
 }
 
 model Task {

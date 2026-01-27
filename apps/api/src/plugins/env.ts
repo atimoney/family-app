@@ -9,13 +9,31 @@ declare module 'fastify' {
       API_PORT: number;
       API_HOST: string;
       CORS_ORIGIN?: string;
+      SUPABASE_JWKS_URL: string;
+      SUPABASE_JWT_ISSUER?: string;
+      SUPABASE_JWT_AUDIENCE?: string;
+      GOOGLE_CLIENT_ID: string;
+      GOOGLE_CLIENT_SECRET: string;
+      GOOGLE_REDIRECT_URL: string;
+      GOOGLE_SCOPES?: string;
+      OAUTH_STATE_SECRET: string;
+      TOKEN_ENCRYPTION_KEY: string;
+      FRONTEND_URL?: string;
     };
   }
 }
 
 const schema = {
   type: 'object',
-  required: ['DATABASE_URL'],
+  required: [
+    'DATABASE_URL',
+    'SUPABASE_JWKS_URL',
+    'GOOGLE_CLIENT_ID',
+    'GOOGLE_CLIENT_SECRET',
+    'GOOGLE_REDIRECT_URL',
+    'OAUTH_STATE_SECRET',
+    'TOKEN_ENCRYPTION_KEY',
+  ],
   properties: {
     DATABASE_URL: {
       type: 'string',
@@ -30,6 +48,37 @@ const schema = {
     },
     CORS_ORIGIN: {
       type: 'string',
+    },
+    SUPABASE_JWKS_URL: {
+      type: 'string',
+    },
+    SUPABASE_JWT_ISSUER: {
+      type: 'string',
+    },
+    SUPABASE_JWT_AUDIENCE: {
+      type: 'string',
+    },
+    GOOGLE_CLIENT_ID: {
+      type: 'string',
+    },
+    GOOGLE_CLIENT_SECRET: {
+      type: 'string',
+    },
+    GOOGLE_REDIRECT_URL: {
+      type: 'string',
+    },
+    GOOGLE_SCOPES: {
+      type: 'string',
+    },
+    OAUTH_STATE_SECRET: {
+      type: 'string',
+    },
+    TOKEN_ENCRYPTION_KEY: {
+      type: 'string',
+    },
+    FRONTEND_URL: {
+      type: 'string',
+      default: 'http://localhost:8081',
     },
   },
 } as const;

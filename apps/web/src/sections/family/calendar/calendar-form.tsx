@@ -1,5 +1,5 @@
-import type { CalendarEvent } from '@family/shared';
 import type { CalendarRange } from './hooks/use-calendar';
+import type { CalendarEventItem } from 'src/features/calendar/types';
 
 import * as z from 'zod';
 import dayjs from 'dayjs';
@@ -36,10 +36,10 @@ export const EventSchema = z.object({
 
 type Props = {
   onClose: () => void;
-  currentEvent?: CalendarEvent | null;
+  currentEvent?: CalendarEventItem | null;
   selectedRange: CalendarRange;
-  onCreateEvent: (event: CalendarEvent) => void;
-  onUpdateEvent: (event: CalendarEvent) => void;
+  onCreateEvent: (event: CalendarEventItem) => void;
+  onUpdateEvent: (event: CalendarEventItem) => void;
   onDeleteEvent: (eventId: string) => void;
 };
 
@@ -79,7 +79,7 @@ export function CalendarForm({
   const dateError = dayjs(values.end).isBefore(dayjs(values.start));
 
   const onSubmit = handleSubmit(async (data) => {
-    const eventData: CalendarEvent = {
+    const eventData: CalendarEventItem = {
       id: currentEvent?.id || uuidv4(),
       title: data.title,
       allDay: data.allDay,

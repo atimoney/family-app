@@ -1,14 +1,20 @@
 import type { IconifyProps } from 'src/components/iconify';
 
+import { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { varAlpha } from 'minimal-shared/utils';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
 import Switch from '@mui/material/Switch';
+import Skeleton from '@mui/material/Skeleton';
 import CardHeader from '@mui/material/CardHeader';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
+
+import { useGoogleIntegration } from 'src/features/integrations';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -54,6 +60,95 @@ const INTEGRATIONS: Integration[] = [
 // ----------------------------------------------------------------------
 
 export function SettingsIntegrations() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { status: googleStatus, loading: googleLoading, connect: connectGoogle, refresh } = useGoogleIntegration();
+
+  // Refresh status when redirected back from Google OAuth
+  useEffect(() => {
+    if (searchParams.get('google') === 'connected') {
+      // Remove the query param
+      searchParams.delete('google');
+      setSearchParams(searchParams, { replace: true });
+      // Refresh status
+      refresh();
+    }
+  }, [searchParams, setSearchParams, refresh]);
+
+  const renderGoogleCalendarIntegration = () => (
+    <Box
+      sx={[
+        (theme) => ({
+          p: 2,
+          borderRadius: 1.5,
+          border: `1px solid ${varAlpha(theme.vars.palette.grey['500Channel'], 0.16)}`,
+          bgcolor: varAlpha(theme.vars.palette.grey['500Channel'], 0.04),
+        }),
+      ]}
+    >
+      <Stack
+        direction="row"
+        alignItems="flex-start"
+        justifyContent="space-between"
+      >
+        <Stack direction="row" spacing={2} alignItems="flex-start">
+          <Box
+            sx={{
+              p: 1,
+              borderRadius: 1,
+              bgcolor: 'background.paper',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Iconify icon="logos:google-calendar" width={28} />
+          </Box>
+          <Box sx={{ flexGrow: 1 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Typography variant="subtitle1">Google Calendar</Typography>
+              {googleLoading ? (
+                <Skeleton width={80} height={24} />
+              ) : (
+                <Label
+                  variant="soft"
+                  color={googleStatus?.connected ? 'success' : 'info'}
+                >
+                  {googleStatus?.connected ? 'Connected' : 'Available'}
+                </Label>
+              )}
+            </Stack>
+            <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
+              {googleStatus?.connected && googleStatus.email
+                ? `Connected as ${googleStatus.email}`
+                : 'Sync your Google Calendar events to view and manage them in one place.'}
+            </Typography>
+          </Box>
+        </Stack>
+        {googleLoading ? (
+          <Skeleton width={100} height={36} />
+        ) : googleStatus?.connected ? (
+          <Button
+            variant="outlined"
+            color="inherit"
+            size="small"
+            onClick={connectGoogle}
+          >
+            Reconnect
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            size="small"
+            onClick={connectGoogle}
+            startIcon={<Iconify icon="eva:link-2-fill" />}
+          >
+            Connect
+          </Button>
+        )}
+      </Stack>
+    </Box>
+  );
+
   return (
     <Card>
       <CardHeader
@@ -62,6 +157,10 @@ export function SettingsIntegrations() {
       />
       <CardContent>
         <Stack spacing={3}>
+          {/* Google Calendar - Active Integration */}
+          {renderGoogleCalendarIntegration()}
+
+          {/* Other Integrations */}
           {INTEGRATIONS.map((integration) => (
             <Box
               key={integration.id}

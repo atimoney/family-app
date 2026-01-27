@@ -23,6 +23,15 @@ export type CalendarEvent = {
   start: string;
   end: string;
   allDay?: boolean;
+  calendarId?: string;
+  extraData?: CalendarEventExtraDataV1;
+};
+
+export type CalendarEventExtraDataV1 = {
+  tags: string[];
+  category: string | null;
+  notes: string | null;
+  color?: string | null;
 };
 
 export type ShoppingItem = {
