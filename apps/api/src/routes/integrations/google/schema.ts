@@ -12,7 +12,6 @@ export const connectResponseSchema = z.object({
 
 export const syncResponseSchema = z.object({
   status: z.literal('ready'),
-  accessTokenExpiresAt: z.number(),
   synced: z.number(),
   created: z.number(),
   updated: z.number(),

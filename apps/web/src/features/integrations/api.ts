@@ -60,3 +60,21 @@ export async function updateCalendarSelection(calendarIds: string[]): Promise<{ 
   const headers = await getAuthHeaders();
   return apiClient.put<{ ok: boolean }>('/v1/calendar/calendars/selection', { calendarIds }, { headers });
 }
+
+// ----------------------------------------------------------------------
+
+export type SyncResponse = {
+  status: string;
+  synced: number;
+  created: number;
+  updated: number;
+  deleted: number;
+  failed: number;
+  fullSync: boolean;
+};
+
+export async function syncGoogleCalendar(force = false): Promise<SyncResponse> {
+  const headers = await getAuthHeaders();
+  const url = force ? '/integrations/google/sync?force=true' : '/integrations/google/sync';
+  return apiClient.post<SyncResponse>(url, {}, { headers });
+}

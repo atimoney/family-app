@@ -1,9 +1,12 @@
-import type { PrismaClient } from '@prisma/client';
 import type { OAuth2Client } from 'google-auth-library';
 import { google } from 'googleapis';
 
-import { getValidAccessToken } from './oauth-service.js';
+import { decryptSecret } from '../crypto.js';
 import { parseEventTimes, withRetry } from './sync-utils.js';
+import { refreshAccessToken } from './token-refresh.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PrismaClientAny = any;
 
 export type SyncSummary = {
   synced: number;
@@ -15,7 +18,8 @@ export type SyncSummary = {
   nextSyncToken?: string;
 };
 
-const DEFAULT_SYNC_WINDOW_DAYS = 90;
+const DEFAULT_SYNC_WINDOW_DAYS_PAST = 90;
+const DEFAULT_SYNC_WINDOW_DAYS_FUTURE = 365;
 
 type SyncState = {
   syncToken?: string;
@@ -34,48 +38,113 @@ function getSyncState(raw: unknown): SyncState {
 }
 
 export async function syncGoogleCalendar(options: {
-  prisma: PrismaClient;
+  prisma: PrismaClientAny;
   userId: string;
-  provider: string;
   oauthClient: OAuth2Client;
   encryptionKey: string;
+  calendarId?: string;
+  forceFullSync?: boolean;
   logger?: { info: (payload: unknown, message: string) => void; warn: (payload: unknown, message: string) => void };
 }): Promise<SyncSummary> {
   const logger = options.logger;
-  const account = await options.prisma.calendarAccount.findFirst({
-    where: {
-      userId: options.userId,
-      provider: options.provider,
-      deletedAt: null,
-    },
+  
+  // Get the Google account with refresh token
+  const googleAccount = await options.prisma.googleAccount.findFirst({
+    where: { userId: options.userId },
+    orderBy: { updatedAt: 'desc' },
   });
 
-  if (!account) {
-    throw new Error('Google calendar account not connected');
+  if (!googleAccount) {
+    throw new Error('Google account not connected');
   }
 
-  let tokens;
+  // Get valid access token using refresh token
+  const refreshToken = decryptSecret(googleAccount.refreshToken, options.encryptionKey);
+  let accessToken: string;
+  
   try {
-    tokens = await getValidAccessToken({
-      prisma: options.prisma,
-      userId: options.userId,
-      provider: options.provider,
+    const refreshed = await refreshAccessToken({
       oauthClient: options.oauthClient,
-      encryptionKey: options.encryptionKey,
+      refreshToken,
     });
+    accessToken = refreshed.accessToken;
   } catch (err) {
     // Failure mode: refresh token expired or access revoked by user.
     logger?.warn({ err, userId: options.userId }, 'Google token refresh failed');
     throw err;
   }
 
-  options.oauthClient.setCredentials({ access_token: tokens.accessToken });
+  options.oauthClient.setCredentials({ access_token: accessToken });
 
   const calendar = getCalendarClient(options.oauthClient);
-  const calendarId = account.googleCalendarId || 'primary';
+  
+  // Get selected calendars or use provided calendarId or default to primary
+  let calendarIds: string[] = [];
+  if (options.calendarId) {
+    calendarIds = [options.calendarId];
+  } else {
+    const selectedCalendars = await options.prisma.selectedCalendar.findMany({
+      where: { userId: options.userId, isVisible: true },
+    });
+    calendarIds = selectedCalendars.length > 0 
+      ? selectedCalendars.map((sc: { calendarId: string }) => sc.calendarId)
+      : ['primary'];
+  }
 
-  const currentState = getSyncState(account.syncState);
-  let syncToken = currentState.syncToken;
+  // Aggregate summary across all calendars
+  const summary: SyncSummary = {
+    synced: 0,
+    created: 0,
+    updated: 0,
+    deleted: 0,
+    failed: 0,
+    fullSync: options.forceFullSync ?? false,
+  };
+
+  // Sync each selected calendar
+  for (const calendarId of calendarIds) {
+    const calendarSummary = await syncSingleCalendar({
+      prisma: options.prisma,
+      userId: options.userId,
+      googleAccountId: googleAccount.id,
+      calendar,
+      calendarId,
+      forceFullSync: options.forceFullSync,
+      logger,
+    });
+
+    summary.synced += calendarSummary.synced;
+    summary.created += calendarSummary.created;
+    summary.updated += calendarSummary.updated;
+    summary.deleted += calendarSummary.deleted;
+    summary.failed += calendarSummary.failed;
+    summary.fullSync = summary.fullSync || calendarSummary.fullSync;
+    summary.nextSyncToken = calendarSummary.nextSyncToken;
+  }
+
+  return summary;
+}
+
+type SyncSingleCalendarOptions = {
+  prisma: PrismaClientAny;
+  userId: string;
+  googleAccountId: string;
+  calendar: ReturnType<typeof getCalendarClient>;
+  calendarId: string;
+  forceFullSync?: boolean;
+  logger?: { info: (payload: unknown, message: string) => void; warn: (payload: unknown, message: string) => void };
+};
+
+async function syncSingleCalendar(options: SyncSingleCalendarOptions): Promise<SyncSummary> {
+  const { prisma, userId, googleAccountId, calendar, calendarId, forceFullSync, logger } = options;
+
+  // Get or create EventLink to store sync state for this calendar
+  let eventLink = await prisma.eventLink.findFirst({
+    where: { userId, calendarId, eventId: '__sync_state__' },
+  });
+
+  const currentState = getSyncState(eventLink?.extraData);
+  let syncToken = forceFullSync ? undefined : currentState.syncToken;
   let nextSyncToken: string | undefined;
   let pageToken: string | undefined;
   let fullSync = !syncToken;
@@ -91,7 +160,9 @@ export async function syncGoogleCalendar(options: {
 
   const now = new Date();
   const defaultStart = new Date(now);
-  defaultStart.setDate(defaultStart.getDate() - DEFAULT_SYNC_WINDOW_DAYS);
+  defaultStart.setDate(defaultStart.getDate() - DEFAULT_SYNC_WINDOW_DAYS_PAST);
+  const defaultEnd = new Date(now);
+  defaultEnd.setDate(defaultEnd.getDate() + DEFAULT_SYNC_WINDOW_DAYS_FUTURE);
 
   do {
     try {
@@ -106,6 +177,7 @@ export async function syncGoogleCalendar(options: {
             ? { syncToken }
             : {
                 timeMin: defaultStart.toISOString(),
+                timeMax: defaultEnd.toISOString(),
               }),
         })
       );
@@ -137,9 +209,9 @@ export async function syncGoogleCalendar(options: {
         // Failure mode: missing times for non-cancelled events; skip safely.
         if (!parsedTimes.startsAt || !parsedTimes.endsAt) {
           if (isCancelled) {
-            await options.prisma.calendarEvent.updateMany({
+            await prisma.calendarEvent.updateMany({
               where: {
-                userId: options.userId,
+                userId,
                 googleEventId: event.id,
               },
               data: {
@@ -156,21 +228,21 @@ export async function syncGoogleCalendar(options: {
           // Failure mode: timezone changes require reinterpreting local time.
           // For now, rely on Google-provided ISO strings and store in UTC.
           logger?.info(
-            { userId: options.userId, eventId: event.id, timeZone: parsedTimes.timeZone },
+            { userId, eventId: event.id, timeZone: parsedTimes.timeZone },
             'Calendar event contains timezone info'
           );
         }
         try {
-          const result = await options.prisma.calendarEvent.upsert({
+          const result = await prisma.calendarEvent.upsert({
             where: {
               userId_googleEventId: {
-                userId: options.userId,
+                userId,
                 googleEventId: event.id,
               },
             },
             create: {
-              userId: options.userId,
-              accountId: account.id,
+              userId,
+              accountId: googleAccountId,
               googleEventId: event.id,
               startsAt: parsedTimes.startsAt,
               endsAt: parsedTimes.endsAt,
@@ -212,16 +284,32 @@ export async function syncGoogleCalendar(options: {
         summary.fullSync = true;
         continue;
       }
-      logger?.warn({ err, userId: options.userId }, 'Calendar sync failed');
+      logger?.warn({ err, userId }, 'Calendar sync failed');
       throw err;
     }
   } while (pageToken);
 
+  // Store sync token in EventLink for this calendar
   if (nextSyncToken) {
-    await options.prisma.calendarAccount.update({
-      where: { id: account.id },
-      data: {
-        syncState: {
+    await prisma.eventLink.upsert({
+      where: {
+        userId_calendarId_eventId: {
+          userId,
+          calendarId,
+          eventId: '__sync_state__',
+        },
+      },
+      create: {
+        userId,
+        calendarId,
+        eventId: '__sync_state__',
+        extraData: {
+          syncToken: nextSyncToken,
+          lastSyncedAt: new Date().toISOString(),
+        },
+      },
+      update: {
+        extraData: {
           syncToken: nextSyncToken,
           lastSyncedAt: new Date().toISOString(),
         },

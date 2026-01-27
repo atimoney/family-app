@@ -1,20 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
 
-import { getGoogleOAuthUrl, getGoogleConnectionStatus, type GoogleConnectionStatus } from '../api';
+import { getGoogleOAuthUrl, getGoogleConnectionStatus, syncGoogleCalendar, type GoogleConnectionStatus, type SyncResponse } from '../api';
 
 // ----------------------------------------------------------------------
 
 type UseGoogleIntegrationReturn = {
   status: GoogleConnectionStatus | null;
   loading: boolean;
+  syncing: boolean;
   error: Error | null;
   connect: () => Promise<void>;
   refresh: () => Promise<void>;
+  sync: (force?: boolean) => Promise<SyncResponse | null>;
 };
 
 export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   const [status, setStatus] = useState<GoogleConnectionStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const fetchStatus = useCallback(async () => {
@@ -51,6 +54,23 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     }
   }, []);
 
+  const sync = useCallback(async (force = false): Promise<SyncResponse | null> => {
+    try {
+      setSyncing(true);
+      setError(null);
+      console.log('Syncing Google Calendar...', { force });
+      const result = await syncGoogleCalendar(force);
+      console.log('Sync result:', result);
+      return result;
+    } catch (err) {
+      console.error('Failed to sync Google Calendar:', err);
+      setError(err instanceof Error ? err : new Error('Failed to sync calendar'));
+      return null;
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
@@ -58,8 +78,10 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
   return {
     status,
     loading,
+    syncing,
     error,
     connect,
     refresh: fetchStatus,
+    sync,
   };
 }

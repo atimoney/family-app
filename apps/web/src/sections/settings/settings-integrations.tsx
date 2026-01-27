@@ -68,7 +68,7 @@ const INTEGRATIONS: Integration[] = [
 export function SettingsIntegrations() {
   const router = useRouter();
   const [searchParams] = useRouterSearchParams();
-  const { status: googleStatus, loading: googleLoading, connect: connectGoogle, refresh } = useGoogleIntegration();
+  const { status: googleStatus, loading: googleLoading, syncing: googleSyncing, connect: connectGoogle, refresh, sync: syncGoogle } = useGoogleIntegration();
   const {
     calendars,
     loading: calendarsLoading,
@@ -155,18 +155,35 @@ export function SettingsIntegrations() {
         </Stack>
         <Stack direction="row" spacing={1}>
           {googleStatus?.connected && (
-            <Button
-              variant="outlined"
-              color="inherit"
-              size="small"
-              onClick={() => {
-                setShowCalendars(!showCalendars);
-                if (!showCalendars) refreshCalendars();
-              }}
-              startIcon={<Iconify icon={showCalendars ? 'eva:arrow-ios-upward-fill' : 'eva:arrow-ios-downward-fill'} />}
-            >
-              Calendars
-            </Button>
+            <>
+              <Button
+                variant="outlined"
+                color="inherit"
+                size="small"
+                onClick={async () => {
+                  const result = await syncGoogle(true);
+                  if (result) {
+                    console.log(`Synced ${result.synced} events (${result.created} created, ${result.updated} updated, ${result.deleted} deleted)`);
+                  }
+                }}
+                disabled={googleSyncing}
+                startIcon={googleSyncing ? <CircularProgress size={16} /> : <Iconify icon="solar:restart-bold" />}
+              >
+                {googleSyncing ? 'Syncing...' : 'Force Refresh'}
+              </Button>
+              <Button
+                variant="outlined"
+                color="inherit"
+                size="small"
+                onClick={() => {
+                  setShowCalendars(!showCalendars);
+                  if (!showCalendars) refreshCalendars();
+                }}
+                startIcon={<Iconify icon={showCalendars ? 'eva:arrow-ios-upward-fill' : 'eva:arrow-ios-downward-fill'} />}
+              >
+                Calendars
+              </Button>
+            </>
           )}
           {googleLoading ? (
             <Skeleton width={100} height={36} />
