@@ -153,12 +153,84 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     const calendars = await listCalendars(oauthClient);
-    return calendars.map((calendar) => ({
-      id: calendar.id ?? '',
-      summary: calendar.summary ?? '',
-      timeZone: calendar.timeZone ?? null,
-      primary: calendar.primary ?? false,
-    }));
+    
+    // Get user's selected calendars
+    const selectedCalendars = await fastify.prisma.selectedCalendar.findMany({
+      where: { userId },
+    });
+    const selectedMap = new Map(selectedCalendars.map((sc) => [sc.calendarId, sc]));
+
+    return calendars.map((calendar) => {
+      const selected = selectedMap.get(calendar.id ?? '');
+      return {
+        id: calendar.id ?? '',
+        summary: calendar.summary ?? '',
+        timeZone: calendar.timeZone ?? null,
+        primary: calendar.primary ?? false,
+        backgroundColor: calendar.backgroundColor ?? null,
+        isSelected: selected?.isVisible ?? false,
+      };
+    });
+  });
+
+  // PUT /v1/calendar/calendars/selection
+  fastify.put('/calendars/selection', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user?.id as string;
+    const { calendarIds } = request.body as { calendarIds: string[] };
+
+    if (!Array.isArray(calendarIds)) {
+      return reply.status(400).send({ error: 'calendarIds must be an array' });
+    }
+
+    const account = await loadGoogleAccount(userId);
+    if (!account) {
+      return reply.status(401).send({ error: 'Google account not connected' });
+    }
+
+    const refreshToken = await ensureRefreshToken(userId);
+    if (!refreshToken) {
+      return reply.status(401).send({ error: 'Google account not connected' });
+    }
+
+    const oauthClient = getAuthorizedClient({
+      oauthClient: getOauthClient(),
+      refreshToken,
+    });
+
+    // Get all calendars from Google to validate and get summaries
+    const calendars = await listCalendars(oauthClient);
+    const calendarMap = new Map(calendars.map((c) => [c.id, c]));
+
+    // Mark all existing as not visible
+    await fastify.prisma.selectedCalendar.updateMany({
+      where: { userId },
+      data: { isVisible: false },
+    });
+
+    // Upsert selected calendars
+    for (const calendarId of calendarIds) {
+      const calendar = calendarMap.get(calendarId);
+      if (calendar) {
+        await fastify.prisma.selectedCalendar.upsert({
+          where: { userId_calendarId: { userId, calendarId } },
+          create: {
+            userId,
+            googleAccountId: account.id,
+            calendarId,
+            summary: calendar.summary ?? '',
+            color: calendar.backgroundColor ?? null,
+            isVisible: true,
+          },
+          update: {
+            summary: calendar.summary ?? '',
+            color: calendar.backgroundColor ?? null,
+            isVisible: true,
+          },
+        });
+      }
+    }
+
+    return { ok: true, selectedCount: calendarIds.length };
   });
 
   // GET /v1/calendar/events
@@ -183,47 +255,79 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
 
     const effectiveTimeMin = timeMin ?? defaultStart.toISOString();
     const effectiveTimeMax = timeMax ?? defaultEnd.toISOString();
-    const resolvedCalendarId = getActiveCalendarId(calendarId);
 
     const oauthClient = getAuthorizedClient({
       oauthClient: getOauthClient(),
       refreshToken,
     });
 
-    const events = await listEvents({
-      auth: oauthClient,
-      calendarId: resolvedCalendarId,
-      timeMin: effectiveTimeMin,
-      timeMax: effectiveTimeMax,
-    });
+    // Get selected calendars or use provided calendarId or default to primary
+    let calendarIds: string[] = [];
+    if (calendarId) {
+      calendarIds = [calendarId];
+    } else {
+      const selectedCalendars = await fastify.prisma.selectedCalendar.findMany({
+        where: { userId, isVisible: true },
+      });
+      calendarIds = selectedCalendars.length > 0 
+        ? selectedCalendars.map((sc) => sc.calendarId)
+        : ['primary'];
+    }
 
-    const eventIds = events.map((event) => event.id).filter(Boolean) as string[];
-    const metadata = await fastify.prisma.eventLink.findMany({
-      where: {
-        userId,
-        calendarId: resolvedCalendarId,
-        eventId: { in: eventIds },
-      },
-    });
+    // Fetch events from all selected calendars
+    const allEvents: CalendarEvent[] = [];
+    
+    for (const cId of calendarIds) {
+      try {
+        const events = await listEvents({
+          auth: oauthClient,
+          calendarId: cId,
+          timeMin: effectiveTimeMin,
+          timeMax: effectiveTimeMax,
+        });
 
-    const metadataMap = new Map(metadata.map((link: { eventId: string; extraData: unknown }) => [link.eventId, link.extraData as CalendarEventExtraDataV1]));
+        const eventIds = events.map((event) => event.id).filter(Boolean) as string[];
+        const metadata = await fastify.prisma.eventLink.findMany({
+          where: {
+            userId,
+            calendarId: cId,
+            eventId: { in: eventIds },
+          },
+        });
 
-    return events.map((event) => {
-      const start = event.start?.dateTime ?? event.start?.date ?? '';
-      const end = event.end?.dateTime ?? event.end?.date ?? '';
-      const allDay = Boolean(event.start?.date);
-      const eventExtraData = metadataMap.get(event.id ?? '');
+        const metadataMap = new Map(metadata.map((link: { eventId: string; extraData: unknown }) => [link.eventId, link.extraData as CalendarEventExtraDataV1]));
 
-      return {
-        id: event.id ?? '',
-        title: event.summary ?? '(No title)',
-        start: new Date(start).toISOString(),
-        end: new Date(end).toISOString(),
-        allDay,
-        calendarId: resolvedCalendarId,
-        extraData: eventExtraData,
-      };
-    });
+        // Get calendar color for this calendar
+        const selectedCal = await fastify.prisma.selectedCalendar.findUnique({
+          where: { userId_calendarId: { userId, calendarId: cId } },
+        });
+
+        for (const event of events) {
+          const start = event.start?.dateTime ?? event.start?.date ?? '';
+          const end = event.end?.dateTime ?? event.end?.date ?? '';
+          const allDay = Boolean(event.start?.date);
+          const eventExtraData = metadataMap.get(event.id ?? '');
+
+          allEvents.push({
+            id: event.id ?? '',
+            title: event.summary ?? '(No title)',
+            start: new Date(start).toISOString(),
+            end: new Date(end).toISOString(),
+            allDay,
+            calendarId: cId,
+            extraData: eventExtraData ?? (selectedCal?.color ? { tags: [], category: null, notes: null, color: selectedCal.color } : undefined),
+          });
+        }
+      } catch (err) {
+        // Log error but continue with other calendars
+        fastify.log.warn({ err, calendarId: cId }, 'Failed to fetch events from calendar');
+      }
+    }
+
+    // Sort by start time
+    allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
+    return allEvents;
   });
 
   // POST /v1/calendar/events

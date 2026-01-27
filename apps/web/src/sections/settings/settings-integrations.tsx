@@ -1,6 +1,6 @@
 import type { IconifyProps } from 'src/components/iconify';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { varAlpha } from 'minimal-shared/utils';
 import { useSearchParams as useRouterSearchParams } from 'react-router';
 
@@ -10,13 +10,17 @@ import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Switch from '@mui/material/Switch';
 import Skeleton from '@mui/material/Skeleton';
+import Checkbox from '@mui/material/Checkbox';
+import Collapse from '@mui/material/Collapse';
 import CardHeader from '@mui/material/CardHeader';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
+import CircularProgress from '@mui/material/CircularProgress';
+import FormControlLabel from '@mui/material/FormControlLabel';
 
 import { useRouter } from 'src/routes/hooks';
 
-import { useGoogleIntegration } from 'src/features/integrations';
+import { useGoogleIntegration, useCalendarSelection } from 'src/features/integrations';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -65,6 +69,16 @@ export function SettingsIntegrations() {
   const router = useRouter();
   const [searchParams] = useRouterSearchParams();
   const { status: googleStatus, loading: googleLoading, connect: connectGoogle, refresh } = useGoogleIntegration();
+  const {
+    calendars,
+    loading: calendarsLoading,
+    toggleCalendar,
+    saveSelection,
+    hasChanges,
+    refresh: refreshCalendars,
+  } = useCalendarSelection();
+  const [showCalendars, setShowCalendars] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Refresh status when redirected back from Google OAuth
   useEffect(() => {
@@ -73,8 +87,21 @@ export function SettingsIntegrations() {
       router.replace('/settings');
       // Refresh status
       refresh();
+      refreshCalendars();
     }
-  }, [searchParams, router, refresh]);
+  }, [searchParams, router, refresh, refreshCalendars]);
+
+  const handleSaveSelection = async () => {
+    try {
+      setSaving(true);
+      await saveSelection();
+      console.log('Calendar selection saved');
+    } catch {
+      console.error('Failed to save calendar selection');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const renderGoogleCalendarIntegration = () => (
     <Box
@@ -126,28 +153,115 @@ export function SettingsIntegrations() {
             </Typography>
           </Box>
         </Stack>
-        {googleLoading ? (
-          <Skeleton width={100} height={36} />
-        ) : googleStatus?.connected ? (
-          <Button
-            variant="outlined"
-            color="inherit"
-            size="small"
-            onClick={connectGoogle}
-          >
-            Reconnect
-          </Button>
-        ) : (
-          <Button
-            variant="contained"
-            size="small"
-            onClick={connectGoogle}
-            startIcon={<Iconify icon="eva:link-2-fill" />}
-          >
-            Connect
-          </Button>
-        )}
+        <Stack direction="row" spacing={1}>
+          {googleStatus?.connected && (
+            <Button
+              variant="outlined"
+              color="inherit"
+              size="small"
+              onClick={() => {
+                setShowCalendars(!showCalendars);
+                if (!showCalendars) refreshCalendars();
+              }}
+              startIcon={<Iconify icon={showCalendars ? 'eva:arrow-ios-upward-fill' : 'eva:arrow-ios-downward-fill'} />}
+            >
+              Calendars
+            </Button>
+          )}
+          {googleLoading ? (
+            <Skeleton width={100} height={36} />
+          ) : googleStatus?.connected ? (
+            <Button
+              variant="outlined"
+              color="inherit"
+              size="small"
+              onClick={connectGoogle}
+            >
+              Reconnect
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              size="small"
+              onClick={connectGoogle}
+              startIcon={<Iconify icon="eva:link-2-fill" />}
+            >
+              Connect
+            </Button>
+          )}
+        </Stack>
       </Stack>
+
+      {/* Calendar Selection */}
+      <Collapse in={showCalendars && googleStatus?.connected}>
+        <Box sx={{ mt: 2, pt: 2, borderTop: (theme) => `1px dashed ${varAlpha(theme.vars.palette.grey['500Channel'], 0.2)}` }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+            <Typography variant="subtitle2">Select calendars to display</Typography>
+            {hasChanges && (
+              <Button
+                size="small"
+                variant="contained"
+                onClick={handleSaveSelection}
+                disabled={saving}
+                startIcon={saving ? <CircularProgress size={16} /> : <Iconify icon="eva:checkmark-fill" />}
+              >
+                Save
+              </Button>
+            )}
+          </Stack>
+          {calendarsLoading ? (
+            <Stack spacing={1}>
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} height={32} />
+              ))}
+            </Stack>
+          ) : calendars.length === 0 ? (
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              No calendars found
+            </Typography>
+          ) : (
+            <Stack spacing={0.5}>
+              {calendars.map((calendar) => (
+                <FormControlLabel
+                  key={calendar.id}
+                  control={
+                    <Checkbox
+                      checked={Boolean(calendar.isSelected)}
+                      onChange={() => toggleCalendar(calendar.id)}
+                      size="small"
+                      sx={{
+                        color: calendar.backgroundColor,
+                        '&.Mui-checked': {
+                          color: calendar.backgroundColor,
+                        },
+                      }}
+                    />
+                  }
+                  label={
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: '50%',
+                          bgcolor: calendar.backgroundColor,
+                        }}
+                      />
+                      <Typography variant="body2">{calendar.summary}</Typography>
+                      {calendar.primary && (
+                        <Label variant="soft" color="primary" sx={{ ml: 1 }}>
+                          Primary
+                        </Label>
+                      )}
+                    </Stack>
+                  }
+                  sx={{ ml: 0 }}
+                />
+              ))}
+            </Stack>
+          )}
+        </Box>
+      </Collapse>
     </Box>
   );
 

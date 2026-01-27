@@ -94,7 +94,26 @@ model GoogleAccount {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  selectedCalendars SelectedCalendar[]
+
   @@unique([userId, googleUserId])
+  @@index([userId])
+}
+
+model SelectedCalendar {
+  id              String   @id @default(cuid())
+  userId          String
+  googleAccountId String
+  calendarId      String
+  summary         String
+  color           String?
+  isVisible       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  googleAccount GoogleAccount @relation(fields: [googleAccountId], references: [id])
+
+  @@unique([userId, calendarId])
   @@index([userId])
 }
 
