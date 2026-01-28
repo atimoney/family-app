@@ -21,7 +21,7 @@
     <path
     fill-rule="evenodd"
     clip-rule="evenodd"
-    d="M207 192C220.254 192 231 181.254 231 168C231 154.746 220.254 144 207 144C193.746 144 183 154.746 183 168C183 181.254 193.746 192 207 192"
+    d="M185 192C198.254 192 209 181.254 209 168C209 154.746 198.254 144 185 144C171.746 144 161 154.746 161 168C161 181.254 171.746 192 185 192"
     fill="url(#paint2_linear)"
     />
 
@@ -39,7 +39,7 @@
     </linearGradient>
 
     <!-- Dot gradient -->
-    <linearGradient id="paint2_linear" x1="201" y1="144" x2="201" y2="192" gradientUnits="userSpaceOnUse">
+    <linearGradient id="paint2_linear" x1="169" y1="144" x2="169" y2="192" gradientUnits="userSpaceOnUse">
       <stop stop-color="var(--mui-palette-primary-light, #5BE49B)"/>
       <stop offset="1" stop-color="var(--mui-palette-primary-main, #00A76F)"/>
     </linearGradient>
