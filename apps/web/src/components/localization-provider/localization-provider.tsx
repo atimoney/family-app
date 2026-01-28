@@ -1,4 +1,4 @@
-import 'dayjs/locale/en';
+import 'dayjs/locale/en-au';
 
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider as MuiLocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -11,7 +11,7 @@ type Props = {
 
 export function LocalizationProvider({ children }: Props) {
   return (
-    <MuiLocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="en">
+    <MuiLocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="en-au">
       {children}
     </MuiLocalizationProvider>
   );
