@@ -96,14 +96,32 @@ export function CalendarView() {
   const handleUpdateEvent = useCallback(
     async (updatedEvent: CalendarEventItem) => {
       try {
-        // For now, update locally - full update via Google API can be added
+        // Find the existing event to get the googleEventId
+        const existingEvent = mergedEvents.find((e) => e.id === updatedEvent.id);
+        const googleEventId = existingEvent?.extendedProps?.googleEventId;
+        
+        if (!googleEventId) {
+          throw new Error('Event not found or missing Google Event ID');
+        }
+
+        // Optimistically update local state
         setLocalEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
-        // TODO: Call updateEvent for actual persistence
+
+        // Persist to Google Calendar
+        await updateEvent(googleEventId, {
+          title: updatedEvent.title,
+          start: updatedEvent.start,
+          end: updatedEvent.end,
+          allDay: updatedEvent.allDay,
+          calendarId: updatedEvent.calendarId,
+        });
       } catch (err) {
         console.error('Failed to update event:', err);
+        // Revert on failure
+        await refresh();
       }
     },
-    []
+    [mergedEvents, updateEvent, refresh]
   );
 
   const handleDeleteEvent = useCallback(
