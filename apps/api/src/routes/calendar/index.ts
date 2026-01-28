@@ -348,7 +348,16 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { title, start, end, allDay, calendarId, extraData } = parsed.data;
-    const resolvedCalendarId = getActiveCalendarId(calendarId);
+    
+    // If no calendarId provided, use the first selected calendar or primary as fallback
+    let resolvedCalendarId = calendarId;
+    if (!resolvedCalendarId) {
+      const selectedCalendar = await fastify.prisma.selectedCalendar.findFirst({
+        where: { userId, isVisible: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      resolvedCalendarId = selectedCalendar?.calendarId ?? 'primary';
+    }
 
     const oauthClient = getAuthorizedClient({
       oauthClient: getOauthClient(),

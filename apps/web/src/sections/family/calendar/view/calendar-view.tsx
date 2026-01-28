@@ -20,6 +20,8 @@ import DialogTitle from '@mui/material/DialogTitle';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
+import { createCalendarEvent } from 'src/features/calendar/api';
+import { useSelectedCalendars } from 'src/features/calendar/hooks/use-calendars';
 import { useCalendarEvents } from 'src/features/calendar/hooks/use-calendar-events';
 
 import { Iconify } from 'src/components/iconify';
@@ -34,7 +36,8 @@ import { CalendarToolbar } from '../calendar-toolbar';
 export function CalendarView() {
   const theme = useTheme();
 
-  const { events, loading, error } = useCalendarEvents();
+  const { events, loading, error, refresh } = useCalendarEvents();
+  const { calendars } = useSelectedCalendars();
   const [localEvents, setLocalEvents] = useState<CalendarEventItem[]>([]);
 
   const mergedEvents = localEvents.length ? localEvents : events;
@@ -64,10 +67,26 @@ export function CalendarView() {
   const currentEvent = selectedEventId ? mergedEvents.find((e) => e.id === selectedEventId) : null;
 
   // Event handlers
-  const handleCreateEvent = useCallback(() => {
-    // Google events are source-of-truth; creation is not supported here yet.
-    onCloseForm();
-  }, [onCloseForm]);
+  const handleCreateEvent = useCallback(
+    async (eventData: CalendarEventItem) => {
+      try {
+        await createCalendarEvent({
+          title: eventData.title,
+          start: eventData.start,
+          end: eventData.end,
+          allDay: eventData.allDay,
+          calendarId: eventData.calendarId,
+        });
+        // Refresh to get the newly created event from Google Calendar
+        await refresh();
+        onCloseForm();
+      } catch (err) {
+        console.error('Failed to create event:', err);
+        // Optionally show an error notification to the user
+      }
+    },
+    [onCloseForm, refresh]
+  );
 
   const handleUpdateEvent = useCallback((updatedEvent: CalendarEventItem) => {
     // Metadata-only edits should be handled via PATCH /events/:id/metadata.
@@ -129,6 +148,7 @@ export function CalendarView() {
       <CalendarForm
         currentEvent={currentEvent}
         selectedRange={selectedRange}
+        calendars={calendars}
         onClose={onCloseForm}
         onCreateEvent={handleCreateEvent}
         onUpdateEvent={handleUpdateEvent}

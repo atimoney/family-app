@@ -1,5 +1,5 @@
 import type { CalendarRange } from './hooks/use-calendar';
-import type { CalendarEventItem } from 'src/features/calendar/types';
+import type { CalendarInfo, CalendarEventItem } from 'src/features/calendar/types';
 
 import * as z from 'zod';
 import dayjs from 'dayjs';
@@ -11,6 +11,7 @@ import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
+import MenuItem from '@mui/material/MenuItem';
 import IconButton from '@mui/material/IconButton';
 import DialogActions from '@mui/material/DialogActions';
 
@@ -30,6 +31,7 @@ export const EventSchema = z.object({
   allDay: z.boolean(),
   start: z.union([z.string(), z.number()]),
   end: z.union([z.string(), z.number()]),
+  calendarId: z.string().optional(),
 });
 
 // ----------------------------------------------------------------------
@@ -38,7 +40,8 @@ type Props = {
   onClose: () => void;
   currentEvent?: CalendarEventItem | null;
   selectedRange: CalendarRange;
-  onCreateEvent: (event: CalendarEventItem) => void;
+  calendars: CalendarInfo[];
+  onCreateEvent: (event: CalendarEventItem) => void | Promise<void>;
   onUpdateEvent: (event: CalendarEventItem) => void;
   onDeleteEvent: (eventId: string) => void;
 };
@@ -46,6 +49,7 @@ type Props = {
 export function CalendarForm({
   currentEvent,
   selectedRange,
+  calendars,
   onClose,
   onCreateEvent,
   onUpdateEvent,
@@ -53,11 +57,15 @@ export function CalendarForm({
 }: Props) {
   const isEdit = !!currentEvent?.id;
 
+  // Get default calendar (first selected one)
+  const defaultCalendarId = calendars[0]?.id ?? '';
+
   const defaultValues = {
     title: currentEvent?.title || '',
     allDay: currentEvent?.allDay ?? false,
     start: currentEvent?.start || selectedRange?.start || dayjs().format(),
     end: currentEvent?.end || selectedRange?.end || dayjs().add(1, 'hour').format(),
+    calendarId: currentEvent?.calendarId || defaultCalendarId,
   };
 
   const methods = useForm({
@@ -85,16 +93,18 @@ export function CalendarForm({
       allDay: data.allDay,
       start: dayjs(data.start).toISOString(),
       end: dayjs(data.end).toISOString(),
+      calendarId: data.calendarId,
     };
 
     try {
       if (!dateError) {
         if (isEdit) {
           onUpdateEvent(eventData);
+          onClose();
         } else {
-          onCreateEvent(eventData);
+          // onCreateEvent handles closing the form after API success
+          await onCreateEvent(eventData);
         }
-        onClose();
         reset();
       }
     } catch (error) {
@@ -114,6 +124,27 @@ export function CalendarForm({
       <Scrollbar sx={{ p: 3, bgcolor: 'background.neutral' }}>
         <Stack spacing={3}>
           <Field.Text name="title" label="Title" />
+
+          {calendars.length > 1 && (
+            <Field.Select name="calendarId" label="Calendar">
+              {calendars.map((calendar) => (
+                <MenuItem key={calendar.id} value={calendar.id}>
+                  <Box
+                    component="span"
+                    sx={{
+                      display: 'inline-block',
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      bgcolor: calendar.backgroundColor || 'primary.main',
+                      mr: 1.5,
+                    }}
+                  />
+                  {calendar.summary}
+                </MenuItem>
+              ))}
+            </Field.Select>
+          )}
 
           <Field.Switch name="allDay" label="All day" />
 

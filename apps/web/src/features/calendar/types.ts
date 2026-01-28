@@ -5,6 +5,15 @@ export type CalendarEventMetadata = {
   customJson?: Record<string, unknown>;
 };
 
+export type CalendarInfo = {
+  id: string;
+  summary: string;
+  timeZone: string | null;
+  primary: boolean;
+  backgroundColor: string | null;
+  isSelected: boolean;
+};
+
 export type CalendarEventApi = {
   id: string;
   googleEventId: string;
@@ -21,6 +30,7 @@ export type CalendarEventItem = {
   start: string;
   end: string;
   allDay?: boolean;
+  calendarId?: string;
   backgroundColor?: string;
   borderColor?: string;
   textColor?: string;

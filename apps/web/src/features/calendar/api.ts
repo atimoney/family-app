@@ -1,4 +1,4 @@
-import type { CalendarEventApi, CalendarEventMetadata, CalendarEventsQuery } from './types';
+import type { CalendarEventApi, CalendarEventMetadata, CalendarEventsQuery, CalendarInfo } from './types';
 
 import { getSession } from 'src/lib/supabase';
 import { apiClient } from 'src/lib/api-client';
@@ -65,6 +65,33 @@ type GoogleCalendarEvent = {
     color?: string | null;
   };
 };
+
+export async function getCalendars(): Promise<CalendarInfo[]> {
+  const headers = await getAuthHeaders();
+  return apiClient.get<CalendarInfo[]>('/v1/calendar/calendars', { headers });
+}
+
+export async function getSelectedCalendars(): Promise<CalendarInfo[]> {
+  const calendars = await getCalendars();
+  return calendars.filter((c) => c.isSelected);
+}
+
+export type CreateEventInput = {
+  title: string;
+  start: string;
+  end: string;
+  allDay?: boolean;
+  calendarId?: string;
+};
+
+export async function createCalendarEvent(
+  event: CreateEventInput
+): Promise<GoogleCalendarEvent> {
+  const headers = await getAuthHeaders();
+  return apiClient.post<GoogleCalendarEvent>('/v1/calendar/events', event, {
+    headers,
+  });
+}
 
 export async function updateCalendarEventMetadata(
   eventId: string,
