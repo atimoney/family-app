@@ -68,16 +68,16 @@ export const CALENDAR_COLOR_OPTIONS = [
 
 // E1: Event category options
 export const EVENT_CATEGORIES: { value: EventCategory; label: string; icon: string }[] = [
-  { value: 'Activity', label: 'Activity', icon: 'mdi:calendar-star' },
-  { value: 'Meal', label: 'Meal', icon: 'mdi:food' },
+  { value: 'Activity', label: 'Activity', icon: 'solar:cup-star-bold' },
+  { value: 'Meal', label: 'Meal', icon: 'custom:fast-food-fill' },
   { value: 'School', label: 'School', icon: 'mdi:school' },
-  { value: 'Sport', label: 'Sport', icon: 'mdi:basketball' },
+  { value: 'Sport', label: 'Sport', icon: 'solar:dumbbell-large-minimalistic-bold' },
   { value: 'Chore', label: 'Chore', icon: 'mdi:broom' },
-  { value: 'Appointment', label: 'Appointment', icon: 'mdi:calendar-clock' },
+  { value: 'Appointment', label: 'Appointment', icon: 'solar:calendar-date-bold' },
   { value: 'Work', label: 'Work', icon: 'mdi:briefcase' },
   { value: 'Travel', label: 'Travel', icon: 'mdi:airplane' },
   { value: 'Home', label: 'Home', icon: 'mdi:home' },
-  { value: 'Admin', label: 'Admin', icon: 'mdi:file-document' },
+  { value: 'Admin', label: 'Admin', icon: 'solar:file-text-bold' },
 ];
 
 // E1: Event audience options
