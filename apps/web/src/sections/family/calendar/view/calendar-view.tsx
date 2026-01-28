@@ -1,24 +1,28 @@
 import '@fullcalendar/core';
 
+import type { FamilyMember } from '@family/shared';
+import type { EventContentArg } from '@fullcalendar/core';
 import type { Theme, SxProps } from '@mui/material/styles';
-import type { CalendarEventItem } from 'src/features/calendar/types';
+import type { CalendarEventItem, EventFamilyAssignments } from 'src/features/calendar/types';
 
 import Calendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { useState, useCallback, startTransition } from 'react';
+import { useState, useCallback, startTransition, useMemo } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
+import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import Tooltip from '@mui/material/Tooltip';
 import { useTheme } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
+import AvatarGroup from '@mui/material/AvatarGroup';
 import DialogTitle from '@mui/material/DialogTitle';
 import CircularProgress from '@mui/material/CircularProgress';
 
@@ -51,6 +55,120 @@ export function CalendarView() {
 
   // E2: Get family members for event assignment
   const familyMembers = family?.members ?? [];
+
+  // E2: Create a map for quick member lookup by ID
+  const memberById = useMemo(() => {
+    const map = new Map<string, FamilyMember>();
+    familyMembers.forEach((m) => map.set(m.id, m));
+    return map;
+  }, [familyMembers]);
+
+  // E2: Get assigned members from familyAssignments
+  const getAssignedMembers = useCallback(
+    (assignments: EventFamilyAssignments | null | undefined): FamilyMember[] => {
+      if (!assignments) return [];
+      const members: FamilyMember[] = [];
+
+      // Add primary member first
+      if (assignments.primaryFamilyMemberId) {
+        const primary = memberById.get(assignments.primaryFamilyMemberId);
+        if (primary) members.push(primary);
+      }
+
+      // Add participants
+      if (assignments.participantFamilyMemberIds?.length) {
+        assignments.participantFamilyMemberIds.forEach((id) => {
+          const member = memberById.get(id);
+          if (member && !members.some((m) => m.id === member.id)) {
+            members.push(member);
+          }
+        });
+      }
+
+      return members;
+    },
+    [memberById]
+  );
+
+  // E2: Custom event content renderer with avatars
+  const renderEventContent = useCallback(
+    (eventInfo: EventContentArg) => {
+      const event = eventInfo.event;
+      const familyAssignments = event.extendedProps?.metadata?.familyAssignments as
+        | EventFamilyAssignments
+        | undefined;
+      const assignedMembers = getAssignedMembers(familyAssignments);
+
+      return (
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            width: '100%',
+            height: '100%',
+            px: 0.5,
+            py: 0.25,
+          }}
+        >
+          {/* Title row */}
+          <Box
+            component="span"
+            sx={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontWeight: 600,
+              lineHeight: 1.2,
+            }}
+          >
+            {event.title}
+          </Box>
+
+          {/* Time (left) and Avatars (right) row */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              mt: 0.25,
+            }}
+          >
+            {eventInfo.timeText && (
+              <Box component="span" sx={{ fontSize: '0.75em', opacity: 0.85 }}>
+                {eventInfo.timeText}
+              </Box>
+            )}
+            {!eventInfo.timeText && <Box />}
+
+            {assignedMembers.length > 0 && (
+              <AvatarGroup
+                max={3}
+                sx={{
+                  '& .MuiAvatar-root': {
+                    width: 16,
+                    height: 16,
+                    fontSize: '0.5rem',
+                    border: '1px solid currentColor',
+                  },
+                }}
+              >
+                {assignedMembers.map((member) => (
+                  <Tooltip key={member.id} title={member.displayName || member.profile?.displayName || ''}>
+                    <Avatar
+                      alt={member.displayName || member.profile?.displayName || ''}
+                      src={member.profile?.avatarUrl || undefined}
+                    />
+                  </Tooltip>
+                ))}
+              </AvatarGroup>
+            )}
+          </Box>
+        </Box>
+      );
+    },
+    [getAssignedMembers]
+  );
 
   // Mutations with auto-sync
   const { createEvent, updateEvent, deleteEvent, loading: mutating } = useCalendarMutations(refresh);
@@ -355,6 +473,7 @@ export function CalendarView() {
               events={mergedEvents}
               select={onSelectRange}
               eventClick={onClickEvent}
+              eventContent={renderEventContent}
               businessHours={{
                 daysOfWeek: [1, 2, 3, 4, 5], // Mon-Fri
               }}

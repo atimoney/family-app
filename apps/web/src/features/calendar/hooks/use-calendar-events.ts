@@ -39,6 +39,8 @@ export function mapApiEventToCalendarEvent(event: CalendarEventApi): CalendarEve
     calendarId: event.calendarId,
     backgroundColor: color ?? undefined,
     borderColor: color ?? undefined,
+    textColor: color ? '#ffffff' : undefined,
+    familyAssignments: metadata.familyAssignments ?? null,
     extendedProps: {
       googleEventId: event.googleEventId,
       description: event.description,

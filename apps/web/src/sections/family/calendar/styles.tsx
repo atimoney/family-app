@@ -103,22 +103,15 @@ export const CalendarRoot = styled('div')(({ theme }) => {
       '& .fc-event-main': {
         padding: '2px 6px',
         borderRadius: 'inherit',
-        border: `solid 1px ${varAlpha('currentColor', 0.16)}`,
-        transition: theme.transitions.create(['background-color']),
-        backgroundColor: varAlpha(
-          theme.vars.palette.common.whiteChannel,
-          'calc(1 - var(--custom-event-bg-opacity))'
-        ),
+        backgroundColor: 'inherit',
+        transition: theme.transitions.create(['filter']),
         '&:hover': {
-          backgroundColor: varAlpha(
-            theme.vars.palette.common.whiteChannel,
-            'calc(1 - var(--custom-event-bg-opacity) * 1.5)'
-          ),
+          filter: 'brightness(0.92)',
         },
       },
       '& .fc-event-main-frame': {
         lineHeight: 20 / 13,
-        filter: 'brightness(0.48)',
+        color: 'inherit',
       },
       '& .fc-event-title': {
         textOverflow: 'ellipsis',
