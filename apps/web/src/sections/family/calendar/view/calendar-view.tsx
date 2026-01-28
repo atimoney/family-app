@@ -84,6 +84,11 @@ export function CalendarView() {
           end: eventData.end,
           allDay: eventData.allDay,
           calendarId: eventData.calendarId,
+          description: eventData.description,
+          location: eventData.location,
+          color: eventData.color,
+          recurrence: eventData.recurrence,
+          reminders: eventData.reminders,
         });
         onCloseForm();
       } catch (err) {
@@ -114,6 +119,11 @@ export function CalendarView() {
           end: updatedEvent.end,
           allDay: updatedEvent.allDay,
           calendarId: updatedEvent.calendarId,
+          description: updatedEvent.description,
+          location: updatedEvent.location,
+          color: updatedEvent.color,
+          recurrence: updatedEvent.recurrence,
+          reminders: updatedEvent.reminders,
         });
       } catch (err) {
         console.error('Failed to update event:', err);
@@ -268,17 +278,19 @@ export function CalendarView() {
           <Typography variant="h4">Calendar</Typography>
           <Stack direction="row" spacing={1}>
             <Tooltip title={syncing ? 'Syncing...' : 'Sync with Google Calendar'}>
-              <IconButton
-                onClick={handleSync}
-                disabled={syncing || mutating}
-                color={syncing ? 'primary' : 'default'}
-              >
-                {syncing ? (
-                  <CircularProgress size={20} />
-                ) : (
-                  <Iconify icon="solar:restart-bold" />
-                )}
-              </IconButton>
+              <span>
+                <IconButton
+                  onClick={handleSync}
+                  disabled={syncing || mutating}
+                  color={syncing ? 'primary' : 'default'}
+                >
+                  {syncing ? (
+                    <CircularProgress size={20} />
+                  ) : (
+                    <Iconify icon="solar:restart-bold" />
+                  )}
+                </IconButton>
+              </span>
             </Tooltip>
             <Button
               variant="contained"

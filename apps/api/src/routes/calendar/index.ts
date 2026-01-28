@@ -18,6 +18,41 @@ const DEFAULT_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.profile',
 ];
 
+// Google Calendar color IDs (1-11)
+// https://developers.google.com/calendar/api/v3/reference/colors/get
+const GOOGLE_CALENDAR_COLORS: Record<string, string> = {
+  '#7986cb': '1',  // Lavender
+  '#33b679': '2',  // Sage
+  '#8e24aa': '3',  // Grape
+  '#e67c73': '4',  // Flamingo
+  '#f6bf26': '5',  // Banana
+  '#f4511e': '6',  // Tangerine
+  '#039be5': '7',  // Peacock
+  '#616161': '8',  // Graphite
+  '#3f51b5': '9',  // Blueberry
+  '#0b8043': '10', // Basil
+  '#d50000': '11', // Tomato
+};
+
+/**
+ * Convert a hex color to the closest Google Calendar colorId
+ * Returns undefined if no close match found
+ */
+function getGoogleColorId(hexColor: string): string | undefined {
+  if (!hexColor) return undefined;
+  
+  const normalizedColor = hexColor.toLowerCase();
+  
+  // Direct match
+  if (GOOGLE_CALENDAR_COLORS[normalizedColor]) {
+    return GOOGLE_CALENDAR_COLORS[normalizedColor];
+  }
+  
+  // Try to find closest color by simple heuristic
+  // For now, return undefined and let the color be stored in extraData
+  return undefined;
+}
+
 const calendarRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authPlugin);
 
@@ -347,7 +382,7 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ error: 'Google account not connected' });
     }
 
-    const { title, start, end, allDay, calendarId, extraData } = parsed.data;
+    const { title, start, end, allDay, calendarId, description, location, color, recurrence, reminders, extraData } = parsed.data;
     
     // If no calendarId provided, use the first selected calendar or primary as fallback
     let resolvedCalendarId = calendarId;
@@ -369,12 +404,23 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       calendarId: resolvedCalendarId,
       event: {
         summary: title,
+        description: description ?? undefined,
+        location: location ?? undefined,
+        colorId: color ? getGoogleColorId(color) : undefined,
         start: allDay ? { date: start.slice(0, 10) } : { dateTime: start },
         end: allDay ? { date: end.slice(0, 10) } : { dateTime: end },
       },
+      recurrence: recurrence ?? undefined,
+      reminders: reminders ?? undefined,
     });
 
-    if (extraData && event.id) {
+    // Store extra data including color preference
+    const eventExtraData = {
+      ...extraData,
+      color: color ?? extraData?.color ?? null,
+    };
+
+    if (event.id) {
       await fastify.prisma.eventLink.upsert({
         where: {
           userId_calendarId_eventId: {
@@ -387,10 +433,10 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
           userId,
           calendarId: resolvedCalendarId,
           eventId: event.id,
-          extraData,
+          extraData: eventExtraData,
         },
         update: {
-          extraData,
+          extraData: eventExtraData,
         },
       });
     }
@@ -402,7 +448,9 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       end,
       allDay,
       calendarId: resolvedCalendarId,
-      extraData,
+      description: event.description ?? description ?? null,
+      location: event.location ?? location ?? null,
+      extraData: eventExtraData,
     };
   });
 
@@ -424,7 +472,7 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { eventId } = request.params as { eventId: string };
-    const { title, start, end, allDay, calendarId, extraData } = parsed.data;
+    const { title, start, end, allDay, calendarId, description, location, color, recurrence, reminders, extraData } = parsed.data;
     const resolvedCalendarId = getActiveCalendarId(calendarId);
 
     const oauthClient = getAuthorizedClient({
@@ -438,6 +486,9 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       eventId,
       event: {
         summary: title,
+        description: description !== undefined ? (description ?? undefined) : undefined,
+        location: location !== undefined ? (location ?? undefined) : undefined,
+        colorId: color ? getGoogleColorId(color) : undefined,
         start: start
           ? allDay
             ? { date: start.slice(0, 10) }
@@ -449,9 +500,17 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
             : { dateTime: end }
           : undefined,
       },
+      recurrence: recurrence !== undefined ? recurrence : undefined,
+      reminders: reminders !== undefined ? reminders : undefined,
     });
 
-    if (extraData && event.id) {
+    // Store extra data including color preference
+    const eventExtraData = {
+      ...extraData,
+      color: color ?? extraData?.color ?? null,
+    };
+
+    if (event.id) {
       await fastify.prisma.eventLink.upsert({
         where: {
           userId_calendarId_eventId: {
@@ -464,10 +523,10 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
           userId,
           calendarId: resolvedCalendarId,
           eventId: event.id,
-          extraData,
+          extraData: eventExtraData,
         },
         update: {
-          extraData,
+          extraData: eventExtraData,
         },
       });
     }
@@ -482,7 +541,9 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       end: new Date(endValue).toISOString(),
       allDay: Boolean(event.start?.date ?? allDay),
       calendarId: resolvedCalendarId,
-      extraData,
+      description: event.description ?? null,
+      location: event.location ?? null,
+      extraData: eventExtraData,
     };
   });
 

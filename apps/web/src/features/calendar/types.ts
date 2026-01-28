@@ -14,6 +14,27 @@ export type CalendarInfo = {
   isSelected: boolean;
 };
 
+// Recurrence rule type
+export type RecurrenceFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+
+export type RecurrenceRule = {
+  frequency: RecurrenceFrequency;
+  interval?: number;
+  count?: number;
+  until?: string;
+  byDay?: string[];
+  byMonthDay?: number[];
+  byMonth?: number[];
+};
+
+// Reminder type
+export type ReminderMethod = 'email' | 'popup';
+
+export type EventReminder = {
+  method: ReminderMethod;
+  minutes: number;
+};
+
 // Response from /events endpoint (local cache)
 export type CalendarEventApi = {
   id: string;
@@ -28,6 +49,8 @@ export type CalendarEventApi = {
   status?: string | null;
   calendarColor: string | null;
   calendarSummary: string | null;
+  recurrence?: RecurrenceRule | null;
+  reminders?: EventReminder[] | null;
   metadata: CalendarEventMetadata | null;
 };
 
@@ -39,6 +62,11 @@ export type CalendarEventItem = {
   end: string;
   allDay?: boolean;
   calendarId?: string;
+  description?: string | null;
+  location?: string | null;
+  color?: string; // FullCalendar doesn't support null, use undefined instead
+  recurrence?: RecurrenceRule | null;
+  reminders?: EventReminder[] | null;
   backgroundColor?: string;
   borderColor?: string;
   textColor?: string;

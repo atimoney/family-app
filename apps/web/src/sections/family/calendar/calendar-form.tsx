@@ -1,37 +1,124 @@
 import type { CalendarRange } from './hooks/use-calendar';
-import type { CalendarInfo, CalendarEventItem } from 'src/features/calendar/types';
+import type { CalendarInfo, CalendarEventItem, RecurrenceRule, EventReminder, ReminderMethod, RecurrenceFrequency } from 'src/features/calendar/types';
 
 import * as z from 'zod';
 import dayjs from 'dayjs';
-import { useCallback } from 'react';
-import { useForm } from 'react-hook-form';
 import { uuidv4 } from 'minimal-shared/utils';
+import { useCallback, useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 
 import Box from '@mui/material/Box';
+import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
 import Tooltip from '@mui/material/Tooltip';
 import MenuItem from '@mui/material/MenuItem';
+import TextField from '@mui/material/TextField';
 import IconButton from '@mui/material/IconButton';
+import Typography from '@mui/material/Typography';
+import DialogTitle from '@mui/material/DialogTitle';
 import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+
+import {
+  primary,
+  secondary,
+  info,
+  success,
+  warning,
+  error as errorColor,
+} from 'src/theme/core/palette';
 
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
+import { ColorPicker } from 'src/components/color-utils';
 import { Form, Field, zodResolver } from 'src/components/hook-form';
 
 // ----------------------------------------------------------------------
+
+// Color options for event picker
+export const CALENDAR_COLOR_OPTIONS = [
+  primary.main,
+  secondary.main,
+  info.main,
+  info.darker,
+  success.main,
+  warning.main,
+  errorColor.main,
+  errorColor.darker,
+];
+
+// Recurrence options
+export const RECURRENCE_OPTIONS = [
+  { value: '', label: 'Does not repeat' },
+  { value: 'DAILY', label: 'Daily' },
+  { value: 'WEEKLY', label: 'Weekly' },
+  { value: 'MONTHLY', label: 'Monthly' },
+  { value: 'YEARLY', label: 'Yearly' },
+  { value: 'CUSTOM', label: 'Custom...' },
+] as const;
+
+// Reminder time presets (in minutes)
+export const REMINDER_PRESETS = [
+  { value: 0, label: 'At time of event' },
+  { value: 5, label: '5 minutes before' },
+  { value: 10, label: '10 minutes before' },
+  { value: 15, label: '15 minutes before' },
+  { value: 30, label: '30 minutes before' },
+  { value: 60, label: '1 hour before' },
+  { value: 120, label: '2 hours before' },
+  { value: 1440, label: '1 day before' },
+  { value: 2880, label: '2 days before' },
+  { value: 10080, label: '1 week before' },
+] as const;
+
+// Days of week for weekly recurrence
+export const DAYS_OF_WEEK = [
+  { value: 'SU', label: 'Sun' },
+  { value: 'MO', label: 'Mon' },
+  { value: 'TU', label: 'Tue' },
+  { value: 'WE', label: 'Wed' },
+  { value: 'TH', label: 'Thu' },
+  { value: 'FR', label: 'Fri' },
+  { value: 'SA', label: 'Sat' },
+] as const;
+
+// ----------------------------------------------------------------------
+
+// Recurrence schema
+const recurrenceRuleSchema = z.object({
+  frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']),
+  interval: z.number().int().positive().optional(),
+  count: z.number().int().positive().optional(),
+  until: z.string().optional(),
+  byDay: z.array(z.string()).optional(),
+  byMonthDay: z.array(z.number()).optional(),
+  byMonth: z.array(z.number()).optional(),
+}).nullable().optional();
+
+// Reminder schema
+const eventReminderSchema = z.object({
+  method: z.enum(['email', 'popup']),
+  minutes: z.number().int().min(0),
+});
 
 export type EventSchemaType = z.infer<typeof EventSchema>;
 
 export const EventSchema = z.object({
   title: z
     .string()
-    .min(1, { error: 'Title is required!' })
-    .max(100, { error: 'Title must be less than 100 characters' }),
+    .min(1, { message: 'Title is required!' })
+    .max(100, { message: 'Title must be less than 100 characters' }),
+  description: z.string().max(8000).nullable().optional(),
+  location: z.string().max(1000).nullable().optional(),
+  color: z.string().nullable().optional(),
   allDay: z.boolean(),
   start: z.union([z.string(), z.number()]),
   end: z.union([z.string(), z.number()]),
   calendarId: z.string().optional(),
+  recurrence: recurrenceRuleSchema,
+  reminders: z.array(eventReminderSchema).max(5).nullable().optional(),
 });
 
 // ----------------------------------------------------------------------
@@ -60,12 +147,35 @@ export function CalendarForm({
   // Get default calendar (first selected one)
   const defaultCalendarId = calendars[0]?.id ?? '';
 
+  // State for custom recurrence dialog
+  const [showCustomRecurrence, setShowCustomRecurrence] = useState(false);
+  const [customRecurrence, setCustomRecurrence] = useState<{
+    frequency: RecurrenceFrequency;
+    interval: number;
+    byDay: string[];
+    endType: 'never' | 'count' | 'until';
+    count: number;
+    until: string;
+  }>({
+    frequency: 'WEEKLY',
+    interval: 1,
+    byDay: [],
+    endType: 'never',
+    count: 10,
+    until: dayjs().add(1, 'month').format('YYYY-MM-DD'),
+  });
+
   const defaultValues = {
     title: currentEvent?.title || '',
+    description: currentEvent?.description || currentEvent?.extendedProps?.description || '',
+    location: currentEvent?.location || currentEvent?.extendedProps?.location || '',
+    color: currentEvent?.color || currentEvent?.extendedProps?.metadata?.color || '',
     allDay: currentEvent?.allDay ?? false,
     start: currentEvent?.start || selectedRange?.start || dayjs().format(),
     end: currentEvent?.end || selectedRange?.end || dayjs().add(1, 'hour').format(),
     calendarId: currentEvent?.calendarId || defaultCalendarId,
+    recurrence: currentEvent?.recurrence || null,
+    reminders: currentEvent?.reminders || [{ method: 'popup' as ReminderMethod, minutes: 30 }],
   };
 
   const methods = useForm({
@@ -77,6 +187,8 @@ export function CalendarForm({
   const {
     reset,
     watch,
+    control,
+    setValue,
     handleSubmit,
     formState: { isSubmitting },
   } = methods;
@@ -86,14 +198,129 @@ export function CalendarForm({
   // Check if end date is after start date
   const dateError = dayjs(values.end).isBefore(dayjs(values.start));
 
+  // Handle recurrence selection
+  const handleRecurrenceChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const value = event.target.value;
+      if (value === 'CUSTOM') {
+        // Initialize custom recurrence with current values or defaults
+        const currentRecurrence = values.recurrence;
+        setCustomRecurrence({
+          frequency: currentRecurrence?.frequency || 'WEEKLY',
+          interval: currentRecurrence?.interval || 1,
+          byDay: currentRecurrence?.byDay || [],
+          endType: currentRecurrence?.count ? 'count' : currentRecurrence?.until ? 'until' : 'never',
+          count: currentRecurrence?.count || 10,
+          until: currentRecurrence?.until || dayjs().add(1, 'month').format('YYYY-MM-DD'),
+        });
+        setShowCustomRecurrence(true);
+      } else if (value === '') {
+        setValue('recurrence', null);
+      } else {
+        setValue('recurrence', { frequency: value as RecurrenceFrequency });
+      }
+    },
+    [setValue, values.recurrence]
+  );
+
+  // Handle custom recurrence save
+  const handleSaveCustomRecurrence = useCallback(() => {
+    const rule: RecurrenceRule = {
+      frequency: customRecurrence.frequency,
+      interval: customRecurrence.interval > 1 ? customRecurrence.interval : undefined,
+      byDay: customRecurrence.frequency === 'WEEKLY' && customRecurrence.byDay.length > 0 ? customRecurrence.byDay : undefined,
+    };
+
+    if (customRecurrence.endType === 'count') {
+      rule.count = customRecurrence.count;
+    } else if (customRecurrence.endType === 'until') {
+      rule.until = customRecurrence.until;
+    }
+
+    setValue('recurrence', rule);
+    setShowCustomRecurrence(false);
+  }, [customRecurrence, setValue]);
+
+  // Toggle day selection for weekly recurrence
+  const handleToggleDay = useCallback((day: string) => {
+    setCustomRecurrence((prev) => ({
+      ...prev,
+      byDay: prev.byDay.includes(day)
+        ? prev.byDay.filter((d) => d !== day)
+        : [...prev.byDay, day],
+    }));
+  }, []);
+
+  // Get human-readable recurrence summary
+  const getRecurrenceSummary = useCallback((recurrence: RecurrenceRule | null | undefined): string => {
+    if (!recurrence) return '';
+    
+    const { frequency, interval, byDay, count, until } = recurrence;
+    const isCustom = (interval && interval > 1) || (byDay && byDay.length > 0) || count || until;
+    
+    if (!isCustom) {
+      return frequency;
+    }
+    
+    // It's a custom recurrence - return 'CUSTOM' to show in dropdown
+    return 'CUSTOM';
+  }, []);
+
+  // Get display label for current recurrence
+  const getRecurrenceDisplayValue = useCallback((): string => {
+    const recurrence = values.recurrence;
+    if (!recurrence) return '';
+    
+    const summary = getRecurrenceSummary(recurrence);
+    return summary;
+  }, [values.recurrence, getRecurrenceSummary]);
+
+  // Add a new reminder
+  const handleAddReminder = useCallback(() => {
+    const currentReminders = values.reminders || [];
+    if (currentReminders.length < 5) {
+      setValue('reminders', [...currentReminders, { method: 'popup' as ReminderMethod, minutes: 30 }]);
+    }
+  }, [values.reminders, setValue]);
+
+  // Remove a reminder
+  const handleRemoveReminder = useCallback(
+    (index: number) => {
+      const currentReminders = values.reminders || [];
+      setValue(
+        'reminders',
+        currentReminders.filter((_, i) => i !== index)
+      );
+    },
+    [values.reminders, setValue]
+  );
+
+  // Update a reminder
+  const handleUpdateReminder = useCallback(
+    (index: number, field: 'method' | 'minutes', value: string | number) => {
+      const currentReminders = [...(values.reminders || [])];
+      currentReminders[index] = {
+        ...currentReminders[index],
+        [field]: field === 'minutes' ? Number(value) : value,
+      };
+      setValue('reminders', currentReminders);
+    },
+    [values.reminders, setValue]
+  );
+
   const onSubmit = handleSubmit(async (data) => {
     const eventData: CalendarEventItem = {
       id: currentEvent?.id || uuidv4(),
       title: data.title,
+      description: data.description || null,
+      location: data.location || null,
+      color: data.color || undefined,
       allDay: data.allDay,
       start: dayjs(data.start).toISOString(),
       end: dayjs(data.end).toISOString(),
       calendarId: data.calendarId,
+      recurrence: data.recurrence as RecurrenceRule | null,
+      reminders: data.reminders as EventReminder[] | null,
     };
 
     try {
@@ -107,8 +334,8 @@ export function CalendarForm({
         }
         reset();
       }
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
     }
   });
 
@@ -124,6 +351,27 @@ export function CalendarForm({
       <Scrollbar sx={{ p: 3, bgcolor: 'background.neutral' }}>
         <Stack spacing={3}>
           <Field.Text name="title" label="Title" />
+
+          <Field.Text
+            name="description"
+            label="Description"
+            multiline
+            rows={3}
+            placeholder="Add a description..."
+          />
+
+          <Field.Text
+            name="location"
+            label="Location"
+            placeholder="Add a location..."
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <Iconify icon="mingcute:location-fill" sx={{ mr: 1, color: 'text.disabled' }} />
+                ),
+              },
+            }}
+          />
 
           {calendars.length > 1 && (
             <Field.Select name="calendarId" label="Calendar">
@@ -160,6 +408,100 @@ export function CalendarForm({
               },
             }}
           />
+
+          {/* Color Picker */}
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Event color
+            </Typography>
+            <Controller
+              name="color"
+              control={control}
+              render={({ field }) => (
+                <ColorPicker
+                  value={field.value || ''}
+                  onChange={(color) => field.onChange(color as string)}
+                  options={CALENDAR_COLOR_OPTIONS}
+                />
+              )}
+            />
+          </Box>
+
+          {/* Recurrence */}
+          <Field.Select
+            name="recurrence"
+            label="Repeat"
+            value={getRecurrenceDisplayValue()}
+            onChange={handleRecurrenceChange}
+          >
+            {RECURRENCE_OPTIONS.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Field.Select>
+
+          {/* Reminders */}
+          <Box>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+              <Typography variant="subtitle2">Reminders</Typography>
+              {(values.reminders?.length || 0) < 5 && (
+                <Button
+                  size="small"
+                  startIcon={<Iconify icon="mingcute:add-line" />}
+                  onClick={handleAddReminder}
+                >
+                  Add
+                </Button>
+              )}
+            </Stack>
+
+            <Stack spacing={1.5}>
+              {values.reminders?.map((reminder, index) => (
+                <Stack key={index} direction="row" spacing={1.5} alignItems="center">
+                  <Field.Select
+                    name={`reminders.${index}.method`}
+                    size="small"
+                    sx={{ width: 130, flexShrink: 0 }}
+                    value={reminder.method}
+                    onChange={(e) => handleUpdateReminder(index, 'method', e.target.value)}
+                  >
+                    <MenuItem value="popup">Notification</MenuItem>
+                    <MenuItem value="email">Email</MenuItem>
+                  </Field.Select>
+
+                  <Field.Select
+                    name={`reminders.${index}.minutes`}
+                    size="small"
+                    sx={{ flexGrow: 1, minWidth: 120 }}
+                    value={reminder.minutes}
+                    onChange={(e) => handleUpdateReminder(index, 'minutes', e.target.value)}
+                  >
+                    {REMINDER_PRESETS.map((preset) => (
+                      <MenuItem key={preset.value} value={preset.value}>
+                        {preset.label}
+                      </MenuItem>
+                    ))}
+                  </Field.Select>
+
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleRemoveReminder(index)}
+                    sx={{ flexShrink: 0 }}
+                  >
+                    <Iconify icon="solar:trash-bin-trash-bold" width={18} />
+                  </IconButton>
+                </Stack>
+              ))}
+
+              {(!values.reminders || values.reminders.length === 0) && (
+                <Typography variant="body2" color="text.secondary">
+                  No reminders set
+                </Typography>
+              )}
+            </Stack>
+          </Box>
         </Stack>
       </Scrollbar>
 
@@ -181,6 +523,150 @@ export function CalendarForm({
           {isEdit ? 'Save changes' : 'Create'}
         </Button>
       </DialogActions>
+
+      {/* Custom Recurrence Dialog */}
+      <Dialog
+        open={showCustomRecurrence}
+        onClose={() => setShowCustomRecurrence(false)}
+        maxWidth="xs"
+        fullWidth
+        disableEnforceFocus
+        disableRestoreFocus
+      >
+        <DialogTitle>Custom recurrence</DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ pt: 1 }}>
+            {/* Frequency and Interval */}
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Typography variant="body2" sx={{ flexShrink: 0 }}>
+                Repeat every
+              </Typography>
+              <TextField
+                type="number"
+                size="small"
+                value={customRecurrence.interval}
+                onChange={(e) =>
+                  setCustomRecurrence((prev) => ({
+                    ...prev,
+                    interval: Math.max(1, parseInt(e.target.value, 10) || 1),
+                  }))
+                }
+                slotProps={{ htmlInput: { min: 1, max: 99 } }}
+                sx={{ width: 70 }}
+              />
+              <TextField
+                select
+                size="small"
+                value={customRecurrence.frequency}
+                onChange={(e) =>
+                  setCustomRecurrence((prev) => ({
+                    ...prev,
+                    frequency: e.target.value as RecurrenceFrequency,
+                    byDay: e.target.value !== 'WEEKLY' ? [] : prev.byDay,
+                  }))
+                }
+                sx={{ minWidth: 100 }}
+              >
+                <MenuItem value="DAILY">day(s)</MenuItem>
+                <MenuItem value="WEEKLY">week(s)</MenuItem>
+                <MenuItem value="MONTHLY">month(s)</MenuItem>
+                <MenuItem value="YEARLY">year(s)</MenuItem>
+              </TextField>
+            </Stack>
+
+            {/* Days of Week (only for weekly) */}
+            {customRecurrence.frequency === 'WEEKLY' && (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Repeat on
+                </Typography>
+                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                  {DAYS_OF_WEEK.map((day) => (
+                    <Chip
+                      key={day.value}
+                      label={day.label}
+                      size="small"
+                      onClick={() => handleToggleDay(day.value)}
+                      color={customRecurrence.byDay.includes(day.value) ? 'primary' : 'default'}
+                      variant={customRecurrence.byDay.includes(day.value) ? 'filled' : 'outlined'}
+                      sx={{ minWidth: 48 }}
+                    />
+                  ))}
+                </Stack>
+              </Box>
+            )}
+
+            {/* End condition */}
+            <Box>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Ends
+              </Typography>
+              <Stack spacing={2}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <TextField
+                    select
+                    size="small"
+                    value={customRecurrence.endType}
+                    onChange={(e) =>
+                      setCustomRecurrence((prev) => ({
+                        ...prev,
+                        endType: e.target.value as 'never' | 'count' | 'until',
+                      }))
+                    }
+                    sx={{ minWidth: 120 }}
+                  >
+                    <MenuItem value="never">Never</MenuItem>
+                    <MenuItem value="count">After</MenuItem>
+                    <MenuItem value="until">On date</MenuItem>
+                  </TextField>
+
+                  {customRecurrence.endType === 'count' && (
+                    <>
+                      <TextField
+                        type="number"
+                        size="small"
+                        value={customRecurrence.count}
+                        onChange={(e) =>
+                          setCustomRecurrence((prev) => ({
+                            ...prev,
+                            count: Math.max(1, parseInt(e.target.value, 10) || 1),
+                          }))
+                        }
+                        slotProps={{ htmlInput: { min: 1, max: 999 } }}
+                        sx={{ width: 70 }}
+                      />
+                      <Typography variant="body2">occurrences</Typography>
+                    </>
+                  )}
+
+                  {customRecurrence.endType === 'until' && (
+                    <TextField
+                      type="date"
+                      size="small"
+                      value={customRecurrence.until}
+                      onChange={(e) =>
+                        setCustomRecurrence((prev) => ({
+                          ...prev,
+                          until: e.target.value,
+                        }))
+                      }
+                      sx={{ minWidth: 150 }}
+                    />
+                  )}
+                </Stack>
+              </Stack>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCustomRecurrence(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleSaveCustomRecurrence} variant="contained">
+            Done
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Form>
   );
 }

@@ -5,6 +5,8 @@ import type {
   CalendarInfo,
   SyncResponse,
   SyncStatus,
+  RecurrenceRule,
+  EventReminder,
 } from './types';
 
 import { getSession } from 'src/lib/supabase';
@@ -84,6 +86,11 @@ export type CreateEventInput = {
   end: string;
   allDay?: boolean;
   calendarId?: string;
+  description?: string | null;
+  location?: string | null;
+  color?: string | null;
+  recurrence?: RecurrenceRule | null;
+  reminders?: EventReminder[] | null;
 };
 
 type GoogleCalendarEvent = {
@@ -93,6 +100,8 @@ type GoogleCalendarEvent = {
   end: string;
   allDay: boolean;
   calendarId: string;
+  description?: string | null;
+  location?: string | null;
 };
 
 export async function createCalendarEvent(event: CreateEventInput): Promise<GoogleCalendarEvent> {
