@@ -23,6 +23,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useFamily } from 'src/features/family/hooks/use-family';
 import { useSelectedCalendars } from 'src/features/calendar/hooks/use-calendars';
 import {
   useCalendarEvents,
@@ -43,9 +44,13 @@ export function CalendarView() {
 
   const { events, loading, syncing, error, refresh, sync } = useCalendarEvents();
   const { calendars } = useSelectedCalendars();
+  const { family } = useFamily();
   const [localEvents, setLocalEvents] = useState<CalendarEventItem[]>([]);
 
   const mergedEvents = localEvents.length ? localEvents : events;
+
+  // E2: Get family members for event assignment
+  const familyMembers = family?.members ?? [];
 
   // Mutations with auto-sync
   const { createEvent, updateEvent, deleteEvent, loading: mutating } = useCalendarMutations(refresh);
@@ -89,6 +94,9 @@ export function CalendarView() {
           color: eventData.color,
           recurrence: eventData.recurrence,
           reminders: eventData.reminders,
+          extraData: eventData.familyAssignments
+            ? { familyAssignments: eventData.familyAssignments }
+            : undefined,
         });
         onCloseForm();
       } catch (err) {
@@ -124,6 +132,9 @@ export function CalendarView() {
           color: updatedEvent.color,
           recurrence: updatedEvent.recurrence,
           reminders: updatedEvent.reminders,
+          extraData: updatedEvent.familyAssignments
+            ? { familyAssignments: updatedEvent.familyAssignments }
+            : undefined,
         });
       } catch (err) {
         console.error('Failed to update event:', err);
@@ -238,6 +249,7 @@ export function CalendarView() {
         currentEvent={currentEvent}
         selectedRange={selectedRange}
         calendars={calendars}
+        familyMembers={familyMembers}
         onClose={onCloseForm}
         onCreateEvent={handleCreateEvent}
         onUpdateEvent={handleUpdateEvent}

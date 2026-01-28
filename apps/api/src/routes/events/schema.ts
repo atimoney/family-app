@@ -42,6 +42,14 @@ export const getEventsQuerySchema = z.object({
   calendarIds: calendarIdsSchema.optional(),
 });
 
+// E2: Family member assignments schema
+export const familyAssignmentsSchema = z.object({
+  primaryFamilyMemberId: z.string().nullable().optional(),
+  participantFamilyMemberIds: z.array(z.string()).optional().default([]),
+  cookMemberId: z.string().nullable().optional(),
+  assignedToMemberId: z.string().nullable().optional(),
+}).nullable().optional();
+
 export const getEventsResponseSchema = z.array(
   z.object({
     id: z.string(),
@@ -62,6 +70,7 @@ export const getEventsResponseSchema = z.array(
         notes: z.string().nullable().optional(),
         color: z.string().nullable().optional(),
         customJson: z.record(z.any()).optional(),
+        familyAssignments: familyAssignmentsSchema,
       })
       .nullable(),
   })
@@ -76,6 +85,7 @@ export const eventMetadataBodySchema = z.object({
   notes: z.string().nullable().optional().default(null),
   color: z.string().nullable().optional().default(null),
   customJson: z.record(z.any()).optional().default({}),
+  familyAssignments: familyAssignmentsSchema,
 });
 
 export const eventMetadataResponseSchema = z.object({
@@ -85,4 +95,5 @@ export const eventMetadataResponseSchema = z.object({
   notes: z.string().nullable().optional(),
   color: z.string().nullable().optional(),
   customJson: z.record(z.any()),
+  familyAssignments: familyAssignmentsSchema,
 });

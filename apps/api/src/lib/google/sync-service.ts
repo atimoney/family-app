@@ -5,6 +5,7 @@ import { google, calendar_v3 } from 'googleapis';
 import { decryptSecret } from '../crypto.js';
 import { parseEventTimes, withRetry } from './sync-utils.js';
 import { refreshAccessToken } from './token-refresh.js';
+import { parseFamilyExtendedProperties } from './calendar.js';
 
 // ============================================================================
 // TYPES
@@ -370,17 +371,67 @@ async function processEvent(options: {
   };
 
   if (existingEvent) {
-    await prisma.calendarEvent.update({
+    const updatedEvent = await prisma.calendarEvent.update({
       where: { id: existingEvent.id },
       data: eventData,
     });
+
+    // E2: Extract and store family assignments from extendedProperties
+    await syncFamilyAssignmentsToMetadata(prisma, updatedEvent.id, event);
+
     return 'updated';
   } else {
-    await prisma.calendarEvent.create({
+    const createdEvent = await prisma.calendarEvent.create({
       data: eventData,
     });
+
+    // E2: Extract and store family assignments from extendedProperties
+    await syncFamilyAssignmentsToMetadata(prisma, createdEvent.id, event);
+
     return 'created';
   }
+}
+
+/**
+ * E2: Extract family assignments from Google event's extendedProperties.private
+ * and store them in CalendarEventMetadata.customJson
+ */
+async function syncFamilyAssignmentsToMetadata(
+  prisma: PrismaClient,
+  eventId: string,
+  googleEvent: calendar_v3.Schema$Event
+): Promise<void> {
+  const familyAssignments = parseFamilyExtendedProperties(googleEvent.extendedProperties);
+
+  if (!familyAssignments) {
+    // No family data to sync
+    return;
+  }
+
+  // Upsert metadata with family assignments
+  const existingMetadata = await prisma.calendarEventMetadata.findUnique({
+    where: { eventId },
+  });
+
+  const existingCustomJson = (existingMetadata?.customJson ?? {}) as Record<string, unknown>;
+  const mergedCustomJson = {
+    ...existingCustomJson,
+    familyAssignments,
+  };
+
+  await prisma.calendarEventMetadata.upsert({
+    where: { eventId },
+    create: {
+      eventId,
+      tags: existingMetadata?.tags ?? [],
+      notes: existingMetadata?.notes ?? null,
+      color: existingMetadata?.color ?? null,
+      customJson: mergedCustomJson,
+    },
+    update: {
+      customJson: mergedCustomJson,
+    },
+  });
 }
 
 // ============================================================================

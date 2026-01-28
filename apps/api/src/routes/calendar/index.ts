@@ -412,9 +412,10 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       },
       recurrence: recurrence ?? undefined,
       reminders: reminders ?? undefined,
+      familyAssignments: extraData?.familyAssignments ?? undefined,
     });
 
-    // Store extra data including color preference
+    // Store extra data including color preference and family assignments
     const eventExtraData = {
       ...extraData,
       color: color ?? extraData?.color ?? null,
@@ -502,9 +503,10 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       },
       recurrence: recurrence !== undefined ? recurrence : undefined,
       reminders: reminders !== undefined ? reminders : undefined,
+      familyAssignments: extraData?.familyAssignments !== undefined ? extraData.familyAssignments : undefined,
     });
 
-    // Store extra data including color preference
+    // Store extra data including color preference and family assignments
     const eventExtraData = {
       ...extraData,
       color: color ?? extraData?.color ?? null,

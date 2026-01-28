@@ -1,8 +1,24 @@
+/**
+ * E2: Family member assignments for calendar events.
+ * All fields are optional to ensure backward compatibility.
+ */
+export type EventFamilyAssignments = {
+  /** Primary family member responsible for this event */
+  primaryFamilyMemberId?: string | null;
+  /** Family members participating in this event */
+  participantFamilyMemberIds?: string[];
+  /** For Meal category: who is cooking */
+  cookMemberId?: string | null;
+  /** For Chore category: who is assigned to do it */
+  assignedToMemberId?: string | null;
+};
+
 export type CalendarEventMetadata = {
   tags: string[];
   notes: string | null;
   color: string | null;
   customJson?: Record<string, unknown>;
+  familyAssignments?: EventFamilyAssignments | null;
 };
 
 export type CalendarInfo = {
@@ -67,6 +83,7 @@ export type CalendarEventItem = {
   color?: string; // FullCalendar doesn't support null, use undefined instead
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
+  familyAssignments?: EventFamilyAssignments | null;
   backgroundColor?: string;
   borderColor?: string;
   textColor?: string;

@@ -7,6 +7,7 @@ import type {
   CalendarEventApi,
   CalendarEventsQuery,
   CalendarEventMetadata,
+  EventFamilyAssignments,
 } from './types';
 
 import { getSession } from 'src/lib/supabase';
@@ -91,6 +92,9 @@ export type CreateEventInput = {
   color?: string | null;
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
+  extraData?: {
+    familyAssignments?: EventFamilyAssignments;
+  };
 };
 
 type GoogleCalendarEvent = {

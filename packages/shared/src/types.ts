@@ -147,6 +147,22 @@ export type CalendarEventExtraDataV1 = {
   category: string | null;
   notes: string | null;
   color?: string | null;
+  familyAssignments?: EventFamilyAssignments | null;
+};
+
+/**
+ * E2: Family member assignments for calendar events.
+ * All fields are optional to ensure backward compatibility.
+ */
+export type EventFamilyAssignments = {
+  /** Primary family member responsible for this event */
+  primaryFamilyMemberId?: string | null;
+  /** Family members participating in this event */
+  participantFamilyMemberIds?: string[];
+  /** For Meal category: who is cooking */
+  cookMemberId?: string | null;
+  /** For Chore category: who is assigned to do it */
+  assignedToMemberId?: string | null;
 };
 
 export type ShoppingItem = {

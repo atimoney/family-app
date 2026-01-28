@@ -26,11 +26,20 @@ export const eventReminderSchema = z.object({
 // Reminders array schema
 export const remindersSchema = z.array(eventReminderSchema).max(5).nullable().optional();
 
+// E2: Family member assignments schema
+export const familyAssignmentsSchema = z.object({
+  primaryFamilyMemberId: z.string().nullable().optional(),
+  participantFamilyMemberIds: z.array(z.string()).optional().default([]),
+  cookMemberId: z.string().nullable().optional(),
+  assignedToMemberId: z.string().nullable().optional(),
+}).nullable().optional();
+
 export const extraDataSchema = z.object({
   tags: z.array(z.string()).default([]),
   category: z.string().nullable().default(null),
   notes: z.string().nullable().default(null),
   color: z.string().nullable().optional().default(null),
+  familyAssignments: familyAssignmentsSchema,
 });
 
 export const createEventSchema = z.object({
@@ -69,6 +78,7 @@ export type RecurrenceFrequency = z.infer<typeof recurrenceFrequencySchema>;
 export type RecurrenceRule = z.infer<typeof recurrenceRuleSchema>;
 export type ReminderMethod = z.infer<typeof reminderMethodSchema>;
 export type EventReminder = z.infer<typeof eventReminderSchema>;
+export type FamilyAssignments = z.infer<typeof familyAssignmentsSchema>;
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 export type UpdateMetadataInput = z.infer<typeof updateMetadataSchema>;

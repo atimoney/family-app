@@ -1,15 +1,17 @@
+import type { FamilyMember } from '@family/shared';
 import type { CalendarRange } from './hooks/use-calendar';
-import type { CalendarInfo, EventReminder, RecurrenceRule, ReminderMethod, CalendarEventItem, RecurrenceFrequency } from 'src/features/calendar/types';
+import type { CalendarInfo, EventReminder, RecurrenceRule, ReminderMethod, CalendarEventItem, RecurrenceFrequency, EventFamilyAssignments } from 'src/features/calendar/types';
 
 import * as z from 'zod';
 import dayjs from 'dayjs';
 import { uuidv4 } from 'minimal-shared/utils';
-import { useState, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
+import { useState, useCallback, useMemo } from 'react';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
+import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import Tooltip from '@mui/material/Tooltip';
@@ -18,6 +20,7 @@ import TextField from '@mui/material/TextField';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import DialogTitle from '@mui/material/DialogTitle';
+import Autocomplete from '@mui/material/Autocomplete';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 
@@ -103,6 +106,14 @@ const eventReminderSchema = z.object({
   minutes: z.number().int().min(0),
 });
 
+// E2: Family assignments schema
+const familyAssignmentsSchema = z.object({
+  primaryFamilyMemberId: z.string().nullable().optional(),
+  participantFamilyMemberIds: z.array(z.string()).optional().default([]),
+  cookMemberId: z.string().nullable().optional(),
+  assignedToMemberId: z.string().nullable().optional(),
+}).nullable().optional();
+
 export type EventSchemaType = z.infer<typeof EventSchema>;
 
 export const EventSchema = z.object({
@@ -119,6 +130,7 @@ export const EventSchema = z.object({
   calendarId: z.string().optional(),
   recurrence: recurrenceRuleSchema,
   reminders: z.array(eventReminderSchema).max(5).nullable().optional(),
+  familyAssignments: familyAssignmentsSchema,
 });
 
 // ----------------------------------------------------------------------
@@ -128,6 +140,7 @@ type Props = {
   currentEvent?: CalendarEventItem | null;
   selectedRange: CalendarRange;
   calendars: CalendarInfo[];
+  familyMembers?: FamilyMember[];
   onCreateEvent: (event: CalendarEventItem) => void | Promise<void>;
   onUpdateEvent: (event: CalendarEventItem) => void;
   onDeleteEvent: (eventId: string) => void;
@@ -137,6 +150,7 @@ export function CalendarForm({
   currentEvent,
   selectedRange,
   calendars,
+  familyMembers = [],
   onClose,
   onCreateEvent,
   onUpdateEvent,
@@ -146,6 +160,23 @@ export function CalendarForm({
 
   // Get default calendar (first selected one)
   const defaultCalendarId = calendars[0]?.id ?? '';
+
+  // E2: Check if family members are available for assignment
+  const hasFamilyMembers = familyMembers.length > 0;
+
+  // E2: Create a map for quick member lookup by ID
+  const memberById = useMemo(() => {
+    const map = new Map<string, FamilyMember>();
+    familyMembers.forEach((m) => map.set(m.id, m));
+    return map;
+  }, [familyMembers]);
+
+  // E2: Get display name for a member
+  const getMemberDisplayName = useCallback(
+    (member: FamilyMember) =>
+      member.displayName || member.profile?.displayName || member.profile?.email || 'Unknown',
+    []
+  );
 
   // State for custom recurrence dialog
   const [showCustomRecurrence, setShowCustomRecurrence] = useState(false);
@@ -165,6 +196,9 @@ export function CalendarForm({
     until: dayjs().add(1, 'month').format('YYYY-MM-DD'),
   });
 
+  // E2: Get existing family assignments from event
+  const existingAssignments = currentEvent?.familyAssignments || currentEvent?.extendedProps?.metadata?.familyAssignments;
+
   const defaultValues = {
     title: currentEvent?.title || '',
     description: currentEvent?.description || currentEvent?.extendedProps?.description || '',
@@ -176,6 +210,7 @@ export function CalendarForm({
     calendarId: currentEvent?.calendarId || defaultCalendarId,
     recurrence: currentEvent?.recurrence || null,
     reminders: currentEvent?.reminders || [{ method: 'popup' as ReminderMethod, minutes: 30 }],
+    familyAssignments: existingAssignments || null,
   };
 
   const methods = useForm({
@@ -321,6 +356,7 @@ export function CalendarForm({
       calendarId: data.calendarId,
       recurrence: data.recurrence as RecurrenceRule | null,
       reminders: data.reminders as EventReminder[] | null,
+      familyAssignments: data.familyAssignments as EventFamilyAssignments | null,
     };
 
     try {
@@ -502,6 +538,171 @@ export function CalendarForm({
               )}
             </Stack>
           </Box>
+
+          {/* E2: Family Member Assignments */}
+          {hasFamilyMembers && (
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+                Family
+              </Typography>
+
+              <Stack spacing={2}>
+                {/* Primary Family Member */}
+                <Controller
+                  name="familyAssignments.primaryFamilyMemberId"
+                  control={control}
+                  render={({ field }) => (
+                    <Autocomplete
+                      {...field}
+                      value={field.value ? memberById.get(field.value) || null : null}
+                      onChange={(_, newValue) => {
+                        field.onChange(newValue?.id || null);
+                      }}
+                      options={familyMembers}
+                      getOptionLabel={(option) => getMemberDisplayName(option)}
+                      isOptionEqualToValue={(option, value) => option.id === value?.id}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Primary member"
+                          placeholder="Who is responsible?"
+                          size="small"
+                        />
+                      )}
+                      renderOption={(props, option) => {
+                        const { key, ...otherProps } = props;
+                        return (
+                          <li key={key} {...otherProps}>
+                            <Avatar
+                              alt={getMemberDisplayName(option)}
+                              src={option.profile?.avatarUrl || undefined}
+                              sx={{ mr: 1, width: 24, height: 24, flexShrink: 0 }}
+                            />
+                            <Box component="span" sx={{ flexGrow: 1 }}>
+                              {getMemberDisplayName(option)}
+                            </Box>
+                            {option.color && (
+                              <Box
+                                sx={{
+                                  width: 12,
+                                  height: 12,
+                                  borderRadius: '50%',
+                                  bgcolor: option.color,
+                                  ml: 1,
+                                }}
+                              />
+                            )}
+                          </li>
+                        );
+                      }}
+                    />
+                  )}
+                />
+
+                {/* Participants (multi-select) */}
+                <Controller
+                  name="familyAssignments.participantFamilyMemberIds"
+                  control={control}
+                  render={({ field }) => {
+                    // Get current primary member to exclude from participants
+                    const primaryMemberId = values.familyAssignments?.primaryFamilyMemberId;
+                    
+                    // Filter out primary member from available options
+                    const availableMembers = primaryMemberId
+                      ? familyMembers.filter((m) => m.id !== primaryMemberId)
+                      : familyMembers;
+
+                    // Also remove primary member from current selection if they were selected
+                    const filteredValue = (field.value || []).filter(
+                      (id: string) => id !== primaryMemberId
+                    );
+                    if (filteredValue.length !== (field.value || []).length) {
+                      // Primary was in participants, remove them
+                      field.onChange(filteredValue);
+                    }
+
+                    const selectedMembers = filteredValue
+                      .map((id: string) => memberById.get(id))
+                      .filter((m): m is FamilyMember => !!m);
+
+                    const allSelected = selectedMembers.length === availableMembers.length && availableMembers.length > 0;
+
+                    return (
+                      <Box>
+                        <Autocomplete
+                          multiple
+                          value={selectedMembers}
+                          onChange={(_, newValue) => {
+                            field.onChange(newValue.map((m) => m.id));
+                          }}
+                          options={availableMembers}
+                          getOptionLabel={(option) => getMemberDisplayName(option)}
+                          isOptionEqualToValue={(option, value) => option.id === value.id}
+                          disableCloseOnSelect
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              label="Participants"
+                              placeholder="Who is participating?"
+                              size="small"
+                            />
+                          )}
+                          renderOption={(props, option, { selected }) => {
+                            const { key, ...otherProps } = props;
+                            return (
+                              <li key={key} {...otherProps}>
+                                <Avatar
+                                  alt={getMemberDisplayName(option)}
+                                  src={option.profile?.avatarUrl || undefined}
+                                  sx={{ mr: 1, width: 24, height: 24, flexShrink: 0 }}
+                                />
+                                <Box component="span" sx={{ flexGrow: 1 }}>
+                                  {getMemberDisplayName(option)}
+                                </Box>
+                                {selected && (
+                                  <Iconify icon="eva:checkmark-fill" sx={{ color: 'primary.main' }} />
+                                )}
+                              </li>
+                            );
+                          }}
+                          renderTags={(selected, getTagProps) =>
+                            selected.map((option, index) => (
+                              <Chip
+                                {...getTagProps({ index })}
+                                key={option.id}
+                                label={getMemberDisplayName(option)}
+                                avatar={
+                                  <Avatar
+                                    alt={getMemberDisplayName(option)}
+                                    src={option.profile?.avatarUrl || undefined}
+                                  />
+                                }
+                                size="small"
+                                variant="soft"
+                              />
+                            ))
+                          }
+                        />
+                        <Button
+                          size="small"
+                          onClick={() => {
+                            if (allSelected) {
+                              field.onChange([]);
+                            } else {
+                              field.onChange(availableMembers.map((m) => m.id));
+                            }
+                          }}
+                          sx={{ mt: 0.5 }}
+                        >
+                          {allSelected ? 'Clear all' : 'Add all'}
+                        </Button>
+                      </Box>
+                    );
+                  }}
+                />
+              </Stack>
+            </Box>
+          )}
         </Stack>
       </Scrollbar>
 

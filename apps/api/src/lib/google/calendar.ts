@@ -1,6 +1,9 @@
 import { google, calendar_v3 } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
-import type { RecurrenceRule, EventReminder } from '../../routes/calendar/schema.js';
+import type { RecurrenceRule, EventReminder, FamilyAssignments } from '../../routes/calendar/schema.js';
+
+// E2: Current schema version for family metadata in extendedProperties
+export const FAMILY_SCHEMA_VERSION = '2';
 
 export function getCalendarClient(auth: OAuth2Client) {
   return google.calendar({ version: 'v3', auth });
@@ -154,12 +157,129 @@ export function parseGoogleReminders(reminders: calendar_v3.Schema$EventReminder
   }));
 }
 
+// ============================================================================
+// E2: FAMILY MEMBER ASSIGNMENT HELPERS
+// ============================================================================
+
+/**
+ * Build extendedProperties.private object for Google Calendar event
+ * Stores family member assignments in a format that can be synced back
+ */
+export function buildFamilyExtendedProperties(
+  familyAssignments: FamilyAssignments | null | undefined
+): Record<string, string> | undefined {
+  if (!familyAssignments) {
+    return undefined;
+  }
+
+  const props: Record<string, string> = {
+    familySchemaVersion: FAMILY_SCHEMA_VERSION,
+  };
+
+  if (familyAssignments.primaryFamilyMemberId) {
+    props.familyPrimaryMemberId = familyAssignments.primaryFamilyMemberId;
+  }
+
+  if (familyAssignments.participantFamilyMemberIds && familyAssignments.participantFamilyMemberIds.length > 0) {
+    // Store as JSON array string for safe round-trip
+    props.familyParticipantMemberIds = JSON.stringify(familyAssignments.participantFamilyMemberIds);
+  }
+
+  if (familyAssignments.cookMemberId) {
+    props.familyCookMemberId = familyAssignments.cookMemberId;
+  }
+
+  if (familyAssignments.assignedToMemberId) {
+    props.familyAssignedToMemberId = familyAssignments.assignedToMemberId;
+  }
+
+  // Only return if we have actual data beyond schema version
+  return Object.keys(props).length > 1 ? props : undefined;
+}
+
+/**
+ * Parse extendedProperties.private from Google Calendar event
+ * Extracts family member assignments, handling missing/malformed data gracefully
+ */
+export function parseFamilyExtendedProperties(
+  extendedProperties: calendar_v3.Schema$Event['extendedProperties'] | null | undefined
+): FamilyAssignments | null {
+  const privateProps = extendedProperties?.private;
+  if (!privateProps) {
+    return null;
+  }
+
+  // Check schema version - gracefully handle v1 or missing version
+  const schemaVersion = privateProps.familySchemaVersion;
+  if (!schemaVersion) {
+    // No family data present
+    return null;
+  }
+
+  const result: FamilyAssignments = {};
+
+  if (privateProps.familyPrimaryMemberId) {
+    result.primaryFamilyMemberId = privateProps.familyPrimaryMemberId;
+  }
+
+  if (privateProps.familyParticipantMemberIds) {
+    try {
+      const parsed = JSON.parse(privateProps.familyParticipantMemberIds);
+      if (Array.isArray(parsed)) {
+        result.participantFamilyMemberIds = parsed.filter((id): id is string => typeof id === 'string');
+      }
+    } catch {
+      // Malformed JSON - skip this field
+    }
+  }
+
+  if (privateProps.familyCookMemberId) {
+    result.cookMemberId = privateProps.familyCookMemberId;
+  }
+
+  if (privateProps.familyAssignedToMemberId) {
+    result.assignedToMemberId = privateProps.familyAssignedToMemberId;
+  }
+
+  // Return null if no actual data was parsed
+  const hasData = result.primaryFamilyMemberId ||
+    (result.participantFamilyMemberIds && result.participantFamilyMemberIds.length > 0) ||
+    result.cookMemberId ||
+    result.assignedToMemberId;
+
+  return hasData ? result : null;
+}
+
+/**
+ * Merge existing extendedProperties with new family data
+ * Preserves any existing private properties while adding/updating family fields
+ */
+export function mergeExtendedProperties(
+  existing: calendar_v3.Schema$Event['extendedProperties'] | null | undefined,
+  familyAssignments: FamilyAssignments | null | undefined
+): calendar_v3.Schema$EventExtendedProperties | undefined {
+  const familyProps = buildFamilyExtendedProperties(familyAssignments);
+  
+  if (!familyProps && !existing?.private) {
+    return undefined;
+  }
+
+  return {
+    ...existing,
+    private: {
+      ...existing?.private,
+      ...familyProps,
+    },
+  };
+}
+
 export async function createEvent(options: {
   auth: OAuth2Client;
   calendarId: string;
   event: calendar_v3.Schema$Event;
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
+  familyAssignments?: FamilyAssignments | null;
 }) {
   const calendar = getCalendarClient(options.auth);
   
@@ -177,6 +297,14 @@ export async function createEvent(options: {
   if (googleReminders) {
     requestBody.reminders = googleReminders;
   }
+
+  // E2: Add family member assignments to extendedProperties.private
+  if (options.familyAssignments) {
+    requestBody.extendedProperties = mergeExtendedProperties(
+      options.event.extendedProperties,
+      options.familyAssignments
+    );
+  }
   
   const response = await calendar.events.insert({
     calendarId: options.calendarId,
@@ -192,6 +320,7 @@ export async function updateEvent(options: {
   event: calendar_v3.Schema$Event;
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
+  familyAssignments?: FamilyAssignments | null;
 }) {
   const calendar = getCalendarClient(options.auth);
   
@@ -208,6 +337,14 @@ export async function updateEvent(options: {
   const googleReminders = buildGoogleReminders(options.reminders);
   if (googleReminders) {
     requestBody.reminders = googleReminders;
+  }
+
+  // E2: Add family member assignments to extendedProperties.private
+  if (options.familyAssignments !== undefined) {
+    requestBody.extendedProperties = mergeExtendedProperties(
+      options.event.extendedProperties,
+      options.familyAssignments
+    );
   }
   
   const response = await calendar.events.patch({

@@ -65,28 +65,35 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    const response = events.map((event) => ({
-      id: event.id,
-      googleEventId: event.googleEventId,
-      calendarId: event.calendarId,
-      startsAt: event.startsAt.toISOString(),
-      endsAt: event.endsAt.toISOString(),
-      title: event.title,
-      description: event.description ?? null,
-      location: event.location ?? null,
-      allDay: event.allDay,
-      status: event.status ?? null,
-      calendarColor: event.selectedCalendar?.color ?? null,
-      calendarSummary: event.selectedCalendar?.summary ?? null,
-      metadata: event.metadata
-        ? {
-            tags: event.metadata.tags ?? [],
-            notes: event.metadata.notes ?? null,
-            color: event.metadata.color ?? null,
-            customJson: (event.metadata.customJson ?? {}) as Record<string, unknown>,
-          }
-        : null,
-    }));
+    const response = events.map((event) => {
+      // E2: Extract familyAssignments from customJson if present
+      const customJson = (event.metadata?.customJson ?? {}) as Record<string, unknown>;
+      const familyAssignments = customJson.familyAssignments as Record<string, unknown> | undefined;
+
+      return {
+        id: event.id,
+        googleEventId: event.googleEventId,
+        calendarId: event.calendarId,
+        startsAt: event.startsAt.toISOString(),
+        endsAt: event.endsAt.toISOString(),
+        title: event.title,
+        description: event.description ?? null,
+        location: event.location ?? null,
+        allDay: event.allDay,
+        status: event.status ?? null,
+        calendarColor: event.selectedCalendar?.color ?? null,
+        calendarSummary: event.selectedCalendar?.summary ?? null,
+        metadata: event.metadata
+          ? {
+              tags: event.metadata.tags ?? [],
+              notes: event.metadata.notes ?? null,
+              color: event.metadata.color ?? null,
+              customJson,
+              familyAssignments: familyAssignments ?? null,
+            }
+          : null,
+      };
+    });
 
     getEventsResponseSchema.parse(response);
     return response;
@@ -118,6 +125,10 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Event not found' });
     }
 
+    // E2: Extract familyAssignments from customJson if present
+    const customJson = (event.metadata?.customJson ?? {}) as Record<string, unknown>;
+    const familyAssignments = customJson.familyAssignments as Record<string, unknown> | undefined;
+
     return {
       id: event.id,
       googleEventId: event.googleEventId,
@@ -136,7 +147,8 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
             tags: event.metadata.tags ?? [],
             notes: event.metadata.notes ?? null,
             color: event.metadata.color ?? null,
-            customJson: (event.metadata.customJson ?? {}) as Record<string, unknown>,
+            customJson,
+            familyAssignments: familyAssignments ?? null,
           }
         : null,
     };
@@ -173,6 +185,12 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'Event not found' });
     }
 
+    // E2: Store familyAssignments in customJson if provided
+    const customJson = {
+      ...(parsedBody.data.customJson ?? {}),
+      ...(parsedBody.data.familyAssignments ? { familyAssignments: parsedBody.data.familyAssignments } : {}),
+    };
+
     const metadata = await fastify.prisma.calendarEventMetadata.upsert({
       where: {
         eventId: event.id,
@@ -182,15 +200,19 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
         tags: parsedBody.data.tags ?? [],
         notes: parsedBody.data.notes ?? null,
         color: parsedBody.data.color ?? null,
-        customJson: parsedBody.data.customJson ?? {},
+        customJson,
       },
       update: {
         tags: parsedBody.data.tags ?? [],
         notes: parsedBody.data.notes ?? null,
         color: parsedBody.data.color ?? null,
-        customJson: parsedBody.data.customJson ?? {},
+        customJson,
       },
     });
+
+    // E2: Extract familyAssignments from customJson for response
+    const responseCustomJson = (metadata.customJson ?? {}) as Record<string, unknown>;
+    const familyAssignments = responseCustomJson.familyAssignments as Record<string, unknown> | undefined;
 
     const response = {
       id: metadata.id,
@@ -198,7 +220,8 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       tags: metadata.tags ?? [],
       notes: metadata.notes ?? null,
       color: metadata.color ?? null,
-      customJson: (metadata.customJson ?? {}) as Record<string, unknown>,
+      customJson: responseCustomJson,
+      familyAssignments: familyAssignments ?? null,
     };
 
     eventMetadataResponseSchema.parse(response);
