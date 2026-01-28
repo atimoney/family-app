@@ -78,7 +78,7 @@ model CalendarEvent {
   metadata         CalendarEventMetadata?
 
   @@unique([userId, googleEventId])
-  @@unique([calendarId, googleEventId])
+  // Note: Removed @@unique([calendarId, googleEventId]) to allow multiple users to sync the same shared calendar
   @@index([userId, startsAt])
   @@index([userId, endsAt])
   @@index([userId, calendarId, startsAt])
