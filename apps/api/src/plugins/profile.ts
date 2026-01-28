@@ -42,6 +42,18 @@ const profilePlugin: FastifyPluginAsync = async (fastify) => {
     const userId = request.user.id;
     const jwt = request.user.jwt;
 
+    // Extract user metadata from JWT
+    const userMetadata = (jwt.user_metadata as Record<string, unknown>) || {};
+    const jwtAvatarUrl =
+      (userMetadata.avatar_url as string) ||
+      (userMetadata.picture as string) ||
+      null;
+    const jwtDisplayName =
+      (userMetadata.full_name as string) ||
+      (userMetadata.name as string) ||
+      (userMetadata.display_name as string) ||
+      null;
+
     // Try to find existing profile
     let profile = await fastify.prisma.profile.findUnique({
       where: { id: userId },
@@ -50,24 +62,14 @@ const profilePlugin: FastifyPluginAsync = async (fastify) => {
     // Create profile lazily if it doesn't exist
     if (!profile) {
       const email = (jwt.email as string) || '';
-      const userMetadata = (jwt.user_metadata as Record<string, unknown>) || {};
-      const displayName =
-        (userMetadata.full_name as string) ||
-        (userMetadata.name as string) ||
-        (userMetadata.display_name as string) ||
-        null;
-      const avatarUrl =
-        (userMetadata.avatar_url as string) ||
-        (userMetadata.picture as string) ||
-        null;
 
       try {
         profile = await fastify.prisma.profile.create({
           data: {
             id: userId,
             email,
-            displayName,
-            avatarUrl,
+            displayName: jwtDisplayName,
+            avatarUrl: jwtAvatarUrl,
           },
         });
         fastify.log.info({ userId, email }, 'Created profile lazily');
@@ -80,6 +82,23 @@ const profilePlugin: FastifyPluginAsync = async (fastify) => {
           fastify.log.error({ err, userId }, 'Failed to create profile');
           return reply.status(500).send({ error: 'Failed to create profile' });
         }
+      }
+    } else {
+      // Profile exists - sync avatar/displayName from JWT if different
+      // Always update avatar if JWT has one (user may have changed their Google photo)
+      const needsUpdate =
+        (jwtAvatarUrl && profile.avatarUrl !== jwtAvatarUrl) ||
+        (!profile.displayName && jwtDisplayName);
+
+      if (needsUpdate) {
+        profile = await fastify.prisma.profile.update({
+          where: { id: userId },
+          data: {
+            ...(jwtAvatarUrl && profile.avatarUrl !== jwtAvatarUrl && { avatarUrl: jwtAvatarUrl }),
+            ...(!profile.displayName && jwtDisplayName && { displayName: jwtDisplayName }),
+          },
+        });
+        fastify.log.info({ userId }, 'Synced profile from JWT metadata');
       }
     }
 

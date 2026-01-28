@@ -21,6 +21,7 @@ import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 
 import { useAuthContext } from 'src/auth/hooks';
+import { signOut } from 'src/auth/context/supabase/action';
 
 // ----------------------------------------------------------------------
 
@@ -305,6 +306,25 @@ function InviteErrorState({ message, validation }: InviteErrorStateProps) {
     return 'error';
   };
 
+  const handleSignOut = async () => {
+    // Get the invite token to redirect back after sign-in
+    const inviteToken = window.location.pathname.split('/invite/')[1] || '';
+    const invitePath = inviteToken ? `/invite/${inviteToken}` : '';
+    
+    try {
+      // Actually sign out the user
+      await signOut();
+      // Navigate to sign-in page with returnTo so they come back to this invite
+      const signInUrl = invitePath
+        ? `${paths.auth.supabase.signIn}?returnTo=${encodeURIComponent(invitePath)}`
+        : paths.auth.supabase.signIn;
+      navigate(signInUrl, { replace: true });
+    } catch (error) {
+      console.error('Failed to sign out:', error);
+      toast.error('Failed to sign out');
+    }
+  };
+
   return (
     <Box
       sx={{
@@ -338,9 +358,41 @@ function InviteErrorState({ message, validation }: InviteErrorStateProps) {
             </Typography>
           )}
 
+          {validation?.reason === 'email_mismatch' && validation?.email && (
+            <>
+              <Box
+                sx={[
+                  (theme) => ({
+                    p: 2,
+                    borderRadius: 1,
+                    bgcolor: varAlpha(theme.vars.palette.warning.mainChannel, 0.08),
+                    border: `1px solid ${varAlpha(theme.vars.palette.warning.mainChannel, 0.24)}`,
+                    width: '100%',
+                    textAlign: 'center',
+                  }),
+                ]}
+              >
+                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.5 }}>
+                  This invite is for:
+                </Typography>
+                <Typography variant="subtitle2">
+                  {validation.email}
+                </Typography>
+              </Box>
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={handleSignOut}
+              >
+                Sign In With Different Account
+              </Button>
+            </>
+          )}
+
           <Button
             fullWidth
-            variant="contained"
+            variant={validation?.reason === 'email_mismatch' ? 'outlined' : 'contained'}
+            color="inherit"
             onClick={() => navigate('/family')}
           >
             Go to Dashboard
@@ -348,7 +400,7 @@ function InviteErrorState({ message, validation }: InviteErrorStateProps) {
 
           {validation?.reason === 'email_mismatch' && (
             <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
-              Please sign in with the email address the invite was sent to, or ask for a new invite.
+              Or ask the family owner to send a new invite to your current email address.
             </Typography>
           )}
         </Stack>
