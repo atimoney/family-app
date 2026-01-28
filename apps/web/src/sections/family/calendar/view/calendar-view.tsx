@@ -110,7 +110,12 @@ export function CalendarView() {
     async (eventId: string) => {
       try {
         const event = mergedEvents.find((e) => e.id === eventId);
-        await deleteEvent(eventId, event?.calendarId);
+        // Use googleEventId for the API call (Google Calendar needs this, not the local Prisma ID)
+        const googleEventId = event?.extendedProps?.googleEventId;
+        if (!googleEventId) {
+          throw new Error('Event not found or missing Google Event ID');
+        }
+        await deleteEvent(googleEventId, event?.calendarId);
         onCloseForm();
       } catch (err) {
         console.error('Failed to delete event:', err);
@@ -148,8 +153,13 @@ export function CalendarView() {
       // Persist to Google Calendar
       if (eventData.id && (eventData.start || eventData.end)) {
         const event = mergedEvents.find((e) => e.id === eventData.id);
+        const googleEventId = event?.extendedProps?.googleEventId;
+        if (!googleEventId) {
+          console.error('Event not found or missing Google Event ID');
+          return;
+        }
         try {
-          await updateEvent(eventData.id, {
+          await updateEvent(googleEventId, {
             start: eventData.start,
             end: eventData.end,
             allDay: eventData.allDay,
