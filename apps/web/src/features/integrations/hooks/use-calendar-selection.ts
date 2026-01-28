@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import {
   getGoogleCalendars,
-  updateCalendarSelection,
   type GoogleCalendar,
+  updateCalendarSelection,
 } from '../api';
 
 // ----------------------------------------------------------------------

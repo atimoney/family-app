@@ -7,6 +7,7 @@ import { usePathname } from 'src/routes/hooks';
 import { CONFIG } from 'src/global-config';
 import { themeConfig, ThemeProvider } from 'src/theme';
 
+import { Snackbar } from 'src/components/snackbar';
 import { ProgressBar } from 'src/components/progress-bar';
 import { MotionLazy } from 'src/components/animate/motion-lazy';
 import { LocalizationProvider } from 'src/components/localization-provider';
@@ -39,6 +40,7 @@ export default function App({ children }: AppProps) {
           >
             <MotionLazy>
               <ProgressBar />
+              <Snackbar />
               <SettingsDrawer defaultSettings={defaultSettings} />
               {children}
             </MotionLazy>

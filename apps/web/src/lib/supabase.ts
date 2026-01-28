@@ -1,9 +1,9 @@
-import type { SupabaseClient, AuthChangeEvent, Session } from '@supabase/supabase-js';
+import type { Session, SupabaseClient, AuthChangeEvent } from '@supabase/supabase-js';
 
 import { createClient } from '@supabase/supabase-js';
 
 import { CONFIG } from 'src/global-config';
-import { env, validateSupabaseEnv, buildRedirectUrl } from 'src/config/env';
+import { env, buildRedirectUrl, validateSupabaseEnv } from 'src/config/env';
 
 // ----------------------------------------------------------------------
 

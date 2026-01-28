@@ -5,10 +5,20 @@ import tasksRoutes from './tasks/index.js';
 import shoppingRoutes from './shopping/index.js';
 import googleIntegrationRoutes from './integrations/google/index.js';
 import eventsRoutes from './events/index.js';
+import profileRoutes from './profile/index.js';
+import familyRoutes from './family/index.js';
+import inviteRoutes from './invites/index.js';
 
 const routes: FastifyPluginAsync = async (fastify) => {
   // Health check at root level
   fastify.register(healthRoutes);
+
+  // Profile routes
+  fastify.register(profileRoutes, { prefix: '/api' });
+
+  // Family and invite routes
+  fastify.register(familyRoutes, { prefix: '/api' });
+  fastify.register(inviteRoutes, { prefix: '/api' });
 
   // Integration routes
   fastify.register(googleIntegrationRoutes, { prefix: '/integrations/google' });

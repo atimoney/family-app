@@ -1,19 +1,19 @@
 import type { CreateEventInput } from '../api';
 import type {
+  SyncResponse,
   CalendarEventApi,
   CalendarEventItem,
-  CalendarEventMetadata,
   CalendarEventsQuery,
-  SyncResponse,
+  CalendarEventMetadata,
 } from '../types';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import {
+  syncCalendar,
+  getCalendarEvents,
   createCalendarEvent,
   deleteCalendarEvent,
-  getCalendarEvents,
-  syncCalendar,
   updateCalendarEvent,
   updateCalendarEventMetadata,
 } from '../api';

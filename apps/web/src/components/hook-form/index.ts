@@ -8,11 +8,11 @@ export * from './rhf-switch';
 
 export * from './rhf-slider';
 
+export * from './zod-adapter';
+
 export * from './rhf-checkbox';
 
 export * from './schema-utils';
-
-export * from './zod-adapter';
 
 export * from './form-provider';
 

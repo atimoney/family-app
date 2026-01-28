@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 
 import {
   getGoogleOAuthUrl,
-  getGoogleConnectionStatus,
-  syncGoogleCalendar,
-  type GoogleConnectionStatus,
   type SyncResponse,
+  syncGoogleCalendar,
+  getGoogleConnectionStatus,
+  type GoogleConnectionStatus,
 } from '../api';
 
 // ----------------------------------------------------------------------

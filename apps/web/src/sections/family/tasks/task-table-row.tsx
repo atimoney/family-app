@@ -1,4 +1,4 @@
-import type { Task, FamilyMember } from '@family/shared';
+import type { Task, LegacyFamilyMember } from '@family/shared';
 
 import Box from '@mui/material/Box';
 import Avatar from '@mui/material/Avatar';
@@ -17,7 +17,7 @@ import { Iconify } from 'src/components/iconify';
 
 type Props = {
   task: Task;
-  assignee?: FamilyMember;
+  assignee?: LegacyFamilyMember;
   onToggleComplete: () => void;
   onDelete: () => void;
 };

@@ -1,6 +1,6 @@
 import type { IconifyProps } from 'src/components/iconify';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { varAlpha } from 'minimal-shared/utils';
 import { useSearchParams as useRouterSearchParams } from 'react-router';
 

@@ -3,9 +3,9 @@ import Typography from '@mui/material/Typography';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 
+import { SettingsFamily } from '../settings-family';
 import { SettingsPreferences } from '../settings-preferences';
 import { SettingsIntegrations } from '../settings-integrations';
-import { SettingsFamilyMembers } from '../settings-family-members';
 
 // ----------------------------------------------------------------------
 
@@ -17,8 +17,8 @@ export function SettingsView() {
       </Typography>
 
       <Stack spacing={4}>
-        {/* Family Members */}
-        <SettingsFamilyMembers />
+        {/* Family Management */}
+        <SettingsFamily />
 
         {/* Integrations */}
         <SettingsIntegrations />

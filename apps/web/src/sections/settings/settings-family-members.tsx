@@ -1,4 +1,4 @@
-import type { FamilyMember } from '@family/shared';
+import type { LegacyFamilyMember } from '@family/shared';
 
 import { useState, useCallback } from 'react';
 
@@ -19,7 +19,7 @@ import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
-const INITIAL_MEMBERS: FamilyMember[] = [
+const INITIAL_MEMBERS: LegacyFamilyMember[] = [
   { id: 'member-1', name: 'Dad', avatarUrl: '', role: 'parent' },
   { id: 'member-2', name: 'Mom', avatarUrl: '', role: 'parent' },
   { id: 'member-3', name: 'Alex', avatarUrl: '', role: 'child' },
@@ -28,14 +28,18 @@ const INITIAL_MEMBERS: FamilyMember[] = [
 
 // ----------------------------------------------------------------------
 
+/**
+ * @deprecated This component uses legacy mock data. Use SettingsFamily instead
+ * for real family member management.
+ */
 export function SettingsFamilyMembers() {
-  const [members, setMembers] = useState<FamilyMember[]>(INITIAL_MEMBERS);
+  const [members, setMembers] = useState<LegacyFamilyMember[]>(INITIAL_MEMBERS);
   const [newName, setNewName] = useState('');
 
   const handleAddMember = useCallback(() => {
     const trimmed = newName.trim();
     if (trimmed) {
-      const newMember: FamilyMember = {
+      const newMember: LegacyFamilyMember = {
         id: `member-${Date.now()}`,
         name: trimmed,
         role: 'child',

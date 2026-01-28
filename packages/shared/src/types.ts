@@ -1,9 +1,99 @@
+// ============================================================================
+// FAMILY & PROFILES
+// ============================================================================
+
+/** Role within a family - determines permissions */
+export type FamilyRole = 'owner' | 'admin' | 'member';
+
+/** Invite status lifecycle */
+export type FamilyInviteStatus = 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked';
+
+/** User profile - keyed by Supabase auth.users.id */
+export type Profile = {
+  id: string; // UUID from Supabase
+  email: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  timezone: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** A family unit that members belong to */
+export type Family = {
+  id: string; // CUID
+  name: string;
+  createdBy: string; // Profile ID
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** A member within a family - has family-specific display name and color */
 export type FamilyMember = {
+  id: string; // CUID - stable ID for future references (events, chores)
+  familyId: string;
+  profileId: string;
+  role: FamilyRole;
+  displayName: string | null; // Override for family context (e.g., "Dad")
+  color: string | null; // For calendar/UI color coding
+  joinedAt: string;
+  removedAt: string | null;
+  removedBy: string | null;
+  // Populated from profile for convenience
+  profile?: Profile;
+};
+
+/** An invitation to join a family */
+export type FamilyInvite = {
+  id: string; // CUID
+  familyId: string;
+  email: string | null; // If set, only this email can accept
+  role: Exclude<FamilyRole, 'owner'>; // Can't invite as owner
+  token: string;
+  invitedBy: string; // Profile ID
+  status: FamilyInviteStatus;
+  createdAt: string;
+  expiresAt: string;
+  respondedAt: string | null;
+  // Populated for display
+  inviterProfile?: Profile;
+  family?: Family;
+};
+
+/** Family with members populated - returned by GET /api/family */
+export type FamilyWithMembers = Family & {
+  members: FamilyMember[];
+  myMembership: FamilyMember;
+};
+
+/** Invite validation response - returned by GET /api/invites/:token/validate */
+export type InviteValidation = {
+  valid: boolean;
+  reason?: 'not_found' | 'expired' | 'already_used' | 'revoked' | 'email_mismatch' | 'already_member' | 'already_in_family';
+  familyName?: string;
+  inviterName?: string;
+  role?: Exclude<FamilyRole, 'owner'>;
+  email?: string | null;
+};
+
+// ============================================================================
+// LEGACY FAMILY MEMBER TYPE (for backward compatibility)
+// ============================================================================
+
+/**
+ * @deprecated Use FamilyMember instead. This type is kept for backward compatibility
+ * with existing UI components that use the old mock data format.
+ */
+export type LegacyFamilyMember = {
   id: string;
   name: string;
   avatarUrl?: string;
   role?: string;
 };
+
+// ============================================================================
+// TASKS
+// ============================================================================
 
 export type TaskStatus = 'todo' | 'doing' | 'done';
 

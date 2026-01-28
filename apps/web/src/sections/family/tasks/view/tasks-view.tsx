@@ -1,8 +1,8 @@
-import type { Task, FamilyMember } from '@family/shared';
+import type { Task, LegacyFamilyMember } from '@family/shared';
 
 import { useState, useCallback } from 'react';
 import { varAlpha } from 'minimal-shared/utils';
-import { useBoolean, useSetState } from 'minimal-shared/hooks';
+import { useSetState } from 'minimal-shared/hooks';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -24,7 +24,7 @@ import { TaskQuickAdd } from '../task-quick-add';
 // ----------------------------------------------------------------------
 
 // Mock family members
-const FAMILY_MEMBERS: FamilyMember[] = [
+const FAMILY_MEMBERS: LegacyFamilyMember[] = [
   { id: 'member-1', name: 'Dad', avatarUrl: '', role: 'parent' },
   { id: 'member-2', name: 'Mom', avatarUrl: '', role: 'parent' },
   { id: 'member-3', name: 'Alex', avatarUrl: '', role: 'child' },
@@ -123,7 +123,7 @@ export function TasksView() {
     setTasks((prev) => prev.filter((task) => task.id !== taskId));
   }, []);
 
-  const getMemberById = (id?: string): FamilyMember | undefined =>
+  const getMemberById = (id?: string): LegacyFamilyMember | undefined =>
     FAMILY_MEMBERS.find((m) => m.id === id);
 
   const openCount = tasks.filter((t) => !t.completed).length;

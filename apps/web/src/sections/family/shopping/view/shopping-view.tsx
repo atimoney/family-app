@@ -1,7 +1,7 @@
 import type { ShoppingItem } from '@family/shared';
 
 import { varAlpha } from 'minimal-shared/utils';
-import { useState, useCallback, useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';

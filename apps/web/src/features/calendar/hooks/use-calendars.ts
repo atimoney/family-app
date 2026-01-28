@@ -1,6 +1,6 @@
 import type { CalendarInfo } from '../types';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import { getSelectedCalendars } from '../api';
 

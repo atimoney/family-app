@@ -5,6 +5,7 @@ import { Navigate } from 'react-router';
 
 import { authRoutes } from './auth';
 import { familyRoutes } from './family';
+import { inviteRoutes } from './invite';
 import { settingsRoutes } from './settings';
 
 // ----------------------------------------------------------------------
@@ -22,6 +23,9 @@ export const routesSection: RouteObject[] = [
 
   // Family
   ...familyRoutes,
+
+  // Invite (public)
+  ...inviteRoutes,
 
   // Settings
   ...settingsRoutes,

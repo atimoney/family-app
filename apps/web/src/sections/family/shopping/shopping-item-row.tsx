@@ -1,6 +1,5 @@
 import type { ShoppingItem } from '@family/shared';
 
-import Box from '@mui/material/Box';
 import Checkbox from '@mui/material/Checkbox';
 import ListItem from '@mui/material/ListItem';
 import IconButton from '@mui/material/IconButton';

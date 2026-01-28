@@ -1,12 +1,12 @@
 import type {
-  CalendarEventApi,
-  CalendarEventMetadata,
-  CalendarEventsQuery,
+  SyncStatus,
   CalendarInfo,
   SyncResponse,
-  SyncStatus,
-  RecurrenceRule,
   EventReminder,
+  RecurrenceRule,
+  CalendarEventApi,
+  CalendarEventsQuery,
+  CalendarEventMetadata,
 } from './types';
 
 import { getSession } from 'src/lib/supabase';

@@ -1,10 +1,10 @@
 import type { CalendarRange } from './hooks/use-calendar';
-import type { CalendarInfo, CalendarEventItem, RecurrenceRule, EventReminder, ReminderMethod, RecurrenceFrequency } from 'src/features/calendar/types';
+import type { CalendarInfo, EventReminder, RecurrenceRule, ReminderMethod, CalendarEventItem, RecurrenceFrequency } from 'src/features/calendar/types';
 
 import * as z from 'zod';
 import dayjs from 'dayjs';
 import { uuidv4 } from 'minimal-shared/utils';
-import { useCallback, useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 
 import Box from '@mui/material/Box';
@@ -22,11 +22,11 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 
 import {
-  primary,
-  secondary,
   info,
+  primary,
   success,
   warning,
+  secondary,
   error as errorColor,
 } from 'src/theme/core/palette';
 
