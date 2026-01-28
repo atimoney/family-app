@@ -69,7 +69,7 @@ export function CalendarView() {
     /********/
     selectedRange,
     selectedEventId,
-  } = useCalendar();
+  } = useCalendar({ defaultDesktopView: 'timeGridWeek' });
 
   // Find current event for editing
   const currentEvent = selectedEventId ? mergedEvents.find((e) => e.id === selectedEventId) : null;
@@ -318,9 +318,9 @@ export function CalendarView() {
               onChangeView={onChangeView}
               onDateNavigation={onDateNavigation}
               viewOptions={[
-                { value: 'dayGridMonth', label: 'Month', icon: 'mingcute:calendar-month-line' },
                 { value: 'timeGridWeek', label: 'Week', icon: 'mingcute:calendar-week-line' },
                 { value: 'timeGridDay', label: 'Day', icon: 'mingcute:calendar-day-line' },
+                { value: 'dayGridMonth', label: 'Month', icon: 'mingcute:calendar-month-line' },
               ]}
             />
 
