@@ -5,7 +5,7 @@ import { google, calendar_v3 } from 'googleapis';
 import { decryptSecret } from '../crypto.js';
 import { parseEventTimes, withRetry } from './sync-utils.js';
 import { refreshAccessToken } from './token-refresh.js';
-import { parseFamilyExtendedProperties } from './calendar.js';
+import { parseFamilyExtendedProperties, parseAllExtendedProperties } from './calendar.js';
 
 // ============================================================================
 // TYPES
@@ -394,21 +394,27 @@ async function processEvent(options: {
 
 /**
  * E2: Extract family assignments from Google event's extendedProperties.private
- * and store them in CalendarEventMetadata.customJson
+ * E1: Extract category, audience, tags, and metadata from extendedProperties.private
+ * and store them in CalendarEventMetadata
  */
 async function syncFamilyAssignmentsToMetadata(
   prisma: PrismaClient,
   eventId: string,
   googleEvent: calendar_v3.Schema$Event
 ): Promise<void> {
-  const familyAssignments = parseFamilyExtendedProperties(googleEvent.extendedProperties);
+  const parsed = parseAllExtendedProperties(googleEvent.extendedProperties);
 
-  if (!familyAssignments) {
-    // No family data to sync
+  // Check if we have any data to sync
+  const hasE2Data = parsed.familyAssignments !== null;
+  const hasE1Data = parsed.category || parsed.audience || parsed.tags.length > 0 || 
+                    Object.keys(parsed.metadata).length > 0;
+
+  if (!hasE2Data && !hasE1Data) {
+    // No family or E1 data to sync
     return;
   }
 
-  // Upsert metadata with family assignments
+  // Upsert metadata with family assignments and E1 fields
   const existingMetadata = await prisma.calendarEventMetadata.findUnique({
     where: { eventId },
   });
@@ -416,19 +422,31 @@ async function syncFamilyAssignmentsToMetadata(
   const existingCustomJson = (existingMetadata?.customJson ?? {}) as Record<string, unknown>;
   const mergedCustomJson = {
     ...existingCustomJson,
-    familyAssignments,
+    ...(parsed.familyAssignments ? { familyAssignments: parsed.familyAssignments } : {}),
   };
 
   await prisma.calendarEventMetadata.upsert({
     where: { eventId },
     create: {
       eventId,
-      tags: existingMetadata?.tags ?? [],
+      tags: parsed.tags.length > 0 ? parsed.tags : (existingMetadata?.tags ?? []),
       notes: existingMetadata?.notes ?? null,
       color: existingMetadata?.color ?? null,
+      // E1: Add category, audience, and categoryMetadata
+      category: parsed.category ?? existingMetadata?.category ?? null,
+      audience: parsed.audience ?? existingMetadata?.audience ?? 'family',
+      categoryMetadata: Object.keys(parsed.metadata).length > 0 
+        ? parsed.metadata 
+        : (existingMetadata?.categoryMetadata ?? {}),
       customJson: mergedCustomJson,
     },
     update: {
+      // Only update tags if we have new ones from Google
+      ...(parsed.tags.length > 0 ? { tags: parsed.tags } : {}),
+      // E1: Update category, audience, and categoryMetadata if present
+      ...(parsed.category ? { category: parsed.category } : {}),
+      ...(parsed.audience ? { audience: parsed.audience } : {}),
+      ...(Object.keys(parsed.metadata).length > 0 ? { categoryMetadata: parsed.metadata } : {}),
       customJson: mergedCustomJson,
     },
   });

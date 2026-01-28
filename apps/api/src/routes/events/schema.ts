@@ -50,6 +50,23 @@ export const familyAssignmentsSchema = z.object({
   assignedToMemberId: z.string().nullable().optional(),
 }).nullable().optional();
 
+// E1: Event category enum
+export const eventCategorySchema = z.enum([
+  'Meal',
+  'School',
+  'Sport',
+  'Activity',
+  'Chore',
+  'Appointment',
+  'Work',
+  'Travel',
+  'Home',
+  'Admin',
+]);
+
+// E1: Event audience enum
+export const eventAudienceSchema = z.enum(['family', 'adults', 'kids']);
+
 export const getEventsResponseSchema = z.array(
   z.object({
     id: z.string(),
@@ -69,6 +86,10 @@ export const getEventsResponseSchema = z.array(
         tags: z.array(z.string()),
         notes: z.string().nullable().optional(),
         color: z.string().nullable().optional(),
+        // E1: New metadata fields
+        category: eventCategorySchema.nullable().optional(),
+        audience: eventAudienceSchema.nullable().optional(),
+        categoryMetadata: z.record(z.any()).nullable().optional(),
         customJson: z.record(z.any()).optional(),
         familyAssignments: familyAssignmentsSchema,
       })
@@ -84,6 +105,10 @@ export const eventMetadataBodySchema = z.object({
   tags: z.array(z.string()).optional().default([]),
   notes: z.string().nullable().optional().default(null),
   color: z.string().nullable().optional().default(null),
+  // E1: New metadata fields
+  category: eventCategorySchema.nullable().optional(),
+  audience: eventAudienceSchema.nullable().optional().default('family'),
+  categoryMetadata: z.record(z.any()).nullable().optional().default({}),
   customJson: z.record(z.any()).optional().default({}),
   familyAssignments: familyAssignmentsSchema,
 });
@@ -94,6 +119,10 @@ export const eventMetadataResponseSchema = z.object({
   tags: z.array(z.string()),
   notes: z.string().nullable().optional(),
   color: z.string().nullable().optional(),
+  // E1: New metadata fields
+  category: eventCategorySchema.nullable().optional(),
+  audience: eventAudienceSchema.nullable().optional(),
+  categoryMetadata: z.record(z.any()).nullable().optional(),
   customJson: z.record(z.any()),
   familyAssignments: familyAssignmentsSchema,
 });

@@ -201,6 +201,28 @@ export function CalendarView() {
   const handleCreateEvent = useCallback(
     async (eventData: CalendarEventItem) => {
       try {
+        // E1: Build extraData with both E2 family assignments and E1 metadata
+        const extraData: Record<string, unknown> = {};
+        
+        // E2: Family assignments
+        if (eventData.familyAssignments) {
+          extraData.familyAssignments = eventData.familyAssignments;
+        }
+        
+        // E1: Event metadata
+        if (eventData.category) {
+          extraData.category = eventData.category;
+        }
+        if (eventData.audience) {
+          extraData.audience = eventData.audience;
+        }
+        if (eventData.tags && eventData.tags.length > 0) {
+          extraData.tags = eventData.tags;
+        }
+        if (eventData.categoryMetadata) {
+          extraData.metadata = eventData.categoryMetadata;
+        }
+
         await createEvent({
           title: eventData.title,
           start: eventData.start,
@@ -212,9 +234,7 @@ export function CalendarView() {
           color: eventData.color,
           recurrence: eventData.recurrence,
           reminders: eventData.reminders,
-          extraData: eventData.familyAssignments
-            ? { familyAssignments: eventData.familyAssignments }
-            : undefined,
+          extraData: Object.keys(extraData).length > 0 ? extraData : undefined,
         });
         onCloseForm();
       } catch (err) {
@@ -238,6 +258,28 @@ export function CalendarView() {
         // Optimistically update local state
         setLocalEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
 
+        // E1: Build extraData with both E2 family assignments and E1 metadata
+        const extraData: Record<string, unknown> = {};
+        
+        // E2: Family assignments
+        if (updatedEvent.familyAssignments) {
+          extraData.familyAssignments = updatedEvent.familyAssignments;
+        }
+        
+        // E1: Event metadata
+        if (updatedEvent.category) {
+          extraData.category = updatedEvent.category;
+        }
+        if (updatedEvent.audience) {
+          extraData.audience = updatedEvent.audience;
+        }
+        if (updatedEvent.tags && updatedEvent.tags.length > 0) {
+          extraData.tags = updatedEvent.tags;
+        }
+        if (updatedEvent.categoryMetadata) {
+          extraData.metadata = updatedEvent.categoryMetadata;
+        }
+
         // Persist to Google Calendar
         await updateEvent(googleEventId, {
           title: updatedEvent.title,
@@ -250,9 +292,7 @@ export function CalendarView() {
           color: updatedEvent.color,
           recurrence: updatedEvent.recurrence,
           reminders: updatedEvent.reminders,
-          extraData: updatedEvent.familyAssignments
-            ? { familyAssignments: updatedEvent.familyAssignments }
-            : undefined,
+          extraData: Object.keys(extraData).length > 0 ? extraData : undefined,
         });
       } catch (err) {
         console.error('Failed to update event:', err);

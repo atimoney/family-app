@@ -1,9 +1,12 @@
 import { google, calendar_v3 } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
-import type { RecurrenceRule, EventReminder, FamilyAssignments } from '../../routes/calendar/schema.js';
+import type { RecurrenceRule, EventReminder, FamilyAssignments, EventCategory, EventAudience, CategoryMetadata } from '../../routes/calendar/schema.js';
 
 // E2: Current schema version for family metadata in extendedProperties
 export const FAMILY_SCHEMA_VERSION = '2';
+
+// E1: Source identifier for family-app created events
+export const FAMILY_SOURCE = 'family-app';
 
 export function getCalendarClient(auth: OAuth2Client) {
   return google.calendar({ version: 'v3', auth });
@@ -159,74 +162,154 @@ export function parseGoogleReminders(reminders: calendar_v3.Schema$EventReminder
 
 // ============================================================================
 // E2: FAMILY MEMBER ASSIGNMENT HELPERS
+// E1: EVENT METADATA HELPERS (CATEGORIES, AUDIENCE, TAGS)
 // ============================================================================
 
 /**
+ * E1: Extended properties options including E1 metadata fields
+ */
+export type ExtendedPropertiesInput = {
+  familyAssignments?: FamilyAssignments | null;
+  // E1 fields
+  category?: EventCategory | string | null;
+  audience?: EventAudience | string | null;
+  tags?: string[] | null;
+  metadata?: CategoryMetadata | null;
+  eventId?: string | null;
+};
+
+/**
  * Build extendedProperties.private object for Google Calendar event
- * Stores family member assignments in a format that can be synced back
+ * Stores family member assignments and E1 metadata in a format that can be synced back
  */
 export function buildFamilyExtendedProperties(
-  familyAssignments: FamilyAssignments | null | undefined
-): Record<string, string> | undefined {
-  if (!familyAssignments) {
-    return undefined;
+  familyAssignments: FamilyAssignments | null | undefined,
+  e1Options?: {
+    category?: EventCategory | string | null;
+    audience?: EventAudience | string | null;
+    tags?: string[] | null;
+    metadata?: CategoryMetadata | null;
+    eventId?: string | null;
   }
-
+): Record<string, string> | undefined {
   const props: Record<string, string> = {
     familySchemaVersion: FAMILY_SCHEMA_VERSION,
+    familySource: FAMILY_SOURCE,
   };
 
-  if (familyAssignments.primaryFamilyMemberId) {
-    props.familyPrimaryMemberId = familyAssignments.primaryFamilyMemberId;
+  // E2: Family assignments
+  if (familyAssignments) {
+    if (familyAssignments.primaryFamilyMemberId) {
+      props.familyPrimaryMemberId = familyAssignments.primaryFamilyMemberId;
+    }
+
+    if (familyAssignments.participantFamilyMemberIds && familyAssignments.participantFamilyMemberIds.length > 0) {
+      // Store as JSON array string for safe round-trip
+      props.familyParticipantMemberIds = JSON.stringify(familyAssignments.participantFamilyMemberIds);
+    }
+
+    if (familyAssignments.cookMemberId) {
+      props.familyCookMemberId = familyAssignments.cookMemberId;
+    }
+
+    if (familyAssignments.assignedToMemberId) {
+      props.familyAssignedToMemberId = familyAssignments.assignedToMemberId;
+    }
   }
 
-  if (familyAssignments.participantFamilyMemberIds && familyAssignments.participantFamilyMemberIds.length > 0) {
-    // Store as JSON array string for safe round-trip
-    props.familyParticipantMemberIds = JSON.stringify(familyAssignments.participantFamilyMemberIds);
+  // E1: Category, audience, tags, and metadata
+  if (e1Options) {
+    if (e1Options.category) {
+      props.familyCategory = e1Options.category;
+    }
+
+    if (e1Options.audience) {
+      props.familyAudience = e1Options.audience;
+    }
+
+    if (e1Options.tags && e1Options.tags.length > 0) {
+      // Store tags as JSON array for safe round-trip
+      props.familyTags = JSON.stringify(e1Options.tags);
+    }
+
+    if (e1Options.metadata && Object.keys(e1Options.metadata).length > 0) {
+      // Store category-specific metadata as JSON
+      props.familyMetadata = JSON.stringify(e1Options.metadata);
+    }
+
+    if (e1Options.eventId) {
+      props.familyEventId = e1Options.eventId;
+    }
   }
 
-  if (familyAssignments.cookMemberId) {
-    props.familyCookMemberId = familyAssignments.cookMemberId;
-  }
-
-  if (familyAssignments.assignedToMemberId) {
-    props.familyAssignedToMemberId = familyAssignments.assignedToMemberId;
-  }
-
-  // Only return if we have actual data beyond schema version
-  return Object.keys(props).length > 1 ? props : undefined;
+  // Only return if we have actual data beyond schema version and source
+  return Object.keys(props).length > 2 ? props : undefined;
 }
 
 /**
+ * E1: Parsed extended properties result including E1 metadata
+ */
+export type ParsedExtendedProperties = {
+  familyAssignments: FamilyAssignments | null;
+  // E1 fields
+  category: string | null;
+  audience: string | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  eventId: string | null;
+  source: string | null;
+  schemaVersion: string | null;
+};
+
+/**
  * Parse extendedProperties.private from Google Calendar event
- * Extracts family member assignments, handling missing/malformed data gracefully
+ * Extracts family member assignments and E1 metadata, handling missing/malformed data gracefully
  */
 export function parseFamilyExtendedProperties(
   extendedProperties: calendar_v3.Schema$Event['extendedProperties'] | null | undefined
 ): FamilyAssignments | null {
+  const parsed = parseAllExtendedProperties(extendedProperties);
+  return parsed.familyAssignments;
+}
+
+/**
+ * Parse all extended properties including E1 metadata
+ */
+export function parseAllExtendedProperties(
+  extendedProperties: calendar_v3.Schema$Event['extendedProperties'] | null | undefined
+): ParsedExtendedProperties {
+  const result: ParsedExtendedProperties = {
+    familyAssignments: null,
+    category: null,
+    audience: null,
+    tags: [],
+    metadata: {},
+    eventId: null,
+    source: null,
+    schemaVersion: null,
+  };
+
   const privateProps = extendedProperties?.private;
   if (!privateProps) {
-    return null;
+    return result;
   }
 
-  // Check schema version - gracefully handle v1 or missing version
-  const schemaVersion = privateProps.familySchemaVersion;
-  if (!schemaVersion) {
-    // No family data present
-    return null;
-  }
+  // Store schema version and source
+  result.schemaVersion = privateProps.familySchemaVersion ?? null;
+  result.source = privateProps.familySource ?? null;
 
-  const result: FamilyAssignments = {};
+  // E2: Parse family assignments
+  const familyAssignments: FamilyAssignments = {};
 
   if (privateProps.familyPrimaryMemberId) {
-    result.primaryFamilyMemberId = privateProps.familyPrimaryMemberId;
+    familyAssignments.primaryFamilyMemberId = privateProps.familyPrimaryMemberId;
   }
 
   if (privateProps.familyParticipantMemberIds) {
     try {
       const parsed = JSON.parse(privateProps.familyParticipantMemberIds);
       if (Array.isArray(parsed)) {
-        result.participantFamilyMemberIds = parsed.filter((id): id is string => typeof id === 'string');
+        familyAssignments.participantFamilyMemberIds = parsed.filter((id): id is string => typeof id === 'string');
       }
     } catch {
       // Malformed JSON - skip this field
@@ -234,31 +317,77 @@ export function parseFamilyExtendedProperties(
   }
 
   if (privateProps.familyCookMemberId) {
-    result.cookMemberId = privateProps.familyCookMemberId;
+    familyAssignments.cookMemberId = privateProps.familyCookMemberId;
   }
 
   if (privateProps.familyAssignedToMemberId) {
-    result.assignedToMemberId = privateProps.familyAssignedToMemberId;
+    familyAssignments.assignedToMemberId = privateProps.familyAssignedToMemberId;
   }
 
-  // Return null if no actual data was parsed
-  const hasData = result.primaryFamilyMemberId ||
-    (result.participantFamilyMemberIds && result.participantFamilyMemberIds.length > 0) ||
-    result.cookMemberId ||
-    result.assignedToMemberId;
+  // Check if we have any family assignment data
+  const hasFamilyData = familyAssignments.primaryFamilyMemberId ||
+    (familyAssignments.participantFamilyMemberIds && familyAssignments.participantFamilyMemberIds.length > 0) ||
+    familyAssignments.cookMemberId ||
+    familyAssignments.assignedToMemberId;
 
-  return hasData ? result : null;
+  if (hasFamilyData) {
+    result.familyAssignments = familyAssignments;
+  }
+
+  // E1: Parse category, audience, tags, and metadata
+  if (privateProps.familyCategory) {
+    result.category = privateProps.familyCategory;
+  }
+
+  if (privateProps.familyAudience) {
+    result.audience = privateProps.familyAudience;
+  }
+
+  if (privateProps.familyTags) {
+    try {
+      const parsed = JSON.parse(privateProps.familyTags);
+      if (Array.isArray(parsed)) {
+        result.tags = parsed.filter((tag): tag is string => typeof tag === 'string');
+      }
+    } catch {
+      // Malformed JSON - skip this field
+    }
+  }
+
+  if (privateProps.familyMetadata) {
+    try {
+      const parsed = JSON.parse(privateProps.familyMetadata);
+      if (typeof parsed === 'object' && parsed !== null) {
+        result.metadata = parsed;
+      }
+    } catch {
+      // Malformed JSON - skip this field
+    }
+  }
+
+  if (privateProps.familyEventId) {
+    result.eventId = privateProps.familyEventId;
+  }
+
+  return result;
 }
 
 /**
- * Merge existing extendedProperties with new family data
+ * Merge existing extendedProperties with new family data and E1 metadata
  * Preserves any existing private properties while adding/updating family fields
  */
 export function mergeExtendedProperties(
   existing: calendar_v3.Schema$Event['extendedProperties'] | null | undefined,
-  familyAssignments: FamilyAssignments | null | undefined
+  familyAssignments: FamilyAssignments | null | undefined,
+  e1Options?: {
+    category?: EventCategory | string | null;
+    audience?: EventAudience | string | null;
+    tags?: string[] | null;
+    metadata?: CategoryMetadata | null;
+    eventId?: string | null;
+  }
 ): calendar_v3.Schema$EventExtendedProperties | undefined {
-  const familyProps = buildFamilyExtendedProperties(familyAssignments);
+  const familyProps = buildFamilyExtendedProperties(familyAssignments, e1Options);
   
   if (!familyProps && !existing?.private) {
     return undefined;
@@ -280,6 +409,12 @@ export async function createEvent(options: {
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
   familyAssignments?: FamilyAssignments | null;
+  // E1 fields
+  category?: EventCategory | string | null;
+  audience?: EventAudience | string | null;
+  tags?: string[] | null;
+  categoryMetadata?: CategoryMetadata | null;
+  eventId?: string | null;
 }) {
   const calendar = getCalendarClient(options.auth);
   
@@ -299,10 +434,19 @@ export async function createEvent(options: {
   }
 
   // E2: Add family member assignments to extendedProperties.private
-  if (options.familyAssignments) {
+  // E1: Add category, audience, tags, and metadata to extendedProperties.private
+  const hasE1Data = options.category || options.audience || options.tags?.length || options.categoryMetadata;
+  if (options.familyAssignments || hasE1Data) {
     requestBody.extendedProperties = mergeExtendedProperties(
       options.event.extendedProperties,
-      options.familyAssignments
+      options.familyAssignments,
+      hasE1Data ? {
+        category: options.category,
+        audience: options.audience,
+        tags: options.tags,
+        metadata: options.categoryMetadata,
+        eventId: options.eventId,
+      } : undefined
     );
   }
   
@@ -321,6 +465,12 @@ export async function updateEvent(options: {
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
   familyAssignments?: FamilyAssignments | null;
+  // E1 fields
+  category?: EventCategory | string | null;
+  audience?: EventAudience | string | null;
+  tags?: string[] | null;
+  categoryMetadata?: CategoryMetadata | null;
+  internalEventId?: string | null;
 }) {
   const calendar = getCalendarClient(options.auth);
   
@@ -340,10 +490,20 @@ export async function updateEvent(options: {
   }
 
   // E2: Add family member assignments to extendedProperties.private
-  if (options.familyAssignments !== undefined) {
+  // E1: Add category, audience, tags, and metadata to extendedProperties.private
+  const hasE1Data = options.category !== undefined || options.audience !== undefined || 
+                     options.tags !== undefined || options.categoryMetadata !== undefined;
+  if (options.familyAssignments !== undefined || hasE1Data) {
     requestBody.extendedProperties = mergeExtendedProperties(
       options.event.extendedProperties,
-      options.familyAssignments
+      options.familyAssignments,
+      hasE1Data ? {
+        category: options.category,
+        audience: options.audience,
+        tags: options.tags,
+        metadata: options.categoryMetadata,
+        eventId: options.internalEventId,
+      } : undefined
     );
   }
   

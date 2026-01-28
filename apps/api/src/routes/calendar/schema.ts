@@ -34,11 +34,84 @@ export const familyAssignmentsSchema = z.object({
   assignedToMemberId: z.string().nullable().optional(),
 }).nullable().optional();
 
+// ============================================================================
+// E1: EVENT METADATA SCHEMAS
+// ============================================================================
+
+// E1: Event category enum
+export const eventCategorySchema = z.enum([
+  'Meal',
+  'School',
+  'Sport',
+  'Activity',
+  'Chore',
+  'Appointment',
+  'Work',
+  'Travel',
+  'Home',
+  'Admin',
+]);
+
+// E1: Event audience enum
+export const eventAudienceSchema = z.enum(['family', 'adults', 'kids']);
+
+// E1: Category-specific metadata schemas
+export const mealMetadataSchema = z.object({
+  mealType: z.enum(['breakfast', 'lunch', 'dinner']).nullable().optional(),
+  kidFriendly: z.boolean().optional(),
+  recipeRef: z.string().nullable().optional(),
+}).optional();
+
+export const schoolMetadataSchema = z.object({
+  schoolName: z.string().nullable().optional(),
+}).optional();
+
+export const sportMetadataSchema = z.object({
+  sportName: z.string().nullable().optional(),
+  teamName: z.string().nullable().optional(),
+  homeAway: z.enum(['home', 'away']).nullable().optional(),
+  arrivalBufferMins: z.number().int().min(0).nullable().optional(),
+}).optional();
+
+export const choreMetadataSchema = z.object({
+  rewardPoints: z.number().int().min(0).nullable().optional(),
+  completionRequired: z.boolean().optional(),
+}).optional();
+
+export const appointmentMetadataSchema = z.object({
+  appointmentType: z.string().nullable().optional(),
+  providerName: z.string().nullable().optional(),
+  transportRequired: z.boolean().optional(),
+}).optional();
+
+export const travelMetadataSchema = z.object({
+  tripName: z.string().nullable().optional(),
+  mode: z.enum(['flight', 'car', 'train', 'other']).nullable().optional(),
+  bookingRef: z.string().nullable().optional(),
+}).optional();
+
+export const homeMetadataSchema = z.object({
+  tradeType: z.string().nullable().optional(),
+  contractorName: z.string().nullable().optional(),
+  urgency: z.enum(['low', 'med', 'high']).nullable().optional(),
+}).optional();
+
+export const adminMetadataSchema = z.object({
+  status: z.enum(['pending', 'done']).nullable().optional(),
+  dueDate: z.string().nullable().optional(),
+  referenceLink: z.string().nullable().optional(),
+}).optional();
+
+// E1: Generic category metadata (union of all category schemas)
+export const categoryMetadataSchema = z.record(z.any()).nullable().optional();
+
 export const extraDataSchema = z.object({
   tags: z.array(z.string()).default([]),
-  category: z.string().nullable().default(null),
+  category: eventCategorySchema.nullable().optional().default(null),
+  audience: eventAudienceSchema.nullable().optional().default('family'),
   notes: z.string().nullable().default(null),
   color: z.string().nullable().optional().default(null),
+  metadata: categoryMetadataSchema.default({}),
   familyAssignments: familyAssignmentsSchema,
 });
 
@@ -79,6 +152,10 @@ export type RecurrenceRule = z.infer<typeof recurrenceRuleSchema>;
 export type ReminderMethod = z.infer<typeof reminderMethodSchema>;
 export type EventReminder = z.infer<typeof eventReminderSchema>;
 export type FamilyAssignments = z.infer<typeof familyAssignmentsSchema>;
+export type EventCategory = z.infer<typeof eventCategorySchema>;
+export type EventAudience = z.infer<typeof eventAudienceSchema>;
+export type CategoryMetadata = z.infer<typeof categoryMetadataSchema>;
+export type ExtraData = z.infer<typeof extraDataSchema>;
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 export type UpdateMetadataInput = z.infer<typeof updateMetadataSchema>;

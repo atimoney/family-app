@@ -4,6 +4,9 @@ import type {
   SyncResponse,
   EventReminder,
   RecurrenceRule,
+  EventCategory,
+  EventAudience,
+  CategoryMetadata,
   CalendarEventApi,
   CalendarEventsQuery,
   CalendarEventMetadata,
@@ -93,6 +96,10 @@ export type CreateEventInput = {
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
   extraData?: {
+    tags?: string[];
+    category?: EventCategory | null;
+    audience?: EventAudience | null;
+    metadata?: CategoryMetadata | null;
     familyAssignments?: EventFamilyAssignments;
   };
 };

@@ -22,8 +22,16 @@ import {
 // HELPERS
 // ----------------------------------------------------------------------
 
-const normalizeMetadata = (metadata: CalendarEventMetadata | null | undefined) =>
-  metadata ?? { tags: [], notes: null, color: null, customJson: {} };
+const normalizeMetadata = (metadata: CalendarEventMetadata | null | undefined): CalendarEventMetadata =>
+  metadata ?? { 
+    tags: [], 
+    notes: null, 
+    color: null, 
+    category: null,
+    audience: 'family',
+    categoryMetadata: {},
+    customJson: {} 
+  };
 
 export function mapApiEventToCalendarEvent(event: CalendarEventApi): CalendarEventItem {
   const metadata = normalizeMetadata(event.metadata);
@@ -41,6 +49,11 @@ export function mapApiEventToCalendarEvent(event: CalendarEventApi): CalendarEve
     borderColor: color ?? undefined,
     textColor: color ? '#ffffff' : undefined,
     familyAssignments: metadata.familyAssignments ?? null,
+    // E1: Map category, audience, tags, and categoryMetadata
+    category: metadata.category ?? null,
+    audience: metadata.audience ?? 'family',
+    tags: metadata.tags ?? [],
+    categoryMetadata: metadata.categoryMetadata ?? null,
     extendedProps: {
       googleEventId: event.googleEventId,
       description: event.description,

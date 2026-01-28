@@ -13,10 +13,100 @@ export type EventFamilyAssignments = {
   assignedToMemberId?: string | null;
 };
 
+// ============================================================================
+// E1: EVENT METADATA - CATEGORIES, AUDIENCE & CATEGORY-SPECIFIC DATA
+// ============================================================================
+
+/** E1: Event category enum */
+export type EventCategory =
+  | 'Meal'
+  | 'School'
+  | 'Sport'
+  | 'Activity'
+  | 'Chore'
+  | 'Appointment'
+  | 'Work'
+  | 'Travel'
+  | 'Home'
+  | 'Admin';
+
+/** E1: Event audience enum */
+export type EventAudience = 'family' | 'adults' | 'kids';
+
+/** E1: Meal category metadata */
+export type MealMetadata = {
+  mealType?: 'breakfast' | 'lunch' | 'dinner' | null;
+  kidFriendly?: boolean;
+  recipeRef?: string | null;
+};
+
+/** E1: School category metadata */
+export type SchoolMetadata = {
+  schoolName?: string | null;
+};
+
+/** E1: Sport category metadata */
+export type SportMetadata = {
+  sportName?: string | null;
+  teamName?: string | null;
+  homeAway?: 'home' | 'away' | null;
+  arrivalBufferMins?: number | null;
+};
+
+/** E1: Chore category metadata */
+export type ChoreMetadata = {
+  rewardPoints?: number | null;
+  completionRequired?: boolean;
+};
+
+/** E1: Appointment category metadata */
+export type AppointmentMetadata = {
+  appointmentType?: string | null;
+  providerName?: string | null;
+  transportRequired?: boolean;
+};
+
+/** E1: Travel category metadata */
+export type TravelMetadata = {
+  tripName?: string | null;
+  mode?: 'flight' | 'car' | 'train' | 'other' | null;
+  bookingRef?: string | null;
+};
+
+/** E1: Home category metadata */
+export type HomeMetadata = {
+  tradeType?: string | null;
+  contractorName?: string | null;
+  urgency?: 'low' | 'med' | 'high' | null;
+};
+
+/** E1: Admin category metadata */
+export type AdminMetadata = {
+  status?: 'pending' | 'done' | null;
+  dueDate?: string | null;
+  referenceLink?: string | null;
+};
+
+/** E1: Union type for all category-specific metadata */
+export type CategoryMetadata =
+  | MealMetadata
+  | SchoolMetadata
+  | SportMetadata
+  | ChoreMetadata
+  | AppointmentMetadata
+  | TravelMetadata
+  | HomeMetadata
+  | AdminMetadata
+  | Record<string, unknown>;
+
 export type CalendarEventMetadata = {
   tags: string[];
   notes: string | null;
   color: string | null;
+  // E1: New metadata fields
+  category?: EventCategory | null;
+  audience?: EventAudience | null;
+  categoryMetadata?: CategoryMetadata | null;
   customJson?: Record<string, unknown>;
   familyAssignments?: EventFamilyAssignments | null;
 };
@@ -84,6 +174,11 @@ export type CalendarEventItem = {
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
   familyAssignments?: EventFamilyAssignments | null;
+  // E1: Event metadata fields
+  category?: EventCategory | null;
+  audience?: EventAudience | null;
+  tags?: string[];
+  categoryMetadata?: CategoryMetadata | null;
   backgroundColor?: string;
   borderColor?: string;
   textColor?: string;

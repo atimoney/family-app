@@ -413,6 +413,11 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       recurrence: recurrence ?? undefined,
       reminders: reminders ?? undefined,
       familyAssignments: extraData?.familyAssignments ?? undefined,
+      // E1: Pass category, audience, tags, and metadata to Google
+      category: extraData?.category ?? undefined,
+      audience: extraData?.audience ?? undefined,
+      tags: extraData?.tags ?? undefined,
+      categoryMetadata: extraData?.metadata ?? undefined,
     });
 
     // Store extra data including color preference and family assignments
@@ -504,6 +509,11 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       recurrence: recurrence !== undefined ? recurrence : undefined,
       reminders: reminders !== undefined ? reminders : undefined,
       familyAssignments: extraData?.familyAssignments !== undefined ? extraData.familyAssignments : undefined,
+      // E1: Pass category, audience, tags, and metadata to Google
+      category: extraData?.category !== undefined ? extraData.category : undefined,
+      audience: extraData?.audience !== undefined ? extraData.audience : undefined,
+      tags: extraData?.tags !== undefined ? extraData.tags : undefined,
+      categoryMetadata: extraData?.metadata !== undefined ? extraData.metadata : undefined,
     });
 
     // Store extra data including color preference and family assignments

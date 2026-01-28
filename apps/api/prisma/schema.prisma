@@ -88,17 +88,23 @@ model CalendarEvent {
 
 // User-defined metadata for calendar events (tags, notes, colors, etc.)
 model CalendarEventMetadata {
-  id         String   @id @default(cuid())
-  eventId    String   @unique
-  tags       String[]
-  notes      String?
-  color      String?  // User override color
-  customJson Json     @default("{}")
-  deletedAt  DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id               String   @id @default(cuid())
+  eventId          String   @unique
+  tags             String[]
+  notes            String?
+  color            String?  // User override color
+  customJson       Json     @default("{}")
+  // E1: Event metadata fields
+  category         String?  // E1: Event category (Meal, School, Sport, etc.)
+  audience         String?  @default("family") // E1: Target audience (family, adults, kids)
+  categoryMetadata Json     @default("{}") // E1: Category-specific metadata
+  deletedAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([category])
 }
 
 // Stores extra data for events (legacy - kept for migration, prefer CalendarEventMetadata)

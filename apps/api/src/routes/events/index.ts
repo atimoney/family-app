@@ -69,6 +69,8 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       // E2: Extract familyAssignments from customJson if present
       const customJson = (event.metadata?.customJson ?? {}) as Record<string, unknown>;
       const familyAssignments = customJson.familyAssignments as Record<string, unknown> | undefined;
+      // E1: Extract category metadata
+      const categoryMetadata = (event.metadata?.categoryMetadata ?? {}) as Record<string, unknown>;
 
       return {
         id: event.id,
@@ -88,6 +90,10 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
               tags: event.metadata.tags ?? [],
               notes: event.metadata.notes ?? null,
               color: event.metadata.color ?? null,
+              // E1: Include category, audience, and categoryMetadata
+              category: event.metadata.category ?? null,
+              audience: event.metadata.audience ?? 'family',
+              categoryMetadata,
               customJson,
               familyAssignments: familyAssignments ?? null,
             }
@@ -128,6 +134,8 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     // E2: Extract familyAssignments from customJson if present
     const customJson = (event.metadata?.customJson ?? {}) as Record<string, unknown>;
     const familyAssignments = customJson.familyAssignments as Record<string, unknown> | undefined;
+    // E1: Extract category metadata
+    const categoryMetadata = (event.metadata?.categoryMetadata ?? {}) as Record<string, unknown>;
 
     return {
       id: event.id,
@@ -147,6 +155,10 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
             tags: event.metadata.tags ?? [],
             notes: event.metadata.notes ?? null,
             color: event.metadata.color ?? null,
+            // E1: Include category, audience, and categoryMetadata
+            category: event.metadata.category ?? null,
+            audience: event.metadata.audience ?? 'family',
+            categoryMetadata,
             customJson,
             familyAssignments: familyAssignments ?? null,
           }
@@ -200,12 +212,20 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
         tags: parsedBody.data.tags ?? [],
         notes: parsedBody.data.notes ?? null,
         color: parsedBody.data.color ?? null,
+        // E1: Add category, audience, and categoryMetadata
+        category: parsedBody.data.category ?? null,
+        audience: parsedBody.data.audience ?? 'family',
+        categoryMetadata: parsedBody.data.categoryMetadata ?? {},
         customJson,
       },
       update: {
         tags: parsedBody.data.tags ?? [],
         notes: parsedBody.data.notes ?? null,
         color: parsedBody.data.color ?? null,
+        // E1: Update category, audience, and categoryMetadata
+        category: parsedBody.data.category ?? null,
+        audience: parsedBody.data.audience ?? 'family',
+        categoryMetadata: parsedBody.data.categoryMetadata ?? {},
         customJson,
       },
     });
@@ -213,6 +233,8 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     // E2: Extract familyAssignments from customJson for response
     const responseCustomJson = (metadata.customJson ?? {}) as Record<string, unknown>;
     const familyAssignments = responseCustomJson.familyAssignments as Record<string, unknown> | undefined;
+    // E1: Extract category metadata for response
+    const responseCategoryMetadata = (metadata.categoryMetadata ?? {}) as Record<string, unknown>;
 
     const response = {
       id: metadata.id,
@@ -220,6 +242,10 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       tags: metadata.tags ?? [],
       notes: metadata.notes ?? null,
       color: metadata.color ?? null,
+      // E1: Include category, audience, and categoryMetadata in response
+      category: metadata.category ?? null,
+      audience: metadata.audience ?? 'family',
+      categoryMetadata: responseCategoryMetadata,
       customJson: responseCustomJson,
       familyAssignments: familyAssignments ?? null,
     };
