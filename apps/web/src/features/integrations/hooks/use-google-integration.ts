@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 
-import { getGoogleOAuthUrl, getGoogleConnectionStatus, syncGoogleCalendar, type GoogleConnectionStatus, type SyncResponse } from '../api';
+import {
+  getGoogleOAuthUrl,
+  getGoogleConnectionStatus,
+  syncGoogleCalendar,
+  type GoogleConnectionStatus,
+  type SyncResponse,
+} from '../api';
 
 // ----------------------------------------------------------------------
 
@@ -11,7 +17,7 @@ type UseGoogleIntegrationReturn = {
   error: Error | null;
   connect: () => Promise<void>;
   refresh: () => Promise<void>;
-  sync: (force?: boolean) => Promise<SyncResponse | null>;
+  sync: (options?: { force?: boolean; calendarId?: string }) => Promise<SyncResponse | null>;
 };
 
 export function useGoogleIntegration(): UseGoogleIntegrationReturn {
@@ -54,22 +60,25 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     }
   }, []);
 
-  const sync = useCallback(async (force = false): Promise<SyncResponse | null> => {
-    try {
-      setSyncing(true);
-      setError(null);
-      console.log('Syncing Google Calendar...', { force });
-      const result = await syncGoogleCalendar(force);
-      console.log('Sync result:', result);
-      return result;
-    } catch (err) {
-      console.error('Failed to sync Google Calendar:', err);
-      setError(err instanceof Error ? err : new Error('Failed to sync calendar'));
-      return null;
-    } finally {
-      setSyncing(false);
-    }
-  }, []);
+  const sync = useCallback(
+    async (options?: { force?: boolean; calendarId?: string }): Promise<SyncResponse | null> => {
+      try {
+        setSyncing(true);
+        setError(null);
+        console.log('Syncing Google Calendar...', options);
+        const result = await syncGoogleCalendar(options);
+        console.log('Sync result:', result);
+        return result;
+      } catch (err) {
+        console.error('Failed to sync Google Calendar:', err);
+        setError(err instanceof Error ? err : new Error('Failed to sync calendar'));
+        return null;
+      } finally {
+        setSyncing(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     fetchStatus();

@@ -9,114 +9,99 @@ datasource db {
   provider = "postgresql"
 }
 
-model CalendarAccount {
-  id               String   @id @default(cuid())
-  userId           String
-  provider         String
-  googleCalendarId String
-  tokens           Json
-  syncState        Json
-  deletedAt        DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+// ============================================================================
+// GOOGLE CALENDAR INTEGRATION
+// ============================================================================
 
-  events CalendarEvent[]
-
-  @@unique([userId, provider])
-  @@index([userId])
-}
-
-model CalendarEvent {
-  id            String   @id @default(cuid())
-  userId        String
-  accountId     String
-  googleEventId String
-  startsAt      DateTime
-  endsAt        DateTime
-  title         String
-  status        String?
-  deletedAt     DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  account   CalendarAccount @relation(fields: [accountId], references: [id])
-  metadata  CalendarEventMetadata?
-
-  @@unique([userId, googleEventId])
-  @@index([userId, startsAt])
-  @@index([userId, endsAt])
-  @@index([accountId, startsAt])
-  @@index([accountId, endsAt])
-}
-
-model CalendarEventMetadata {
-  id         String   @id @default(cuid())
-  eventId    String   @unique
-  tags       String[]
-  notes      String?
-  color      String?
-  customJson Json
-  deletedAt  DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  event CalendarEvent @relation(fields: [eventId], references: [id])
-}
-
-model Task {
-  id         String   @id @default(cuid())
-  title      String
-  assigneeId String?
-  dueDate    DateTime?
-  status     String   @default("todo")
-  completed  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-}
-
-model ShoppingItem {
-  id        String   @id @default(cuid())
-  name      String
-  quantity  String?
-  category  String?
-  purchased Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
+// Stores Google OAuth credentials per user (one user can have multiple Google accounts)
 model GoogleAccount {
   id           String   @id @default(cuid())
   userId       String
   googleUserId String
   email        String?
-  refreshToken String
+  refreshToken String   // Encrypted refresh token
   scopes       String[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   selectedCalendars SelectedCalendar[]
+  calendarEvents    CalendarEvent[]
 
   @@unique([userId, googleUserId])
   @@index([userId])
 }
 
+// Tracks which calendars a user has selected to sync/view
 model SelectedCalendar {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   userId          String
   googleAccountId String
-  calendarId      String
-  summary         String
-  color           String?
-  isVisible       Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  calendarId      String    // Google Calendar ID (e.g., "primary", email address)
+  summary         String    // Display name
+  color           String?   // Calendar color from Google
+  isVisible       Boolean   @default(true)
+  syncToken       String?   // Google sync token for incremental sync
+  lastSyncedAt    DateTime? // When this calendar was last synced
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  googleAccount GoogleAccount @relation(fields: [googleAccountId], references: [id])
+  googleAccount  GoogleAccount   @relation(fields: [googleAccountId], references: [id], onDelete: Cascade)
+  calendarEvents CalendarEvent[]
 
   @@unique([userId, calendarId])
   @@index([userId])
+  @@index([googleAccountId])
 }
 
+// Local cache of calendar events synced from Google
+model CalendarEvent {
+  id              String    @id @default(cuid())
+  userId          String
+  googleAccountId String
+  calendarId      String    // References SelectedCalendar.calendarId
+  googleEventId   String    // Google's event ID
+  startsAt        DateTime
+  endsAt          DateTime
+  title           String
+  description     String?
+  location        String?
+  allDay          Boolean   @default(false)
+  status          String?   // confirmed, tentative, cancelled
+  recurringEventId String?  // For recurring event instances
+  rawJson         Json?     // Store full Google event for reference
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  googleAccount    GoogleAccount          @relation(fields: [googleAccountId], references: [id], onDelete: Cascade)
+  selectedCalendar SelectedCalendar       @relation(fields: [userId, calendarId], references: [userId, calendarId], onDelete: Cascade)
+  metadata         CalendarEventMetadata?
+
+  @@unique([userId, googleEventId])
+  @@unique([calendarId, googleEventId])
+  @@index([userId, startsAt])
+  @@index([userId, endsAt])
+  @@index([userId, calendarId, startsAt])
+  @@index([googleAccountId])
+  @@index([calendarId])
+}
+
+// User-defined metadata for calendar events (tags, notes, colors, etc.)
+model CalendarEventMetadata {
+  id         String   @id @default(cuid())
+  eventId    String   @unique
+  tags       String[]
+  notes      String?
+  color      String?  // User override color
+  customJson Json     @default("{}")
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+// Stores extra data for events (legacy - kept for migration, prefer CalendarEventMetadata)
 model EventLink {
   id         String   @id @default(cuid())
   userId     String
@@ -128,4 +113,29 @@ model EventLink {
 
   @@unique([userId, calendarId, eventId])
   @@index([userId, calendarId])
+}
+
+// ============================================================================
+// FAMILY APP FEATURES
+// ============================================================================
+
+model Task {
+  id         String    @id @default(cuid())
+  title      String
+  assigneeId String?
+  dueDate    DateTime?
+  status     String    @default("todo")
+  completed  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model ShoppingItem {
+  id        String   @id @default(cuid())
+  name      String
+  quantity  String?
+  category  String?
+  purchased Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

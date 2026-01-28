@@ -161,7 +161,7 @@ export function SettingsIntegrations() {
                 color="inherit"
                 size="small"
                 onClick={async () => {
-                  const result = await syncGoogle(true);
+                  const result = await syncGoogle({ force: true });
                   if (result) {
                     console.log(`Synced ${result.synced} events (${result.created} created, ${result.updated} updated, ${result.deleted} deleted)`);
                   }

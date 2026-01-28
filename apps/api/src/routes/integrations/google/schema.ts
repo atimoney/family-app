@@ -1,15 +1,5 @@
 import { z } from 'zod';
 
-export const connectBodySchema = z.object({
-  code: z.string().min(1, 'Auth code is required'),
-  calendarId: z.string().optional(),
-});
-
-export const connectResponseSchema = z.object({
-  status: z.literal('connected'),
-  expiresAt: z.number(),
-});
-
 export const syncResponseSchema = z.object({
   status: z.literal('ready'),
   synced: z.number(),
@@ -18,5 +8,23 @@ export const syncResponseSchema = z.object({
   deleted: z.number(),
   failed: z.number(),
   fullSync: z.boolean(),
+  calendarsProcessed: z.number(),
   nextSyncToken: z.string().optional(),
+});
+
+export const clearSyncResponseSchema = z.object({
+  status: z.literal('cleared'),
+  message: z.string(),
+});
+
+export const syncStatusResponseSchema = z.object({
+  calendars: z.array(
+    z.object({
+      calendarId: z.string(),
+      summary: z.string(),
+      hasSyncToken: z.boolean(),
+      lastSyncedAt: z.string().nullable(),
+      eventCount: z.number(),
+    })
+  ),
 });

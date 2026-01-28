@@ -4,11 +4,32 @@ const isoDateSchema = z.string().datetime({ message: 'Invalid date' });
 
 const tagsSchema = z.preprocess((value) => {
   if (Array.isArray(value)) {
-    return value.flatMap((entry) => String(entry).split(',')).map((tag) => tag.trim()).filter(Boolean);
+    return value
+      .flatMap((entry) => String(entry).split(','))
+      .map((tag) => tag.trim())
+      .filter(Boolean);
   }
 
   if (typeof value === 'string') {
-    return value.split(',').map((tag) => tag.trim()).filter(Boolean);
+    return value
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}, z.array(z.string()).optional());
+
+const calendarIdsSchema = z.preprocess((value) => {
+  if (Array.isArray(value)) {
+    return value.map((id) => String(id).trim()).filter(Boolean);
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
   }
 
   return [];
@@ -18,16 +39,23 @@ export const getEventsQuerySchema = z.object({
   from: isoDateSchema.optional(),
   to: isoDateSchema.optional(),
   tags: tagsSchema.optional(),
+  calendarIds: calendarIdsSchema.optional(),
 });
 
 export const getEventsResponseSchema = z.array(
   z.object({
     id: z.string(),
     googleEventId: z.string(),
+    calendarId: z.string(),
     startsAt: isoDateSchema,
     endsAt: isoDateSchema,
     title: z.string(),
+    description: z.string().nullable(),
+    location: z.string().nullable(),
+    allDay: z.boolean(),
     status: z.string().nullable().optional(),
+    calendarColor: z.string().nullable(),
+    calendarSummary: z.string().nullable(),
     metadata: z
       .object({
         tags: z.array(z.string()),

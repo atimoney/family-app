@@ -11,7 +11,7 @@ import {
 const eventsRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authPlugin);
 
-  // GET /events
+  // GET /events - Get events from local cache
   fastify.get('/events', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const parsedQuery = getEventsQuerySchema.safeParse(request.query);
 
@@ -32,6 +32,7 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     const from = parsedQuery.data.from ? new Date(parsedQuery.data.from) : defaultFrom;
     const to = parsedQuery.data.to ? new Date(parsedQuery.data.to) : defaultTo;
     const tags = parsedQuery.data.tags ?? [];
+    const calendarIds = parsedQuery.data.calendarIds ?? [];
 
     const events = await fastify.prisma.calendarEvent.findMany({
       where: {
@@ -39,7 +40,8 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
         deletedAt: null,
         startsAt: { gte: from },
         endsAt: { lte: to },
-        ...(tags.length
+        ...(calendarIds.length > 0 ? { calendarId: { in: calendarIds } } : {}),
+        ...(tags.length > 0
           ? {
               metadata: {
                 tags: {
@@ -51,6 +53,12 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       },
       include: {
         metadata: true,
+        selectedCalendar: {
+          select: {
+            color: true,
+            summary: true,
+          },
+        },
       },
       orderBy: {
         startsAt: 'asc',
@@ -60,10 +68,16 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     const response = events.map((event) => ({
       id: event.id,
       googleEventId: event.googleEventId,
+      calendarId: event.calendarId,
       startsAt: event.startsAt.toISOString(),
       endsAt: event.endsAt.toISOString(),
       title: event.title,
+      description: event.description ?? null,
+      location: event.location ?? null,
+      allDay: event.allDay,
       status: event.status ?? null,
+      calendarColor: event.selectedCalendar?.color ?? null,
+      calendarSummary: event.selectedCalendar?.summary ?? null,
       metadata: event.metadata
         ? {
             tags: event.metadata.tags ?? [],
@@ -78,7 +92,57 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     return response;
   });
 
-  // PATCH /events/:id/metadata
+  // GET /events/:id - Get a single event
+  fastify.get('/events/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user?.id as string;
+    const { id } = request.params as { id: string };
+
+    const event = await fastify.prisma.calendarEvent.findFirst({
+      where: {
+        id,
+        userId,
+        deletedAt: null,
+      },
+      include: {
+        metadata: true,
+        selectedCalendar: {
+          select: {
+            color: true,
+            summary: true,
+          },
+        },
+      },
+    });
+
+    if (!event) {
+      return reply.status(404).send({ error: 'Event not found' });
+    }
+
+    return {
+      id: event.id,
+      googleEventId: event.googleEventId,
+      calendarId: event.calendarId,
+      startsAt: event.startsAt.toISOString(),
+      endsAt: event.endsAt.toISOString(),
+      title: event.title,
+      description: event.description ?? null,
+      location: event.location ?? null,
+      allDay: event.allDay,
+      status: event.status ?? null,
+      calendarColor: event.selectedCalendar?.color ?? null,
+      calendarSummary: event.selectedCalendar?.summary ?? null,
+      metadata: event.metadata
+        ? {
+            tags: event.metadata.tags ?? [],
+            notes: event.metadata.notes ?? null,
+            color: event.metadata.color ?? null,
+            customJson: (event.metadata.customJson ?? {}) as Record<string, unknown>,
+          }
+        : null,
+    };
+  });
+
+  // PATCH /events/:id/metadata - Update event metadata
   fastify.patch('/events/:id/metadata', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const parsedParams = eventMetadataParamsSchema.safeParse(request.params);
     const parsedBody = eventMetadataBodySchema.safeParse(request.body);

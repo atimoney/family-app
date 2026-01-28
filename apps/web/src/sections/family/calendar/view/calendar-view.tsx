@@ -12,17 +12,22 @@ import { useState, useCallback, startTransition } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Alert from '@mui/material/Alert';
+import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
+import Tooltip from '@mui/material/Tooltip';
 import { useTheme } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
+import IconButton from '@mui/material/IconButton';
 import DialogTitle from '@mui/material/DialogTitle';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { createCalendarEvent } from 'src/features/calendar/api';
 import { useSelectedCalendars } from 'src/features/calendar/hooks/use-calendars';
-import { useCalendarEvents } from 'src/features/calendar/hooks/use-calendar-events';
+import {
+  useCalendarEvents,
+  useCalendarMutations,
+} from 'src/features/calendar/hooks/use-calendar-events';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -36,11 +41,14 @@ import { CalendarToolbar } from '../calendar-toolbar';
 export function CalendarView() {
   const theme = useTheme();
 
-  const { events, loading, error, refresh } = useCalendarEvents();
+  const { events, loading, syncing, error, refresh, sync } = useCalendarEvents();
   const { calendars } = useSelectedCalendars();
   const [localEvents, setLocalEvents] = useState<CalendarEventItem[]>([]);
 
   const mergedEvents = localEvents.length ? localEvents : events;
+
+  // Mutations with auto-sync
+  const { createEvent, updateEvent, deleteEvent, loading: mutating } = useCalendarMutations(refresh);
 
   const {
     calendarRef,
@@ -70,49 +78,92 @@ export function CalendarView() {
   const handleCreateEvent = useCallback(
     async (eventData: CalendarEventItem) => {
       try {
-        await createCalendarEvent({
+        await createEvent({
           title: eventData.title,
           start: eventData.start,
           end: eventData.end,
           allDay: eventData.allDay,
           calendarId: eventData.calendarId,
         });
-        // Refresh to get the newly created event from Google Calendar
-        await refresh();
         onCloseForm();
       } catch (err) {
         console.error('Failed to create event:', err);
-        // Optionally show an error notification to the user
       }
     },
-    [onCloseForm, refresh]
+    [createEvent, onCloseForm]
   );
 
-  const handleUpdateEvent = useCallback((updatedEvent: CalendarEventItem) => {
-    // Metadata-only edits should be handled via PATCH /events/:id/metadata.
-    // Keep local UI in sync until metadata editing is wired.
-    setLocalEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
-  }, []);
+  const handleUpdateEvent = useCallback(
+    async (updatedEvent: CalendarEventItem) => {
+      try {
+        // For now, update locally - full update via Google API can be added
+        setLocalEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
+        // TODO: Call updateEvent for actual persistence
+      } catch (err) {
+        console.error('Failed to update event:', err);
+      }
+    },
+    []
+  );
 
-  const handleDeleteEvent = useCallback((eventId: string) => {
-    setLocalEvents((prev) => prev.filter((e) => e.id !== eventId));
-  }, []);
+  const handleDeleteEvent = useCallback(
+    async (eventId: string) => {
+      try {
+        const event = mergedEvents.find((e) => e.id === eventId);
+        await deleteEvent(eventId, event?.calendarId);
+        onCloseForm();
+      } catch (err) {
+        console.error('Failed to delete event:', err);
+      }
+    },
+    [deleteEvent, mergedEvents, onCloseForm]
+  );
+
+  // Manual sync handler
+  const handleSync = useCallback(async () => {
+    try {
+      await sync({ force: false });
+    } catch (err) {
+      console.error('Sync failed:', err);
+    }
+  }, [sync]);
 
   // Update event on drag/resize
-  const updateEventFromDragResize = useCallback((eventData: Partial<CalendarEventItem>) => {
-    setLocalEvents((prev) =>
-      prev.map((e) =>
-        e.id === eventData.id
-          ? {
-              ...e,
-              start: eventData.start || e.start,
-              end: eventData.end || e.end,
-              allDay: eventData.allDay ?? e.allDay,
-            }
-          : e
-      )
-    );
-  }, []);
+  const updateEventFromDragResize = useCallback(
+    async (eventData: Partial<CalendarEventItem>) => {
+      // Optimistic update
+      setLocalEvents((prev) =>
+        prev.map((e) =>
+          e.id === eventData.id
+            ? {
+                ...e,
+                start: eventData.start || e.start,
+                end: eventData.end || e.end,
+                allDay: eventData.allDay ?? e.allDay,
+              }
+            : e
+        )
+      );
+
+      // Persist to Google Calendar
+      if (eventData.id && (eventData.start || eventData.end)) {
+        const event = mergedEvents.find((e) => e.id === eventData.id);
+        try {
+          await updateEvent(eventData.id, {
+            start: eventData.start,
+            end: eventData.end,
+            allDay: eventData.allDay,
+            calendarId: event?.calendarId,
+          });
+        } catch (err) {
+          console.error('Failed to update event:', err);
+          // Revert on failure
+          await refresh();
+        }
+      }
+    },
+    [mergedEvents, updateEvent, refresh]
+  );
 
   const flexStyles: SxProps<Theme> = {
     flex: '1 1 auto',
@@ -158,7 +209,7 @@ export function CalendarView() {
   );
 
   // Loading state
-  if (loading) {
+  if (loading && events.length === 0) {
     return (
       <DashboardContent maxWidth="xl" sx={{ ...flexStyles }}>
         <Box
@@ -187,13 +238,29 @@ export function CalendarView() {
           }}
         >
           <Typography variant="h4">Calendar</Typography>
-          <Button
-            variant="contained"
-            startIcon={<Iconify icon="mingcute:add-line" />}
-            onClick={onOpenForm}
-          >
-            Add event
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Tooltip title={syncing ? 'Syncing...' : 'Sync with Google Calendar'}>
+              <IconButton
+                onClick={handleSync}
+                disabled={syncing || mutating}
+                color={syncing ? 'primary' : 'default'}
+              >
+                {syncing ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <Iconify icon="solar:restart-bold" />
+                )}
+              </IconButton>
+            </Tooltip>
+            <Button
+              variant="contained"
+              startIcon={<Iconify icon="mingcute:add-line" />}
+              onClick={onOpenForm}
+              disabled={mutating}
+            >
+              Add event
+            </Button>
+          </Stack>
         </Box>
 
         {error && (
@@ -207,7 +274,7 @@ export function CalendarView() {
             <CalendarToolbar
               view={view}
               title={title}
-              loading={loading}
+              loading={loading || syncing}
               onChangeView={onChangeView}
               onDateNavigation={onDateNavigation}
               viewOptions={[
