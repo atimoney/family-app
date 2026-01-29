@@ -171,6 +171,47 @@ Redirect to /family (or returnTo)
 
 ---
 
+## Database Management
+
+### Prerequisites
+
+The app uses PostgreSQL via Docker:
+
+```bash
+# Start the database
+docker compose up -d
+```
+
+### Database Backup & Restore
+
+A backup script is provided to protect your data before migrations:
+
+```bash
+# Create a backup (do this before any migration!)
+./scripts/db-backup.sh backup
+
+# List available backups
+./scripts/db-backup.sh list
+
+# Restore from a backup
+./scripts/db-backup.sh restore backups/family_20260129_123456.sql
+```
+
+### Prisma Commands
+
+| Command | Description | Data Safe? |
+|---------|-------------|------------|
+| `pnpm db:migrate` | Apply pending migrations | ✅ Yes |
+| `pnpm db:generate` | Regenerate Prisma client | ✅ Yes |
+| `pnpm db:studio` | Open Prisma Studio GUI | ✅ Yes |
+| `prisma migrate dev` | Create & apply new migrations | ✅ Usually |
+| `prisma db push` | Push schema changes (no migration file) | ⚠️ Mostly |
+| `prisma migrate reset` | **Drop & recreate everything** | ❌ **No** |
+
+> ⚠️ **Always run `./scripts/db-backup.sh backup` before using `prisma migrate reset` or any destructive commands!**
+
+---
+
 ## Troubleshooting
 
 ### "Missing required Supabase environment variables"

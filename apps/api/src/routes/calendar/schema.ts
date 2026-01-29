@@ -29,7 +29,7 @@ export const remindersSchema = z.array(eventReminderSchema).max(5).nullable().op
 // E2: Family member assignments schema
 export const familyAssignmentsSchema = z.object({
   primaryFamilyMemberId: z.string().nullable().optional(),
-  participantFamilyMemberIds: z.array(z.string()).optional().default([]),
+  participantFamilyMemberIds: z.array(z.string()).nullable().optional(),
   cookMemberId: z.string().nullable().optional(),
   assignedToMemberId: z.string().nullable().optional(),
 }).nullable().optional();

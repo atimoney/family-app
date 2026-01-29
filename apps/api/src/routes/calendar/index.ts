@@ -370,6 +370,9 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
     const parsed = createEventSchema.safeParse(request.body);
 
     if (!parsed.success) {
+      // Log the validation error for debugging
+      console.log('[API VALIDATION ERROR]', JSON.stringify(parsed.error.flatten(), null, 2));
+      console.log('[API REQUEST BODY]', JSON.stringify(request.body, null, 2));
       return reply.status(400).send({
         error: 'Validation failed',
         details: parsed.error.flatten().fieldErrors,

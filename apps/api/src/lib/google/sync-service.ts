@@ -404,6 +404,18 @@ async function syncFamilyAssignmentsToMetadata(
 ): Promise<void> {
   const parsed = parseAllExtendedProperties(googleEvent.extendedProperties);
 
+  // Debug logging for E1 troubleshooting
+  console.log('[E1 SYNC DEBUG]', {
+    eventId,
+    googleEventId: googleEvent.id,
+    eventSummary: googleEvent.summary,
+    hasExtendedProps: !!googleEvent.extendedProperties,
+    privateProps: googleEvent.extendedProperties?.private,
+    parsedCategory: parsed.category,
+    parsedAudience: parsed.audience,
+    parsedTags: parsed.tags,
+  });
+
   // Check if we have any data to sync
   const hasE2Data = parsed.familyAssignments !== null;
   const hasE1Data = parsed.category || parsed.audience || parsed.tags.length > 0 || 
@@ -411,6 +423,7 @@ async function syncFamilyAssignmentsToMetadata(
 
   if (!hasE2Data && !hasE1Data) {
     // No family or E1 data to sync
+    console.log('[E1 SYNC DEBUG] No E1/E2 data to sync, skipping');
     return;
   }
 

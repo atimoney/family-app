@@ -144,10 +144,10 @@ const eventReminderSchema = z.object({
 // E2: Family assignments schema
 const familyAssignmentsSchema = z.object({
   primaryFamilyMemberId: z.string().nullable().optional(),
-  participantFamilyMemberIds: z.array(z.string()).optional().default([]),
+  participantFamilyMemberIds: z.array(z.string()).nullable().optional(),
   cookMemberId: z.string().nullable().optional(),
   assignedToMemberId: z.string().nullable().optional(),
-}).nullable().optional();
+}).passthrough().nullable().optional();
 
 // E1: Category schema
 const eventCategorySchema = z.enum([
@@ -220,18 +220,8 @@ const adminMetadataSchema = z.object({
   referenceNumber: z.string().optional(),
 }).optional();
 
-// Union for all category metadata
-const categoryMetadataSchema = z.union([
-  mealMetadataSchema,
-  schoolMetadataSchema,
-  sportMetadataSchema,
-  choreMetadataSchema,
-  appointmentMetadataSchema,
-  travelMetadataSchema,
-  homeMetadataSchema,
-  adminMetadataSchema,
-  z.object({}), // Empty object for categories without specific metadata
-]).nullable().optional();
+// Union for all category metadata - use passthrough to allow any structure
+const categoryMetadataSchema = z.object({}).passthrough().nullable().optional();
 
 export type EventSchemaType = z.infer<typeof EventSchema>;
 
@@ -357,8 +347,13 @@ export function CalendarForm({
     control,
     setValue,
     handleSubmit,
-    formState: { isSubmitting },
+    formState: { isSubmitting, errors },
   } = methods;
+
+  // Debug: log form errors
+  if (Object.keys(errors).length > 0) {
+    console.log('[FORM VALIDATION ERRORS]', errors);
+  }
 
   const values = watch();
 

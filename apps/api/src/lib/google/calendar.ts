@@ -436,6 +436,16 @@ export async function createEvent(options: {
   // E2: Add family member assignments to extendedProperties.private
   // E1: Add category, audience, tags, and metadata to extendedProperties.private
   const hasE1Data = options.category || options.audience || options.tags?.length || options.categoryMetadata;
+  
+  // Debug logging for E1 troubleshooting
+  console.log('[E1 CREATE DEBUG]', {
+    hasE1Data,
+    category: options.category,
+    audience: options.audience,
+    tags: options.tags,
+    hasFamilyAssignments: !!options.familyAssignments,
+  });
+  
   if (options.familyAssignments || hasE1Data) {
     requestBody.extendedProperties = mergeExtendedProperties(
       options.event.extendedProperties,
@@ -448,6 +458,9 @@ export async function createEvent(options: {
         eventId: options.eventId,
       } : undefined
     );
+    
+    // Debug: log the final extendedProperties
+    console.log('[E1 CREATE DEBUG] extendedProperties:', JSON.stringify(requestBody.extendedProperties, null, 2));
   }
   
   const response = await calendar.events.insert({
