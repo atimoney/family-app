@@ -60,21 +60,12 @@ export function CalendarView() {
   // E2: Get family members for event assignment
   const familyMembers = useMemo(() => family?.members ?? [], [family?.members]);
 
-  // Filter state
+  // Filter state - empty selectedMemberIds means "show all"
   const [filters, setFilters] = useState<CalendarFiltersState>(() => ({
     memberFilter: 'all',
     selectedMemberIds: [],
+    showUnassigned: true,
   }));
-
-  // Initialize filter with all members when family loads
-  useMemo(() => {
-    if (familyMembers.length > 0 && filters.selectedMemberIds.length === 0) {
-      setFilters((prev) => ({
-        ...prev,
-        selectedMemberIds: familyMembers.map((m) => m.id),
-      }));
-    }
-  }, [familyMembers, filters.selectedMemberIds.length]);
 
   const mergedEvents = localEvents.length ? localEvents : events;
 
@@ -114,11 +105,8 @@ export function CalendarView() {
 
   // Filter events by selected family members
   const filteredEvents = useMemo(() => {
-    // If no members selected or all members selected, show all events
-    if (
-      filters.selectedMemberIds.length === 0 ||
-      filters.selectedMemberIds.length === familyMembers.length
-    ) {
+    // If no members selected (empty array), show all events
+    if (filters.selectedMemberIds.length === 0) {
       return mergedEvents;
     }
 
@@ -127,8 +115,16 @@ export function CalendarView() {
         | EventFamilyAssignments
         | undefined;
 
-      // If no assignments, show the event (unassigned events are visible to all)
-      if (!familyAssignments) return true;
+      // Check if event is unassigned (no family assignments at all)
+      const isUnassigned = !familyAssignments || 
+        (!familyAssignments.primaryFamilyMemberId && 
+         !familyAssignments.participantFamilyMemberIds?.length &&
+         !familyAssignments.assignedToMemberId);
+
+      // If unassigned, show based on showUnassigned flag
+      if (isUnassigned) {
+        return filters.showUnassigned;
+      }
 
       // Check if primary member is in selected members
       if (
@@ -140,9 +136,11 @@ export function CalendarView() {
 
       // Check if any participant is in selected members
       if (familyAssignments.participantFamilyMemberIds?.length) {
-        return familyAssignments.participantFamilyMemberIds.some((id) =>
+        if (familyAssignments.participantFamilyMemberIds.some((id) =>
           filters.selectedMemberIds.includes(id)
-        );
+        )) {
+          return true;
+        }
       }
 
       // Check assignedTo member
@@ -156,7 +154,7 @@ export function CalendarView() {
       // No matching members found - hide the event
       return false;
     });
-  }, [mergedEvents, filters.selectedMemberIds, familyMembers.length]);
+  }, [mergedEvents, filters.selectedMemberIds, filters.showUnassigned, filters.memberFilter, familyMembers.length]);
 
   // Filter handlers
   const handleFilterChange = useCallback((newFilters: CalendarFiltersState) => {
@@ -166,16 +164,21 @@ export function CalendarView() {
   const handleFilterReset = useCallback(() => {
     setFilters({
       memberFilter: 'all',
-      selectedMemberIds: familyMembers.map((m) => m.id),
+      selectedMemberIds: [],
+      showUnassigned: true,
     });
-  }, [familyMembers]);
+  }, []);
 
   const handleRemoveMemberFilter = useCallback(
     (memberId: string) => {
       const newSelectedIds = filters.selectedMemberIds.filter((id) => id !== memberId);
-      // If removing last member, reset to all
+      // If removing last member, reset to all (empty selection)
       if (newSelectedIds.length === 0) {
-        handleFilterReset();
+        setFilters({
+          memberFilter: 'all',
+          selectedMemberIds: [],
+          showUnassigned: true,
+        });
         return;
       }
       setFilters((prev) => ({
@@ -184,10 +187,11 @@ export function CalendarView() {
         selectedMemberIds: newSelectedIds,
       }));
     },
-    [filters.selectedMemberIds, handleFilterReset]
+    [filters.selectedMemberIds]
   );
 
-  const canResetFilters = filters.selectedMemberIds.length < familyMembers.length;
+  // Can reset if any members are selected (not showing all)
+  const canResetFilters = filters.selectedMemberIds.length > 0;
 
   // E2: Custom event content renderer with avatars
   const renderEventContent = useCallback(

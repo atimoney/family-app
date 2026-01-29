@@ -20,6 +20,7 @@ export type MemberFilterType = 'all' | 'adults' | 'kids' | 'custom';
 export type CalendarFiltersState = {
   memberFilter: MemberFilterType;
   selectedMemberIds: string[];
+  showUnassigned: boolean;
 };
 
 type Props = {
@@ -43,9 +44,11 @@ export function CalendarFilters({
       if (newValue === null) return;
 
       if (newValue === 'all') {
+        // Empty selection = show all
         onFilterChange({
           memberFilter: 'all',
-          selectedMemberIds: familyMembers.map((m) => m.id),
+          selectedMemberIds: [],
+          showUnassigned: true,
         });
       } else if (newValue === 'adults') {
         // Filter to adults only (non-child members)
@@ -53,6 +56,7 @@ export function CalendarFilters({
         onFilterChange({
           memberFilter: 'adults',
           selectedMemberIds: adultIds,
+          showUnassigned: false,
         });
       } else if (newValue === 'kids') {
         // Filter to kids only (child members)
@@ -60,39 +64,45 @@ export function CalendarFilters({
         onFilterChange({
           memberFilter: 'kids',
           selectedMemberIds: kidIds,
+          showUnassigned: false,
         });
       }
     },
     [familyMembers, onFilterChange]
   );
 
-  // Handle individual member toggle
+  // Handle individual member click - toggles selection (multi-select)
   const handleMemberToggle = useCallback(
     (memberId: string) => {
       const isSelected = filters.selectedMemberIds.includes(memberId);
-      const newSelectedIds = isSelected
-        ? filters.selectedMemberIds.filter((id) => id !== memberId)
-        : [...filters.selectedMemberIds, memberId];
+      
+      let newSelectedIds: string[];
+      if (isSelected) {
+        // Deselect this member
+        newSelectedIds = filters.selectedMemberIds.filter((id) => id !== memberId);
+      } else {
+        // Add this member to selection
+        newSelectedIds = [...filters.selectedMemberIds, memberId];
+      }
 
-      // Determine the quick filter state based on selection
-      let memberFilter: MemberFilterType = 'custom';
-      if (newSelectedIds.length === familyMembers.length) {
-        memberFilter = 'all';
-      } else if (newSelectedIds.length === 0) {
-        // If all deselected, default back to all
+      // If no one selected, go back to "all" (shows everything)
+      if (newSelectedIds.length === 0) {
         onFilterChange({
           memberFilter: 'all',
-          selectedMemberIds: familyMembers.map((m) => m.id),
+          selectedMemberIds: [],
+          showUnassigned: true,
         });
         return;
       }
 
+      // Custom selection
       onFilterChange({
-        memberFilter,
+        memberFilter: 'custom',
         selectedMemberIds: newSelectedIds,
+        showUnassigned: filters.showUnassigned,
       });
     },
-    [filters.selectedMemberIds, familyMembers, onFilterChange]
+    [filters.selectedMemberIds, filters.showUnassigned, onFilterChange]
   );
 
   return (
@@ -109,6 +119,7 @@ export function CalendarFilters({
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
         {familyMembers.map((member) => {
           const isSelected = filters.selectedMemberIds.includes(member.id);
+          const noOneSelected = filters.selectedMemberIds.length === 0;
           const memberName = member.displayName || member.profile?.displayName || 'Member';
           const memberColor = member.color || '#637381';
 
@@ -137,7 +148,8 @@ export function CalendarFilters({
                     width: 32,
                     height: 32,
                     bgcolor: memberColor,
-                    opacity: isSelected ? 1 : 0.4,
+                    // Full opacity when no one selected (showing all) or when this member is selected
+                    opacity: noOneSelected || isSelected ? 1 : 0.4,
                     transition: 'opacity 0.2s ease-in-out',
                     fontSize: '0.875rem',
                   }}
@@ -160,18 +172,37 @@ export function CalendarFilters({
           aria-label="member filter"
         >
           <ToggleButton value="all" aria-label="all members">
-            <Iconify icon="solar:users-group-rounded-bold" sx={{ mr: 0.5 }} />
+            <Iconify icon="solar:users-group-rounded-bold" width={18} />
             All
           </ToggleButton>
           <ToggleButton value="adults" aria-label="adults only">
-            <Iconify icon="solar:user-rounded-bold" sx={{ mr: 0.5 }} />
+            <Iconify icon="solar:user-rounded-bold" width={18} />
             Adults
           </ToggleButton>
           <ToggleButton value="kids" aria-label="kids only">
-            <Iconify icon="solar:user-id-bold" sx={{ mr: 0.5 }} />
+            <Iconify icon="solar:user-id-bold" width={18} />
             Kids
           </ToggleButton>
         </ToggleButtonGroup>
+
+        {/* Unassigned toggle - only show when not in "All" mode */}
+        {filters.memberFilter !== 'all' && (
+          <ToggleButton
+            size="small"
+            value="unassigned"
+            selected={filters.showUnassigned}
+            onChange={() => {
+              onFilterChange({
+                ...filters,
+                showUnassigned: !filters.showUnassigned,
+              });
+            }}
+            aria-label="show unassigned"
+          >
+            <Iconify icon="solar:info-circle-bold" width={18} />
+            Unassigned
+          </ToggleButton>
+        )}
 
         {/* Reset button */}
         {canReset && (

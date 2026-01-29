@@ -29,8 +29,8 @@ export function CalendarFiltersResult({
     filters.selectedMemberIds.includes(m.id)
   );
 
-  // Don't show if all members are selected (no active filter)
-  const isFiltered = filters.selectedMemberIds.length < familyMembers.length;
+  // Don't show if no members selected (showing all - no active filter)
+  const isFiltered = filters.selectedMemberIds.length > 0;
 
   if (!isFiltered) {
     return null;
