@@ -169,6 +169,7 @@ model FamilyMember {
   role        String    @default("member") // owner, admin, member
   displayName String?   @map("display_name") // Family-specific name override
   color       String?   // For calendar/UI color coding
+  isChild     Boolean   @default(false) @map("is_child") // Whether this member is a child
   joinedAt    DateTime  @default(now()) @map("joined_at")
   removedAt   DateTime? @map("removed_at")
   removedBy   String?   @map("removed_by")

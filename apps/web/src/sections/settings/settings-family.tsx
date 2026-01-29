@@ -11,6 +11,7 @@ import Button from '@mui/material/Button';
 import Avatar from '@mui/material/Avatar';
 import Dialog from '@mui/material/Dialog';
 import Select from '@mui/material/Select';
+import Switch from '@mui/material/Switch';
 import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
 import Skeleton from '@mui/material/Skeleton';
@@ -662,13 +663,25 @@ function MemberRow({ member, isCurrentUser, myRole, familyId, onRefresh }: Membe
   const removeDialog = useBoolean();
   const [submitting, setSubmitting] = useState(false);
 
-  const { updateMemberRole, removeMember } = useFamilyMembers(familyId);
+  const { updateMemberRole, updateMemberDetails, removeMember } = useFamilyMembers(familyId);
 
   const displayName = member.displayName || member.profile?.displayName || member.profile?.email || 'Unknown';
   const avatarLetter = displayName.charAt(0).toUpperCase();
 
   const canManage = (myRole === 'owner') || (myRole === 'admin' && member.role === 'member');
   const showMenu = canManage && !isCurrentUser && member.role !== 'owner';
+
+  const handleToggleChild = async () => {
+    setSubmitting(true);
+    const success = await updateMemberDetails(member.id, { isChild: !member.isChild });
+    setSubmitting(false);
+    if (success) {
+      toast.success(`${displayName} is now ${!member.isChild ? 'a child' : 'an adult'}`);
+      onRefresh();
+    } else {
+      toast.error('Failed to update member');
+    }
+  };
 
   const handleChangeRole = async (newRole: 'admin' | 'member') => {
     setSubmitting(true);
@@ -731,6 +744,13 @@ function MemberRow({ member, isCurrentUser, myRole, familyId, onRefresh }: Membe
         </Stack>
 
         <Stack direction="row" alignItems="center" spacing={1}>
+          {/* Child indicator */}
+          {member.isChild && (
+            <Label variant="soft" color="secondary" sx={{ fontSize: 10 }}>
+              Child
+            </Label>
+          )}
+
           <Label
             variant="soft"
             color={member.role === 'owner' ? 'warning' : member.role === 'admin' ? 'info' : 'default'}
@@ -748,6 +768,17 @@ function MemberRow({ member, isCurrentUser, myRole, familyId, onRefresh }: Membe
 
       {/* Member Actions Popover */}
       <CustomPopover open={popover.open} anchorEl={popover.anchorEl} onClose={popover.onClose}>
+        {/* Child toggle - available to owner and admin */}
+        {canManage && !isCurrentUser && (
+          <>
+            <MenuItem onClick={handleToggleChild} disabled={submitting}>
+              <Iconify icon={member.isChild ? 'solar:user-rounded-bold' : 'solar:user-id-bold'} sx={{ mr: 1 }} />
+              {member.isChild ? 'Mark as Adult' : 'Mark as Child'}
+            </MenuItem>
+            <Divider sx={{ borderStyle: 'dashed' }} />
+          </>
+        )}
+
         {myRole === 'owner' && member.role !== 'owner' && (
           <>
             {member.role === 'member' && (

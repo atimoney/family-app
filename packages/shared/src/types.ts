@@ -36,6 +36,7 @@ export type FamilyMember = {
   role: FamilyRole;
   displayName: string | null; // Override for family context (e.g., "Dad")
   color: string | null; // For calendar/UI color coding
+  isChild: boolean; // Whether this member is a child
   joinedAt: string;
   removedAt: string | null;
   removedBy: string | null;

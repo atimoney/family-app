@@ -17,6 +17,7 @@ const updateMemberSchema = z.object({
   role: z.enum(['admin', 'member']).optional(),
   displayName: z.string().min(1).max(100).optional().nullable(),
   color: z.string().max(20).optional().nullable(),
+  isChild: z.boolean().optional(),
 });
 
 const transferOwnershipSchema = z.object({
@@ -31,6 +32,7 @@ function toFamilyMember(member: {
   role: string;
   displayName: string | null;
   color: string | null;
+  isChild: boolean;
   joinedAt: Date;
   removedAt: Date | null;
   removedBy: string | null;
@@ -51,6 +53,7 @@ function toFamilyMember(member: {
     role: member.role as FamilyRole,
     displayName: member.displayName,
     color: member.color,
+    isChild: member.isChild,
     joinedAt: member.joinedAt.toISOString(),
     removedAt: member.removedAt?.toISOString() ?? null,
     removedBy: member.removedBy,
@@ -459,7 +462,7 @@ const familyRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Member not found' } as unknown as FamilyMember);
       }
 
-      const { role, displayName, color } = body.data;
+      const { role, displayName, color, isChild } = body.data;
 
       // Permission checks for role changes
       if (role !== undefined) {
@@ -494,6 +497,7 @@ const familyRoutes: FastifyPluginAsync = async (fastify) => {
           ...(role !== undefined && { role }),
           ...(displayName !== undefined && { displayName }),
           ...(color !== undefined && { color }),
+          ...(isChild !== undefined && { isChild }),
         },
         include: { profile: true },
       });

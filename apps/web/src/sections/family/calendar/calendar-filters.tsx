@@ -100,33 +100,12 @@ export function CalendarFilters({
       sx={{
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'space-between',
         gap: 2,
         flexWrap: 'wrap',
       }}
     >
-      {/* Quick filter buttons */}
-      <ToggleButtonGroup
-        exclusive
-        size="small"
-        value={filters.memberFilter === 'custom' ? null : filters.memberFilter}
-        onChange={handleQuickFilterChange}
-        aria-label="member filter"
-      >
-        <ToggleButton value="all" aria-label="all members">
-          <Iconify icon="solar:users-group-rounded-bold" sx={{ mr: 0.5 }} />
-          All
-        </ToggleButton>
-        <ToggleButton value="adults" aria-label="adults only">
-          <Iconify icon="solar:user-rounded-bold" sx={{ mr: 0.5 }} />
-          Adults
-        </ToggleButton>
-        <ToggleButton value="kids" aria-label="kids only">
-          <Iconify icon="solar:user-id-bold" sx={{ mr: 0.5 }} />
-          Kids
-        </ToggleButton>
-      </ToggleButtonGroup>
-
-      {/* Member avatar toggles */}
+      {/* Member avatar toggles - LEFT */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
         {familyMembers.map((member) => {
           const isSelected = filters.selectedMemberIds.includes(member.id);
@@ -171,35 +150,51 @@ export function CalendarFilters({
         })}
       </Box>
 
-      {/* Reset button */}
-      {canReset && (
-        <Tooltip title="Reset filters">
-          <IconButton size="small" onClick={onReset}>
-            <Badge color="error" variant="dot">
-              <Iconify icon="solar:restart-bold" width={18} />
-            </Badge>
-          </IconButton>
-        </Tooltip>
-      )}
+      {/* Quick filter buttons - RIGHT */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={filters.memberFilter === 'custom' ? null : filters.memberFilter}
+          onChange={handleQuickFilterChange}
+          aria-label="member filter"
+        >
+          <ToggleButton value="all" aria-label="all members">
+            <Iconify icon="solar:users-group-rounded-bold" sx={{ mr: 0.5 }} />
+            All
+          </ToggleButton>
+          <ToggleButton value="adults" aria-label="adults only">
+            <Iconify icon="solar:user-rounded-bold" sx={{ mr: 0.5 }} />
+            Adults
+          </ToggleButton>
+          <ToggleButton value="kids" aria-label="kids only">
+            <Iconify icon="solar:user-id-bold" sx={{ mr: 0.5 }} />
+            Kids
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        {/* Reset button */}
+        {canReset && (
+          <Tooltip title="Reset filters">
+            <IconButton size="small" onClick={onReset}>
+              <Badge color="error" variant="dot">
+                <Iconify icon="solar:restart-bold" width={18} />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+        )}
+      </Box>
     </Box>
   );
 }
 
 // ----------------------------------------------------------------------
 // Helper function to determine if a member is a child
-// This can be enhanced later with an actual isChild field on FamilyMember
-// For now, we use the role: 'member' + no profile email as a heuristic
-// or you can add an isChild field to the FamilyMember type
+// Uses the isChild field on FamilyMember
 // ----------------------------------------------------------------------
 
 function isChildMember(member: FamilyMember): boolean {
-  // TODO: Replace with actual isChild field when available
-  // For now, return false - all members are treated as adults
-  // You can customize this logic based on your requirements:
-  // - Check for a specific role
-  // - Check displayName patterns
-  // - Add isChild field to FamilyMember model
-  return false;
+  return member.isChild;
 }
 
 // Export for use in other components

@@ -150,7 +150,7 @@ type UseFamilyMembersReturn = {
   updateMemberRole: (memberId: string, role: Exclude<FamilyRole, 'owner'>) => Promise<boolean>;
   updateMemberDetails: (
     memberId: string,
-    data: { displayName?: string | null; color?: string | null }
+    data: { displayName?: string | null; color?: string | null; isChild?: boolean }
   ) => Promise<boolean>;
   removeMember: (memberId: string) => Promise<boolean>;
   refresh: () => Promise<void>;
@@ -209,7 +209,7 @@ export function useFamilyMembers(familyId: string | null): UseFamilyMembersRetur
   const handleUpdateDetails = useCallback(
     async (
       memberId: string,
-      data: { displayName?: string | null; color?: string | null }
+      data: { displayName?: string | null; color?: string | null; isChild?: boolean }
     ): Promise<boolean> => {
       if (!familyId) return false;
       try {

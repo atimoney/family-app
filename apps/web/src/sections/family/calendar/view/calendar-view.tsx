@@ -41,9 +41,8 @@ import { CalendarRoot } from '../styles';
 import { CalendarForm } from '../calendar-form';
 import { useCalendar } from '../hooks/use-calendar';
 import { CalendarToolbar } from '../calendar-toolbar';
-import { CalendarFilters } from '../calendar-filters';
 import { CalendarFiltersResult } from '../calendar-filters-result';
-import type { CalendarFiltersState } from '../calendar-filters';
+import { CalendarFilters, type CalendarFiltersState } from '../calendar-filters';
 
 // ----------------------------------------------------------------------
 
