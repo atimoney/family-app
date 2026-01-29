@@ -65,6 +65,7 @@ export function CalendarView() {
     memberFilter: 'all',
     selectedMemberIds: [],
     showUnassigned: true,
+    selectedCategoryIds: [],
   }));
 
   const mergedEvents = localEvents.length ? localEvents : events;
@@ -103,14 +104,33 @@ export function CalendarView() {
     [memberById]
   );
 
-  // Filter events by selected family members
+  // Filter events by selected family members and categories
   const filteredEvents = useMemo(() => {
-    // If no members selected (empty array), show all events
-    if (filters.selectedMemberIds.length === 0) {
-      return mergedEvents;
+    let result = mergedEvents;
+
+    // Filter by category first (if any selected)
+    if (filters.selectedCategoryIds.length > 0) {
+      result = result.filter((event) => {
+        const eventCategory = event.extendedProps?.metadata?.category as string | undefined;
+        if (!eventCategory) return false; // No category = don't show when filtering by category
+        
+        // Check if event's category matches any selected category
+        // Match by category name (from EventCategoryConfig)
+        return eventCategories.some(
+          (cat) =>
+            filters.selectedCategoryIds.includes(cat.id) &&
+            (cat.name === eventCategory || cat.label === eventCategory)
+        );
+      });
     }
 
-    return mergedEvents.filter((event) => {
+    // If no members selected (empty array), return result (all events or category-filtered)
+    if (filters.selectedMemberIds.length === 0) {
+      return result;
+    }
+
+    // Filter by members
+    return result.filter((event) => {
       const familyAssignments = event.extendedProps?.metadata?.familyAssignments as
         | EventFamilyAssignments
         | undefined;
@@ -154,7 +174,7 @@ export function CalendarView() {
       // No matching members found - hide the event
       return false;
     });
-  }, [mergedEvents, filters.selectedMemberIds, filters.showUnassigned, filters.memberFilter, familyMembers.length]);
+  }, [mergedEvents, filters.selectedMemberIds, filters.showUnassigned, filters.memberFilter, filters.selectedCategoryIds, familyMembers.length, eventCategories]);
 
   // Filter handlers
   const handleFilterChange = useCallback((newFilters: CalendarFiltersState) => {
@@ -166,19 +186,21 @@ export function CalendarView() {
       memberFilter: 'all',
       selectedMemberIds: [],
       showUnassigned: true,
+      selectedCategoryIds: [],
     });
   }, []);
 
   const handleRemoveMemberFilter = useCallback(
     (memberId: string) => {
       const newSelectedIds = filters.selectedMemberIds.filter((id) => id !== memberId);
-      // If removing last member, reset to all (empty selection)
+      // If removing last member, reset members to all (empty selection)
       if (newSelectedIds.length === 0) {
-        setFilters({
+        setFilters((prev) => ({
+          ...prev,
           memberFilter: 'all',
           selectedMemberIds: [],
           showUnassigned: true,
-        });
+        }));
         return;
       }
       setFilters((prev) => ({
@@ -190,8 +212,19 @@ export function CalendarView() {
     [filters.selectedMemberIds]
   );
 
-  // Can reset if any members are selected (not showing all)
-  const canResetFilters = filters.selectedMemberIds.length > 0;
+  const handleRemoveCategoryFilter = useCallback(
+    (categoryId: string) => {
+      const newSelectedIds = filters.selectedCategoryIds.filter((id) => id !== categoryId);
+      setFilters((prev) => ({
+        ...prev,
+        selectedCategoryIds: newSelectedIds,
+      }));
+    },
+    [filters.selectedCategoryIds]
+  );
+
+  // Can reset if any filters are active
+  const canResetFilters = filters.selectedMemberIds.length > 0 || filters.selectedCategoryIds.length > 0;
 
   // E2: Custom event content renderer with avatars
   const renderEventContent = useCallback(
@@ -589,6 +622,7 @@ export function CalendarView() {
             <CalendarFilters
               filters={filters}
               familyMembers={familyMembers}
+              eventCategories={eventCategories}
               onFilterChange={handleFilterChange}
               canReset={canResetFilters}
               onReset={handleFilterReset}
@@ -600,8 +634,10 @@ export function CalendarView() {
         <CalendarFiltersResult
           filters={filters}
           familyMembers={familyMembers}
+          eventCategories={eventCategories}
           totalResults={filteredEvents.length}
           onRemoveMember={handleRemoveMemberFilter}
+          onRemoveCategory={handleRemoveCategoryFilter}
           onReset={handleFilterReset}
         />
 

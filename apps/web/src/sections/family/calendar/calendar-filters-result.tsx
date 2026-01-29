@@ -1,4 +1,4 @@
-import type { FamilyMember } from '@family/shared';
+import type { FamilyMember, EventCategoryConfig } from '@family/shared';
 import type { CalendarFiltersState } from './calendar-filters';
 
 import Box from '@mui/material/Box';
@@ -12,16 +12,20 @@ import Typography from '@mui/material/Typography';
 type Props = {
   filters: CalendarFiltersState;
   familyMembers: FamilyMember[];
+  eventCategories: EventCategoryConfig[];
   totalResults: number;
   onRemoveMember: (memberId: string) => void;
+  onRemoveCategory: (categoryId: string) => void;
   onReset: () => void;
 };
 
 export function CalendarFiltersResult({
   filters,
   familyMembers,
+  eventCategories,
   totalResults,
   onRemoveMember,
+  onRemoveCategory,
   onReset,
 }: Props) {
   // Get selected members for display
@@ -29,8 +33,15 @@ export function CalendarFiltersResult({
     filters.selectedMemberIds.includes(m.id)
   );
 
-  // Don't show if no members selected (showing all - no active filter)
-  const isFiltered = filters.selectedMemberIds.length > 0;
+  // Get selected categories for display
+  const selectedCategories = eventCategories.filter((c) =>
+    filters.selectedCategoryIds.includes(c.id)
+  );
+
+  // Don't show if no filters active
+  const hasMemberFilter = filters.selectedMemberIds.length > 0;
+  const hasCategoryFilter = filters.selectedCategoryIds.length > 0;
+  const isFiltered = hasMemberFilter || hasCategoryFilter;
 
   if (!isFiltered) {
     return null;
@@ -65,11 +76,8 @@ export function CalendarFiltersResult({
       )}
 
       {/* Individual member chips (only show in custom mode) */}
-      {filters.memberFilter === 'custom' && (
+      {filters.memberFilter === 'custom' && selectedMembers.length > 0 && (
         <>
-          <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-            Showing:
-          </Typography>
           {selectedMembers.map((member) => {
             const memberName = member.displayName || member.profile?.displayName || 'Member';
             return (
@@ -90,6 +98,31 @@ export function CalendarFiltersResult({
               />
             );
           })}
+        </>
+      )}
+
+      {/* Category chips */}
+      {selectedCategories.length > 0 && (
+        <>
+          {selectedCategories.map((category) => (
+            <Chip
+              key={category.id}
+              size="small"
+              icon={
+                <Box
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    bgcolor: category.color || '#637381',
+                    ml: 0.5,
+                  }}
+                />
+              }
+              label={category.label}
+              onDelete={() => onRemoveCategory(category.id)}
+            />
+          ))}
         </>
       )}
 

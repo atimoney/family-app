@@ -1,13 +1,18 @@
-import type { FamilyMember } from '@family/shared';
+import type { FamilyMember, EventCategoryConfig } from '@family/shared';
 
-import { useCallback } from 'react';
+import { useState, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
+import Chip from '@mui/material/Chip';
 import Badge from '@mui/material/Badge';
 import Avatar from '@mui/material/Avatar';
+import Button from '@mui/material/Button';
+import Popover from '@mui/material/Popover';
 import Tooltip from '@mui/material/Tooltip';
 import { alpha } from '@mui/material/styles';
+import Checkbox from '@mui/material/Checkbox';
 import IconButton from '@mui/material/IconButton';
+import Typography from '@mui/material/Typography';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
@@ -21,11 +26,13 @@ export type CalendarFiltersState = {
   memberFilter: MemberFilterType;
   selectedMemberIds: string[];
   showUnassigned: boolean;
+  selectedCategoryIds: string[];
 };
 
 type Props = {
   filters: CalendarFiltersState;
   familyMembers: FamilyMember[];
+  eventCategories: EventCategoryConfig[];
   onFilterChange: (filters: CalendarFiltersState) => void;
   canReset: boolean;
   onReset: () => void;
@@ -34,10 +41,15 @@ type Props = {
 export function CalendarFilters({
   filters,
   familyMembers,
+  eventCategories,
   onFilterChange,
   canReset,
   onReset,
 }: Props) {
+  // Category popover state
+  const [categoryAnchorEl, setCategoryAnchorEl] = useState<HTMLElement | null>(null);
+  const categoryPopoverOpen = Boolean(categoryAnchorEl);
+
   // Handle quick filter change (All/Adults/Kids)
   const handleQuickFilterChange = useCallback(
     (_: React.MouseEvent<HTMLElement>, newValue: MemberFilterType | null) => {
@@ -46,6 +58,7 @@ export function CalendarFilters({
       if (newValue === 'all') {
         // Empty selection = show all
         onFilterChange({
+          ...filters,
           memberFilter: 'all',
           selectedMemberIds: [],
           showUnassigned: true,
@@ -54,6 +67,7 @@ export function CalendarFilters({
         // Filter to adults only (non-child members)
         const adultIds = familyMembers.filter((m) => !isChildMember(m)).map((m) => m.id);
         onFilterChange({
+          ...filters,
           memberFilter: 'adults',
           selectedMemberIds: adultIds,
           showUnassigned: false,
@@ -62,13 +76,14 @@ export function CalendarFilters({
         // Filter to kids only (child members)
         const kidIds = familyMembers.filter((m) => isChildMember(m)).map((m) => m.id);
         onFilterChange({
+          ...filters,
           memberFilter: 'kids',
           selectedMemberIds: kidIds,
           showUnassigned: false,
         });
       }
     },
-    [familyMembers, onFilterChange]
+    [familyMembers, filters, onFilterChange]
   );
 
   // Handle individual member click - toggles selection (multi-select)
@@ -88,6 +103,7 @@ export function CalendarFilters({
       // If no one selected, go back to "all" (shows everything)
       if (newSelectedIds.length === 0) {
         onFilterChange({
+          ...filters,
           memberFilter: 'all',
           selectedMemberIds: [],
           showUnassigned: true,
@@ -97,13 +113,45 @@ export function CalendarFilters({
 
       // Custom selection
       onFilterChange({
+        ...filters,
         memberFilter: 'custom',
         selectedMemberIds: newSelectedIds,
-        showUnassigned: filters.showUnassigned,
       });
     },
-    [filters.selectedMemberIds, filters.showUnassigned, onFilterChange]
+    [filters, onFilterChange]
   );
+
+  // Handle category toggle
+  const handleCategoryToggle = useCallback(
+    (categoryId: string) => {
+      const isSelected = filters.selectedCategoryIds.includes(categoryId);
+      
+      let newSelectedIds: string[];
+      if (isSelected) {
+        newSelectedIds = filters.selectedCategoryIds.filter((id) => id !== categoryId);
+      } else {
+        newSelectedIds = [...filters.selectedCategoryIds, categoryId];
+      }
+
+      onFilterChange({
+        ...filters,
+        selectedCategoryIds: newSelectedIds,
+      });
+    },
+    [filters, onFilterChange]
+  );
+
+  // Handle "All Categories" click
+  const handleAllCategories = useCallback(() => {
+    onFilterChange({
+      ...filters,
+      selectedCategoryIds: [],
+    });
+    setCategoryAnchorEl(null);
+  }, [filters, onFilterChange]);
+
+  // Get selected category count for badge
+  const selectedCategoryCount = filters.selectedCategoryIds.length;
 
   return (
     <Box
@@ -164,6 +212,101 @@ export function CalendarFilters({
 
       {/* Quick filter buttons - RIGHT */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        {/* Category dropdown */}
+        <Button
+          size="small"
+          color="inherit"
+          onClick={(e) => setCategoryAnchorEl(e.currentTarget)}
+          endIcon={
+            <Badge 
+              badgeContent={selectedCategoryCount} 
+              color="primary"
+              sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', height: 16, minWidth: 16 } }}
+            >
+              <Iconify icon="eva:chevron-down-fill" width={16} />
+            </Badge>
+          }
+          sx={{
+            px: 1.5,
+            py: 0.5,
+            bgcolor: selectedCategoryCount > 0 ? 'action.selected' : 'transparent',
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
+          <Iconify icon="mdi:tag" width={18} sx={{ mr: 0.5 }} />
+          Categories
+        </Button>
+
+        <Popover
+          open={categoryPopoverOpen}
+          anchorEl={categoryAnchorEl}
+          onClose={() => setCategoryAnchorEl(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+          slotProps={{
+            paper: {
+              sx: { p: 1, minWidth: 200, maxWidth: 280 },
+            },
+          }}
+        >
+          {/* All Categories button */}
+          <Button
+            fullWidth
+            size="small"
+            onClick={handleAllCategories}
+            sx={{
+              justifyContent: 'flex-start',
+              px: 1,
+              py: 0.75,
+              mb: 0.5,
+              bgcolor: selectedCategoryCount === 0 ? 'action.selected' : 'transparent',
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
+          >
+            <Iconify icon="solar:check-circle-bold" width={20} sx={{ mr: 1, opacity: selectedCategoryCount === 0 ? 1 : 0 }} />
+            All Categories
+          </Button>
+
+          {/* Category list */}
+          {eventCategories.map((category) => {
+            const isSelected = filters.selectedCategoryIds.includes(category.id);
+            return (
+              <Box
+                key={category.id}
+                onClick={() => handleCategoryToggle(category.id)}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  px: 1,
+                  py: 0.75,
+                  borderRadius: 1,
+                  cursor: 'pointer',
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
+              >
+                <Checkbox
+                  size="small"
+                  checked={isSelected}
+                  sx={{ p: 0, mr: 1 }}
+                />
+                <Box
+                  sx={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    bgcolor: category.color || '#637381',
+                    mr: 1,
+                    flexShrink: 0,
+                  }}
+                />
+                <Typography variant="body2" noWrap>
+                  {category.label}
+                </Typography>
+              </Box>
+            );
+          })}
+        </Popover>
+
         <ToggleButtonGroup
           exclusive
           size="small"
