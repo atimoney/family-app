@@ -7,9 +7,9 @@ export type EventFamilyAssignments = {
   primaryFamilyMemberId?: string | null;
   /** Family members participating in this event */
   participantFamilyMemberIds?: string[];
-  /** For Meal category: who is cooking */
+  /** Who is cooking (for meal-related events) */
   cookMemberId?: string | null;
-  /** For Chore category: who is assigned to do it */
+  /** Who is assigned to do it */
   assignedToMemberId?: string | null;
 };
 
@@ -19,11 +19,10 @@ export type EventFamilyAssignments = {
 
 /** E1: Event category enum */
 export type EventCategory =
-  | 'Meal'
   | 'School'
   | 'Sport'
   | 'Activity'
-  | 'Chore'
+  | 'Social'
   | 'Appointment'
   | 'Work'
   | 'Travel'
@@ -33,71 +32,8 @@ export type EventCategory =
 /** E1: Event audience enum */
 export type EventAudience = 'family' | 'adults' | 'kids';
 
-/** E1: Meal category metadata */
-export type MealMetadata = {
-  mealType?: 'breakfast' | 'lunch' | 'dinner' | null;
-  kidFriendly?: boolean;
-  recipeRef?: string | null;
-};
-
-/** E1: School category metadata */
-export type SchoolMetadata = {
-  schoolName?: string | null;
-};
-
-/** E1: Sport category metadata */
-export type SportMetadata = {
-  sportName?: string | null;
-  teamName?: string | null;
-  homeAway?: 'home' | 'away' | null;
-  arrivalBufferMins?: number | null;
-};
-
-/** E1: Chore category metadata */
-export type ChoreMetadata = {
-  rewardPoints?: number | null;
-  completionRequired?: boolean;
-};
-
-/** E1: Appointment category metadata */
-export type AppointmentMetadata = {
-  appointmentType?: string | null;
-  providerName?: string | null;
-  transportRequired?: boolean;
-};
-
-/** E1: Travel category metadata */
-export type TravelMetadata = {
-  tripName?: string | null;
-  mode?: 'flight' | 'car' | 'train' | 'other' | null;
-  bookingRef?: string | null;
-};
-
-/** E1: Home category metadata */
-export type HomeMetadata = {
-  tradeType?: string | null;
-  contractorName?: string | null;
-  urgency?: 'low' | 'med' | 'high' | null;
-};
-
-/** E1: Admin category metadata */
-export type AdminMetadata = {
-  status?: 'pending' | 'done' | null;
-  dueDate?: string | null;
-  referenceLink?: string | null;
-};
-
-/** E1: Union type for all category-specific metadata */
-export type CategoryMetadata =
-  | MealMetadata
-  | SchoolMetadata
-  | SportMetadata
-  | ChoreMetadata
-  | AppointmentMetadata
-  | TravelMetadata
-  | HomeMetadata
-  | AdminMetadata
-  | Record<string, unknown>;
+/** Category metadata - generic type for user-defined category fields */
+export type CategoryMetadata = Record<string, unknown>;
 
 export type CalendarEventMetadata = {
   tags: string[];

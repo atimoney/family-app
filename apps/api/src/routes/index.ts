@@ -8,6 +8,7 @@ import eventsRoutes from './events/index.js';
 import profileRoutes from './profile/index.js';
 import familyRoutes from './family/index.js';
 import inviteRoutes from './invites/index.js';
+import categoriesRoutes from './family/categories.js';
 
 const routes: FastifyPluginAsync = async (fastify) => {
   // Health check at root level
@@ -19,6 +20,7 @@ const routes: FastifyPluginAsync = async (fastify) => {
   // Family and invite routes
   fastify.register(familyRoutes, { prefix: '/api' });
   fastify.register(inviteRoutes, { prefix: '/api' });
+  fastify.register(categoriesRoutes, { prefix: '/api' });
 
   // Integration routes
   fastify.register(googleIntegrationRoutes, { prefix: '/integrations/google' });

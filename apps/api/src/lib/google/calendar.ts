@@ -83,20 +83,33 @@ export function buildRRule(rule: RecurrenceRule): string {
 }
 
 /**
+ * Internal RecurrenceRule type (non-nullable) for parseRRule return
+ */
+type RecurrenceRuleData = {
+  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+  interval?: number;
+  count?: number;
+  until?: string;
+  byDay?: ('MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU')[];
+  byMonthDay?: number[];
+  byMonth?: number[];
+};
+
+/**
  * Parse a Google Calendar RRULE string into a RecurrenceRule object
  */
-export function parseRRule(rruleString: string): RecurrenceRule | null {
+export function parseRRule(rruleString: string): RecurrenceRuleData | null {
   if (!rruleString || !rruleString.startsWith('RRULE:')) return null;
   
   const rule = rruleString.replace('RRULE:', '');
   const parts = rule.split(';');
-  const result: RecurrenceRule = {} as RecurrenceRule;
+  const result: Partial<RecurrenceRuleData> = {};
   
   for (const part of parts) {
     const [key, value] = part.split('=');
     switch (key) {
       case 'FREQ':
-        result.frequency = value as RecurrenceRule['frequency'];
+        result.frequency = value as RecurrenceRuleData['frequency'];
         break;
       case 'INTERVAL':
         result.interval = parseInt(value, 10);
@@ -104,7 +117,7 @@ export function parseRRule(rruleString: string): RecurrenceRule | null {
       case 'COUNT':
         result.count = parseInt(value, 10);
         break;
-      case 'UNTIL':
+      case 'UNTIL': {
         // Convert YYYYMMDDTHHMMSSZ to ISO string
         const year = value.slice(0, 4);
         const month = value.slice(4, 6);
@@ -114,8 +127,9 @@ export function parseRRule(rruleString: string): RecurrenceRule | null {
         const second = value.slice(13, 15) || '00';
         result.until = `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
         break;
+      }
       case 'BYDAY':
-        result.byDay = value.split(',');
+        result.byDay = value.split(',') as RecurrenceRuleData['byDay'];
         break;
       case 'BYMONTHDAY':
         result.byMonthDay = value.split(',').map((v) => parseInt(v, 10));
@@ -126,13 +140,13 @@ export function parseRRule(rruleString: string): RecurrenceRule | null {
     }
   }
   
-  return result.frequency ? result : null;
+  return result.frequency ? (result as RecurrenceRuleData) : null;
 }
 
 /**
  * Convert EventReminder array to Google Calendar reminder format
  */
-export function buildGoogleReminders(reminders: EventReminder[] | null | undefined): calendar_v3.Schema$EventReminders | undefined {
+export function buildGoogleReminders(reminders: EventReminder[] | null | undefined): calendar_v3.Schema$Event['reminders'] | undefined {
   if (!reminders || reminders.length === 0) {
     return undefined;
   }
@@ -149,12 +163,12 @@ export function buildGoogleReminders(reminders: EventReminder[] | null | undefin
 /**
  * Parse Google Calendar reminders into EventReminder array
  */
-export function parseGoogleReminders(reminders: calendar_v3.Schema$EventReminders | undefined): EventReminder[] | null {
+export function parseGoogleReminders(reminders: calendar_v3.Schema$Event['reminders'] | undefined): EventReminder[] | null {
   if (!reminders || reminders.useDefault || !reminders.overrides) {
     return null;
   }
   
-  return reminders.overrides.map((r) => ({
+  return reminders.overrides.map((r: calendar_v3.Schema$EventReminder) => ({
     method: (r.method as 'email' | 'popup') || 'popup',
     minutes: r.minutes || 0,
   }));
@@ -386,7 +400,7 @@ export function mergeExtendedProperties(
     metadata?: CategoryMetadata | null;
     eventId?: string | null;
   }
-): calendar_v3.Schema$EventExtendedProperties | undefined {
+): calendar_v3.Schema$Event['extendedProperties'] | undefined {
   const familyProps = buildFamilyExtendedProperties(familyAssignments, e1Options);
   
   if (!familyProps && !existing?.private) {

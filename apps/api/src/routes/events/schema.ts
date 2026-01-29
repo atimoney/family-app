@@ -50,19 +50,9 @@ export const familyAssignmentsSchema = z.object({
   assignedToMemberId: z.string().nullable().optional(),
 }).nullable().optional();
 
-// E1: Event category enum
-export const eventCategorySchema = z.enum([
-  'Meal',
-  'School',
-  'Sport',
-  'Activity',
-  'Chore',
-  'Appointment',
-  'Work',
-  'Travel',
-  'Home',
-  'Admin',
-]);
+// E1: Event category - flexible string to support user-defined categories
+// Transform to lowercase for consistency
+export const eventCategorySchema = z.string().transform(val => val.toLowerCase());
 
 // E1: Event audience enum
 export const eventAudienceSchema = z.enum(['family', 'adults', 'kids']);

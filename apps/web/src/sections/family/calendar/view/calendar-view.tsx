@@ -9,7 +9,7 @@ import Calendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { useState, useCallback, startTransition, useMemo } from 'react';
+import { useMemo, useState, useCallback, startTransition } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -29,6 +29,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useFamily } from 'src/features/family/hooks/use-family';
 import { useSelectedCalendars } from 'src/features/calendar/hooks/use-calendars';
+import { useEventCategories } from 'src/features/calendar/hooks/use-event-categories';
 import {
   useCalendarEvents,
   useCalendarMutations,
@@ -51,10 +52,13 @@ export function CalendarView() {
   const { family } = useFamily();
   const [localEvents, setLocalEvents] = useState<CalendarEventItem[]>([]);
 
+  // E1: Load event categories for the family
+  const { categories: eventCategories } = useEventCategories(family?.id ?? null);
+
   const mergedEvents = localEvents.length ? localEvents : events;
 
   // E2: Get family members for event assignment
-  const familyMembers = family?.members ?? [];
+  const familyMembers = useMemo(() => family?.members ?? [], [family?.members]);
 
   // E2: Create a map for quick member lookup by ID
   const memberById = useMemo(() => {
@@ -408,6 +412,7 @@ export function CalendarView() {
         selectedRange={selectedRange}
         calendars={calendars}
         familyMembers={familyMembers}
+        eventCategories={eventCategories}
         onClose={onCloseForm}
         onCreateEvent={handleCreateEvent}
         onUpdateEvent={handleUpdateEvent}

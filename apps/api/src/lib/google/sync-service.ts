@@ -1,5 +1,5 @@
 import type { OAuth2Client } from 'google-auth-library';
-import type { PrismaClient, SelectedCalendar, GoogleAccount } from '@prisma/client';
+import type { PrismaClient, SelectedCalendar, GoogleAccount, Prisma } from '@prisma/client';
 import { google, calendar_v3 } from 'googleapis';
 
 import { decryptSecret } from '../crypto.js';
@@ -449,8 +449,8 @@ async function syncFamilyAssignmentsToMetadata(
       category: parsed.category ?? existingMetadata?.category ?? null,
       audience: parsed.audience ?? existingMetadata?.audience ?? 'family',
       categoryMetadata: Object.keys(parsed.metadata).length > 0 
-        ? parsed.metadata 
-        : (existingMetadata?.categoryMetadata ?? {}),
+        ? (parsed.metadata as Prisma.InputJsonValue) 
+        : ((existingMetadata?.categoryMetadata as Prisma.InputJsonValue) ?? {}),
       customJson: mergedCustomJson,
     },
     update: {
@@ -459,7 +459,7 @@ async function syncFamilyAssignmentsToMetadata(
       // E1: Update category, audience, and categoryMetadata if present
       ...(parsed.category ? { category: parsed.category } : {}),
       ...(parsed.audience ? { audience: parsed.audience } : {}),
-      ...(Object.keys(parsed.metadata).length > 0 ? { categoryMetadata: parsed.metadata } : {}),
+      ...(Object.keys(parsed.metadata).length > 0 ? { categoryMetadata: parsed.metadata as Prisma.InputJsonValue } : {}),
       customJson: mergedCustomJson,
     },
   });

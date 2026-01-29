@@ -425,7 +425,15 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Store extra data including color preference and family assignments
     const eventExtraData = {
-      ...extraData,
+      tags: extraData?.tags ?? [],
+      category: extraData?.category ?? null,
+      notes: extraData?.notes ?? null,
+      audience: extraData?.audience,
+      metadata: extraData?.metadata,
+      familyAssignments: extraData?.familyAssignments ? {
+        ...extraData.familyAssignments,
+        participantFamilyMemberIds: extraData.familyAssignments.participantFamilyMemberIds ?? undefined,
+      } : undefined,
       color: color ?? extraData?.color ?? null,
     };
 
@@ -521,7 +529,15 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Store extra data including color preference and family assignments
     const eventExtraData = {
-      ...extraData,
+      tags: extraData?.tags ?? [],
+      category: extraData?.category ?? null,
+      notes: extraData?.notes ?? null,
+      audience: extraData?.audience,
+      metadata: extraData?.metadata,
+      familyAssignments: extraData?.familyAssignments ? {
+        ...extraData.familyAssignments,
+        participantFamilyMemberIds: extraData.familyAssignments.participantFamilyMemberIds ?? undefined,
+      } : undefined,
       color: color ?? extraData?.color ?? null,
     };
 

@@ -152,9 +152,10 @@ model Family {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  creator Profile        @relation("FamilyCreator", fields: [createdBy], references: [id])
-  members FamilyMember[]
-  invites FamilyInvite[]
+  creator         Profile         @relation("FamilyCreator", fields: [createdBy], references: [id])
+  members         FamilyMember[]
+  invites         FamilyInvite[]
+  eventCategories EventCategory[]
 
   @@index([createdBy])
   @@map("families")
@@ -224,4 +225,30 @@ model ShoppingItem {
   purchased Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ============================================================================
+// EVENT CATEGORIES (E1)
+// ============================================================================
+
+// Custom event categories per family
+model EventCategory {
+  id             String    @id @default(cuid())
+  familyId       String    @map("family_id")
+  name           String    // Internal name (e.g., "meal", "sport") - used as key
+  label          String    // Display label (e.g., "Meal", "Sport")
+  icon           String    // Iconify icon name (e.g., "solar:cup-star-bold")
+  color          String?   // Optional hex color for category
+  sortOrder      Int       @default(0) @map("sort_order")
+  isSystem       Boolean   @default(false) @map("is_system") // System categories can't be deleted
+  metadataSchema Json      @default("{}") @map("metadata_schema") // JSON schema for category-specific fields
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@unique([familyId, name])
+  @@index([familyId, sortOrder])
+  @@map("event_categories")
 }
