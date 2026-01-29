@@ -36,15 +36,6 @@ import Autocomplete from '@mui/material/Autocomplete';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 
-import {
-  info,
-  primary,
-  success,
-  warning,
-  secondary,
-  error as errorColor,
-} from 'src/theme/core/palette';
-
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
 import { ColorPicker } from 'src/components/color-utils';
@@ -53,15 +44,20 @@ import { Form, Field, zodResolver } from 'src/components/hook-form';
 // ----------------------------------------------------------------------
 
 // Color options for event picker
+// Google Calendar colors (exact hex values for proper sync)
+// https://developers.google.com/calendar/api/v3/reference/colors/get
 export const CALENDAR_COLOR_OPTIONS = [
-  primary.main,
-  secondary.main,
-  info.main,
-  info.darker,
-  success.main,
-  warning.main,
-  errorColor.main,
-  errorColor.darker,
+  '#7986cb', // 1 - Lavender
+  '#33b679', // 2 - Sage
+  '#8e24aa', // 3 - Grape
+  '#e67c73', // 4 - Flamingo
+  '#f6bf26', // 5 - Banana
+  '#f4511e', // 6 - Tangerine
+  '#039be5', // 7 - Peacock
+  '#616161', // 8 - Graphite
+  '#3f51b5', // 9 - Blueberry
+  '#0b8043', // 10 - Basil
+  '#d50000', // 11 - Tomato
 ];
 
 // E1: Default/fallback event category options (used when dynamic categories not provided)
@@ -273,7 +269,7 @@ export function CalendarForm({
     title: currentEvent?.title || '',
     description: currentEvent?.description || currentEvent?.extendedProps?.description || '',
     location: currentEvent?.location || currentEvent?.extendedProps?.location || '',
-    color: currentEvent?.color || currentEvent?.extendedProps?.metadata?.color || '',
+    color: currentEvent?.color || currentEvent?.googleEventColor || currentEvent?.extendedProps?.metadata?.color || '',
     allDay: currentEvent?.allDay ?? false,
     start: currentEvent?.start || selectedRange?.start || dayjs().format(),
     end: currentEvent?.end || selectedRange?.end || dayjs().add(1, 'hour').format(),
@@ -533,7 +529,7 @@ export function CalendarForm({
           {/* Color Picker */}
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Event color
+              Google event color
             </Typography>
             <Controller
               name="color"

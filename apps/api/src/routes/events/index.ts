@@ -8,6 +8,32 @@ import {
   getEventsResponseSchema,
 } from './schema.js';
 
+// Google Calendar colorId to hex mapping (reverse of calendar/index.ts)
+// https://developers.google.com/calendar/api/v3/reference/colors/get
+const GOOGLE_COLOR_ID_TO_HEX: Record<string, string> = {
+  '1': '#7986cb',  // Lavender
+  '2': '#33b679',  // Sage
+  '3': '#8e24aa',  // Grape
+  '4': '#e67c73',  // Flamingo
+  '5': '#f6bf26',  // Banana
+  '6': '#f4511e',  // Tangerine
+  '7': '#039be5',  // Peacock
+  '8': '#616161',  // Graphite
+  '9': '#3f51b5',  // Blueberry
+  '10': '#0b8043', // Basil
+  '11': '#d50000', // Tomato
+};
+
+/**
+ * Extract Google event color from rawJson colorId
+ */
+function getGoogleEventColor(rawJson: unknown): string | null {
+  if (!rawJson || typeof rawJson !== 'object') return null;
+  const colorId = (rawJson as { colorId?: string }).colorId;
+  if (!colorId) return null;
+  return GOOGLE_COLOR_ID_TO_HEX[colorId] ?? null;
+}
+
 const eventsRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authPlugin);
 
@@ -71,6 +97,8 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       const familyAssignments = customJson.familyAssignments as Record<string, unknown> | undefined;
       // E1: Extract category metadata
       const categoryMetadata = (event.metadata?.categoryMetadata ?? {}) as Record<string, unknown>;
+      // Extract Google event color from rawJson
+      const googleEventColor = getGoogleEventColor(event.rawJson);
 
       return {
         id: event.id,
@@ -85,6 +113,7 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
         status: event.status ?? null,
         calendarColor: event.selectedCalendar?.color ?? null,
         calendarSummary: event.selectedCalendar?.summary ?? null,
+        googleEventColor, // Google event's own color (from colorId)
         metadata: event.metadata
           ? {
               tags: event.metadata.tags ?? [],
@@ -136,6 +165,8 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     const familyAssignments = customJson.familyAssignments as Record<string, unknown> | undefined;
     // E1: Extract category metadata
     const categoryMetadata = (event.metadata?.categoryMetadata ?? {}) as Record<string, unknown>;
+    // Extract Google event color from rawJson
+    const googleEventColor = getGoogleEventColor(event.rawJson);
 
     return {
       id: event.id,
@@ -150,6 +181,7 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       status: event.status ?? null,
       calendarColor: event.selectedCalendar?.color ?? null,
       calendarSummary: event.selectedCalendar?.summary ?? null,
+      googleEventColor, // Google event's own color (from colorId)
       metadata: event.metadata
         ? {
             tags: event.metadata.tags ?? [],

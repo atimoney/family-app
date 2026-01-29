@@ -71,6 +71,7 @@ export const getEventsResponseSchema = z.array(
     status: z.string().nullable().optional(),
     calendarColor: z.string().nullable(),
     calendarSummary: z.string().nullable(),
+    googleEventColor: z.string().nullable().optional(), // Google event's own color (from colorId)
     metadata: z
       .object({
         tags: z.array(z.string()),

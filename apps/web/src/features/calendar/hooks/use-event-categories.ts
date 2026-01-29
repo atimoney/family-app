@@ -16,18 +16,19 @@ import {
 
 // ----------------------------------------------------------------------
 // DEFAULT CATEGORIES (fallback when API is unavailable)
+// Colors are from MUI color palette for visual distinction
 // ----------------------------------------------------------------------
 
 export const DEFAULT_CATEGORIES: Omit<EventCategoryConfig, 'id' | 'familyId' | 'createdAt' | 'updatedAt'>[] = [
-  { name: 'activity', label: 'Activity', icon: 'solar:cup-star-bold', color: null, sortOrder: 0, isSystem: true, metadataSchema: {} },
-  { name: 'school', label: 'School', icon: 'mdi:school', color: null, sortOrder: 1, isSystem: true, metadataSchema: {} },
-  { name: 'sport', label: 'Sport', icon: 'solar:dumbbell-large-minimalistic-bold', color: null, sortOrder: 2, isSystem: true, metadataSchema: {} },
-  { name: 'social', label: 'Social', icon: 'mdi:party-popper', color: null, sortOrder: 3, isSystem: true, metadataSchema: {} },
-  { name: 'appointment', label: 'Appointment', icon: 'solar:calendar-date-bold', color: null, sortOrder: 4, isSystem: true, metadataSchema: {} },
-  { name: 'work', label: 'Work', icon: 'mdi:briefcase', color: null, sortOrder: 5, isSystem: true, metadataSchema: {} },
-  { name: 'travel', label: 'Travel', icon: 'mdi:airplane', color: null, sortOrder: 6, isSystem: true, metadataSchema: {} },
-  { name: 'home', label: 'Home', icon: 'mdi:home', color: null, sortOrder: 7, isSystem: true, metadataSchema: {} },
-  { name: 'admin', label: 'Admin', icon: 'solar:file-text-bold', color: null, sortOrder: 8, isSystem: true, metadataSchema: {} },
+  { name: 'activity', label: 'Activity', icon: 'solar:cup-star-bold', color: '#FFB300', sortOrder: 0, isSystem: true, metadataSchema: {} }, // Amber 600
+  { name: 'school', label: 'School', icon: 'mdi:school', color: '#1E88E5', sortOrder: 1, isSystem: true, metadataSchema: {} }, // Blue 600
+  { name: 'sport', label: 'Sport', icon: 'solar:dumbbell-large-minimalistic-bold', color: '#43A047', sortOrder: 2, isSystem: true, metadataSchema: {} }, // Green 600
+  { name: 'social', label: 'Social', icon: 'mdi:party-popper', color: '#E91E63', sortOrder: 3, isSystem: true, metadataSchema: {} }, // Pink 500
+  { name: 'appointment', label: 'Appointment', icon: 'solar:calendar-date-bold', color: '#00ACC1', sortOrder: 4, isSystem: true, metadataSchema: {} }, // Cyan 600
+  { name: 'work', label: 'Work', icon: 'mdi:briefcase', color: '#5E35B1', sortOrder: 5, isSystem: true, metadataSchema: {} }, // Deep Purple 600
+  { name: 'travel', label: 'Travel', icon: 'mdi:airplane', color: '#FB8C00', sortOrder: 6, isSystem: true, metadataSchema: {} }, // Orange 600
+  { name: 'home', label: 'Home', icon: 'mdi:home', color: '#8D6E63', sortOrder: 7, isSystem: true, metadataSchema: {} }, // Brown 400
+  { name: 'admin', label: 'Admin', icon: 'solar:file-text-bold', color: '#757575', sortOrder: 8, isSystem: true, metadataSchema: {} }, // Grey 600
 ];
 
 // Convert to full EventCategoryConfig format for fallback

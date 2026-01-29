@@ -34,6 +34,21 @@ import { Label } from 'src/components/label';
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { ConfirmDialog } from 'src/components/custom-dialog';
+import { ColorPickerWithCustom } from 'src/components/color-utils';
+
+// Preset colors for category color picker
+const CATEGORY_COLORS = [
+  '#FF5630', // Red
+  '#FF8C00', // Orange
+  '#FFAB00', // Amber
+  '#22C55E', // Green
+  '#00B8D9', // Cyan
+  '#0076D3', // Blue
+  '#7C3AED', // Purple
+  '#FF1493', // Pink
+  '#637381', // Gray
+  '#212B36', // Dark
+];
 
 // ----------------------------------------------------------------------
 
@@ -360,7 +375,7 @@ export function SettingsCategories() {
             </Box>
           ) : (
             <List disablePadding>
-              {categories.map((category, index) => (
+              {[...categories].sort((a, b) => a.label.localeCompare(b.label)).map((category, index) => (
                 <ListItem
                   key={category.id}
                   divider={index < categories.length - 1}
@@ -393,7 +408,6 @@ export function SettingsCategories() {
                         )}
                       </Stack>
                     }
-                    secondary={category.name}
                   />
                   <ListItemSecondaryAction>
                     <Stack direction="row" spacing={0.5}>
@@ -472,31 +486,11 @@ export function SettingsCategories() {
               }}
               helperText="Iconify icon name"
             />
-            <TextField
-              fullWidth
+            <ColorPickerWithCustom
               label="Color (optional)"
-              placeholder="#3b82f6"
-              value={formData.color}
-              onChange={(e) => handleFieldChange('color', e.target.value)}
-              slotProps={{
-                input: {
-                  startAdornment: formData.color && (
-                    <InputAdornment position="start">
-                      <Box
-                        sx={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: 0.5,
-                          bgcolor: formData.color,
-                          border: '1px solid',
-                          borderColor: 'divider',
-                        }}
-                      />
-                    </InputAdornment>
-                  ),
-                },
-              }}
-              helperText="Hex color code for the category"
+              options={CATEGORY_COLORS}
+              value={formData.color || ''}
+              onChange={(color) => handleFieldChange('color', color)}
             />
           </Stack>
         </DialogContent>
@@ -563,31 +557,11 @@ export function SettingsCategories() {
               }}
               helperText="Iconify icon name"
             />
-            <TextField
-              fullWidth
+            <ColorPickerWithCustom
               label="Color (optional)"
-              placeholder="#3b82f6"
-              value={formData.color}
-              onChange={(e) => handleFieldChange('color', e.target.value)}
-              slotProps={{
-                input: {
-                  startAdornment: formData.color && (
-                    <InputAdornment position="start">
-                      <Box
-                        sx={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: 0.5,
-                          bgcolor: formData.color,
-                          border: '1px solid',
-                          borderColor: 'divider',
-                        }}
-                      />
-                    </InputAdornment>
-                  ),
-                },
-              }}
-              helperText="Hex color code for the category"
+              options={CATEGORY_COLORS}
+              value={formData.color || ''}
+              onChange={(color) => handleFieldChange('color', color)}
             />
           </Stack>
         </DialogContent>

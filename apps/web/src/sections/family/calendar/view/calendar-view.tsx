@@ -3,7 +3,7 @@ import '@fullcalendar/core';
 import type { FamilyMember } from '@family/shared';
 import type { EventContentArg } from '@fullcalendar/core';
 import type { Theme, SxProps } from '@mui/material/styles';
-import type { CalendarEventItem, EventFamilyAssignments } from 'src/features/calendar/types';
+import type { CalendarEventItem, EventFamilyAssignments, CalendarEventMetadata } from 'src/features/calendar/types';
 
 import Calendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -66,6 +66,7 @@ export function CalendarView() {
     selectedMemberIds: [],
     showUnassigned: true,
     selectedCategoryIds: [],
+    colorMode: 'category',
   }));
 
   const mergedEvents = localEvents.length ? localEvents : events;
@@ -176,18 +177,84 @@ export function CalendarView() {
     });
   }, [mergedEvents, filters.selectedMemberIds, filters.showUnassigned, filters.memberFilter, filters.selectedCategoryIds, familyMembers.length, eventCategories]);
 
+  // Apply color based on selected color mode
+  const coloredEvents = useMemo(() => {
+    // Create category lookup map
+    const categoryByName = new Map<string, { color: string | null }>();
+    eventCategories.forEach((cat) => {
+      categoryByName.set(cat.name, { color: cat.color });
+      categoryByName.set(cat.label, { color: cat.color });
+    });
+
+    return filteredEvents.map((event) => {
+      const metadata = event.extendedProps?.metadata as CalendarEventMetadata | undefined;
+      const familyAssignments = metadata?.familyAssignments;
+      
+      // Get category color
+      const eventCategory = metadata?.category;
+      const categoryConfig = eventCategory ? categoryByName.get(eventCategory) : null;
+      const categoryColor = categoryConfig?.color || null;
+
+      // Get member color (primary or first participant)
+      let memberColor: string | null = null;
+      if (familyAssignments?.primaryFamilyMemberId) {
+        const primaryMember = memberById.get(familyAssignments.primaryFamilyMemberId);
+        memberColor = primaryMember?.color || null;
+      }
+      if (!memberColor && familyAssignments?.participantFamilyMemberIds?.length) {
+        const firstParticipant = memberById.get(familyAssignments.participantFamilyMemberIds[0]);
+        memberColor = firstParticipant?.color || null;
+      }
+
+      // Original calendar color is already on the event
+      const calendarColor = event.backgroundColor || null;
+
+      // Apply color based on mode - ALWAYS compute the final color
+      let finalColor: string | null = null;
+      
+      switch (filters.colorMode) {
+        case 'category':
+          // Priority: Category > Member > Calendar
+          finalColor = categoryColor || memberColor || calendarColor;
+          break;
+        case 'member':
+          // Priority: Member > Category > Calendar
+          finalColor = memberColor || categoryColor || calendarColor;
+          break;
+        case 'event':
+          // Use the Google event's own color (from colorId)
+          finalColor = event.googleEventColor || calendarColor;
+          break;
+        case 'calendar':
+          // Just use calendar color (original behavior)
+          finalColor = calendarColor;
+          break;
+        default:
+          finalColor = calendarColor;
+      }
+
+      // Always return with the computed color to ensure FullCalendar uses it
+      return {
+        ...event,
+        backgroundColor: finalColor || undefined,
+        borderColor: finalColor || undefined,
+      };
+    });
+  }, [filteredEvents, eventCategories, memberById, filters.colorMode]);
+
   // Filter handlers
   const handleFilterChange = useCallback((newFilters: CalendarFiltersState) => {
     setFilters(newFilters);
   }, []);
 
   const handleFilterReset = useCallback(() => {
-    setFilters({
+    setFilters((prev) => ({
       memberFilter: 'all',
       selectedMemberIds: [],
       showUnassigned: true,
       selectedCategoryIds: [],
-    });
+      colorMode: prev.colorMode, // Preserve color mode on reset
+    }));
   }, []);
 
   const handleRemoveMemberFilter = useCallback(
@@ -431,7 +498,7 @@ export function CalendarView() {
           extraData: Object.keys(extraData).length > 0 ? extraData : undefined,
         });
       } catch (err) {
-        console.error('Failed to update event:', err);
+          console.error('Failed to update event:', err);
         // Revert on failure
         await refresh();
       }
@@ -672,7 +739,7 @@ export function CalendarView() {
               eventDisplay="block"
               ref={calendarRef}
               initialView={view}
-              events={filteredEvents}
+              events={coloredEvents}
               select={onSelectRange}
               eventClick={onClickEvent}
               eventContent={renderEventContent}

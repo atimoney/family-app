@@ -22,11 +22,14 @@ import { Iconify } from 'src/components/iconify';
 
 export type MemberFilterType = 'all' | 'adults' | 'kids' | 'custom';
 
+export type ColorMode = 'category' | 'member' | 'event' | 'calendar';
+
 export type CalendarFiltersState = {
   memberFilter: MemberFilterType;
   selectedMemberIds: string[];
   showUnassigned: boolean;
   selectedCategoryIds: string[];
+  colorMode: ColorMode;
 };
 
 type Props = {
@@ -49,6 +52,30 @@ export function CalendarFilters({
   // Category popover state
   const [categoryAnchorEl, setCategoryAnchorEl] = useState<HTMLElement | null>(null);
   const categoryPopoverOpen = Boolean(categoryAnchorEl);
+
+  // Color mode popover state
+  const [colorModeAnchorEl, setColorModeAnchorEl] = useState<HTMLElement | null>(null);
+  const colorModePopoverOpen = Boolean(colorModeAnchorEl);
+
+  // Color mode options
+  const colorModeOptions: { value: ColorMode; label: string; icon: 'mdi:tag' | 'solar:user-rounded-bold' | 'solar:calendar-date-bold' | 'mdi:palette' }[] = [
+    { value: 'category', label: 'By Category', icon: 'mdi:tag' },
+    { value: 'member', label: 'By Member', icon: 'solar:user-rounded-bold' },
+    { value: 'event', label: 'By Google Event Color', icon: 'mdi:palette' },
+    { value: 'calendar', label: 'By Calendar', icon: 'solar:calendar-date-bold' },
+  ];
+
+  // Handle color mode change
+  const handleColorModeChange = useCallback(
+    (mode: ColorMode) => {
+      onFilterChange({
+        ...filters,
+        colorMode: mode,
+      });
+      setColorModeAnchorEl(null);
+    },
+    [filters, onFilterChange]
+  );
 
   // Handle quick filter change (All/Adults/Kids)
   const handleQuickFilterChange = useCallback(
@@ -305,6 +332,61 @@ export function CalendarFilters({
               </Box>
             );
           })}
+        </Popover>
+
+        {/* Color mode dropdown */}
+        <Button
+          size="small"
+          color="inherit"
+          onClick={(e) => setColorModeAnchorEl(e.currentTarget)}
+          endIcon={<Iconify icon="eva:chevron-down-fill" width={16} />}
+          sx={{
+            px: 1.5,
+            py: 0.5,
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
+          <Iconify icon="mdi:palette" width={18} sx={{ mr: 0.5 }} />
+          Color
+        </Button>
+
+        <Popover
+          open={colorModePopoverOpen}
+          anchorEl={colorModeAnchorEl}
+          onClose={() => setColorModeAnchorEl(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+          slotProps={{
+            paper: {
+              sx: { p: 1, minWidth: 160 },
+            },
+          }}
+        >
+          {colorModeOptions.map((option) => (
+            <Box
+              key={option.value}
+              onClick={() => handleColorModeChange(option.value)}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                px: 1.5,
+                py: 1,
+                borderRadius: 1,
+                cursor: 'pointer',
+                bgcolor: filters.colorMode === option.value ? 'action.selected' : 'transparent',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
+            >
+              <Iconify
+                icon={filters.colorMode === option.value ? 'solar:check-circle-bold' : option.icon}
+                width={20}
+                sx={{ mr: 1.5, color: filters.colorMode === option.value ? 'primary.main' : 'text.secondary' }}
+              />
+              <Typography variant="body2">
+                {option.label}
+              </Typography>
+            </Box>
+          ))}
         </Popover>
 
         <ToggleButtonGroup

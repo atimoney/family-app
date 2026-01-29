@@ -91,6 +91,7 @@ export type CalendarEventApi = {
   status?: string | null;
   calendarColor: string | null;
   calendarSummary: string | null;
+  googleEventColor?: string | null; // Google event's own color (from colorId)
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
   metadata: CalendarEventMetadata | null;
@@ -107,6 +108,7 @@ export type CalendarEventItem = {
   description?: string | null;
   location?: string | null;
   color?: string; // FullCalendar doesn't support null, use undefined instead
+  googleEventColor?: string | null; // Google event's own color (from colorId)
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
   familyAssignments?: EventFamilyAssignments | null;

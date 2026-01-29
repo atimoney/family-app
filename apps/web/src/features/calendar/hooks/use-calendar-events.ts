@@ -48,6 +48,7 @@ export function mapApiEventToCalendarEvent(event: CalendarEventApi): CalendarEve
     backgroundColor: color ?? undefined,
     borderColor: color ?? undefined,
     textColor: color ? '#ffffff' : undefined,
+    googleEventColor: event.googleEventColor ?? null, // Google event's own color
     familyAssignments: metadata.familyAssignments ?? null,
     // E1: Map category, audience, tags, and categoryMetadata
     category: metadata.category ?? null,

@@ -35,8 +35,33 @@ const GOOGLE_CALENDAR_COLORS: Record<string, string> = {
 };
 
 /**
+ * Parse a hex color string to RGB components
+ */
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16),
+      }
+    : null;
+}
+
+/**
+ * Calculate color distance using simple Euclidean distance in RGB space
+ */
+function colorDistance(color1: { r: number; g: number; b: number }, color2: { r: number; g: number; b: number }): number {
+  return Math.sqrt(
+    Math.pow(color1.r - color2.r, 2) +
+    Math.pow(color1.g - color2.g, 2) +
+    Math.pow(color1.b - color2.b, 2)
+  );
+}
+
+/**
  * Convert a hex color to the closest Google Calendar colorId
- * Returns undefined if no close match found
+ * Uses exact match first, then finds closest color by RGB distance
  */
 function getGoogleColorId(hexColor: string): string | undefined {
   if (!hexColor) return undefined;
@@ -48,9 +73,25 @@ function getGoogleColorId(hexColor: string): string | undefined {
     return GOOGLE_CALENDAR_COLORS[normalizedColor];
   }
   
-  // Try to find closest color by simple heuristic
-  // For now, return undefined and let the color be stored in extraData
-  return undefined;
+  // Find closest color by RGB distance
+  const inputRgb = hexToRgb(normalizedColor);
+  if (!inputRgb) return undefined;
+  
+  let closestColorId: string | undefined;
+  let minDistance = Infinity;
+  
+  for (const [googleHex, colorId] of Object.entries(GOOGLE_CALENDAR_COLORS)) {
+    const googleRgb = hexToRgb(googleHex);
+    if (googleRgb) {
+      const distance = colorDistance(inputRgb, googleRgb);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestColorId = colorId;
+      }
+    }
+  }
+  
+  return closestColorId;
 }
 
 const calendarRoutes: FastifyPluginAsync = async (fastify) => {
