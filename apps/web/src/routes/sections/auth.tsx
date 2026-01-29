@@ -66,7 +66,10 @@ const authSupabase = {
         <GuestGuard>
           <AuthSplitLayout
             slotProps={{
-              section: { title: 'Hi, Welcome back' },
+              section: {
+                title: 'Hi, Welcome back',
+                subtitle: 'Your family\'s schedules, events, and activities all in one place.',
+              },
             }}
           >
             <Supabase.SignInPage />
@@ -87,7 +90,7 @@ export const authRoutes: RouteObject[] = [
   {
     path: 'auth',
     element: (
-      <Suspense fallback={<SplashScreen />}>
+      <Suspense fallback={null}>
         <Outlet />
       </Suspense>
     ),

@@ -57,12 +57,7 @@ export function AuthSplitLayout({
           <Logo />
         </>
       ),
-      rightArea: (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5 } }}>
-          {/** @slot Settings button */}
-          <SettingsButton />
-        </Box>
-      ),
+      rightArea: null,
     };
 
     return (
@@ -94,13 +89,7 @@ export function AuthSplitLayout({
         layoutQuery={layoutQuery}
         method={CONFIG.auth.method}
         {...slotProps?.section}
-        methods={[
-          {
-            label: 'Jwt',
-            path: paths.auth.jwt.signIn,
-            icon: `${CONFIG.assetsDir}/assets/icons/platforms/ic-jwt.svg`,
-          },
-        ]}
+        methods={[]}
       />
       <AuthSplitContent layoutQuery={layoutQuery} {...slotProps?.content}>
         {children}

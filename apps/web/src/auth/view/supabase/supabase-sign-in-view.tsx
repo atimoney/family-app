@@ -4,8 +4,10 @@ import { useForm } from 'react-hook-form';
 import { useBoolean } from 'minimal-shared/hooks';
 
 import Box from '@mui/material/Box';
+import Link from '@mui/material/Link';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
+import Collapse from '@mui/material/Collapse';
 import IconButton from '@mui/material/IconButton';
 import LoadingButton from '@mui/lab/LoadingButton';
 import InputAdornment from '@mui/material/InputAdornment';
@@ -19,19 +21,18 @@ import { Form, Field, schemaUtils, zodResolver } from 'src/components/hook-form'
 import { useAuthContext } from '../../hooks';
 import { getErrorMessage } from '../../utils';
 import { FormHead } from '../../components/form-head';
-import { FormDivider } from '../../components/form-divider';
 import { signInWithGoogle, signInWithPassword } from '../../context/supabase';
 
 // ----------------------------------------------------------------------
-
-export type SignInSchemaType = z.infer<typeof SignInSchema>;
 
 export const SignInSchema = z.object({
   email: schemaUtils.email(),
   password: z
     .string()
-    .min(1, { error: 'Password is required!' }),
+    .min(1, { message: 'Password is required!' }),
 });
+
+export type SignInSchemaType = z.infer<typeof SignInSchema>;
 
 // ----------------------------------------------------------------------
 
@@ -42,6 +43,7 @@ export function SupabaseSignInView() {
   const returnTo = searchParams.get('returnTo');
 
   const password = useBoolean();
+  const showEmailForm = useBoolean();
   const isGoogleLoading = useBoolean();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -123,49 +125,7 @@ export function SupabaseSignInView() {
         </Alert>
       )}
 
-      <Form methods={methods} onSubmit={onSubmit}>
-        <Box sx={{ gap: 3, display: 'flex', flexDirection: 'column' }}>
-          <Field.Text
-            name="email"
-            label="Email address"
-            slotProps={{ inputLabel: { shrink: true } }}
-          />
-
-          <Field.Text
-            name="password"
-            label="Password"
-            type={password.value ? 'text' : 'password'}
-            slotProps={{
-              inputLabel: { shrink: true },
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={password.onToggle} edge="end">
-                      <Iconify icon={password.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-
-          <LoadingButton
-            fullWidth
-            color="inherit"
-            size="large"
-            type="submit"
-            variant="contained"
-            loading={isSubmitting}
-            loadingIndicator="Signing in..."
-          >
-            Sign in
-          </LoadingButton>
-        </Box>
-      </Form>
-
-      <FormDivider />
-
-      <Box sx={{ gap: 2, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ gap: 2, display: 'flex', flexDirection: 'column', mb: 3 }}>
         <Button
           fullWidth
           size="large"
@@ -184,6 +144,61 @@ export function SupabaseSignInView() {
           {isGoogleLoading.value ? 'Redirecting...' : 'Continue with Google'}
         </Button>
       </Box>
+
+      <Box sx={{ textAlign: 'center', mb: 2 }}>
+        <Link
+          component="button"
+          type="button"
+          variant="body2"
+          color="text.secondary"
+          onClick={showEmailForm.onToggle}
+          sx={{ cursor: 'pointer' }}
+        >
+          {showEmailForm.value ? 'Hide email sign in' : 'Sign in with email and password'}
+        </Link>
+      </Box>
+
+      <Collapse in={showEmailForm.value}>
+        <Form methods={methods} onSubmit={onSubmit}>
+          <Box sx={{ gap: 3, display: 'flex', flexDirection: 'column' }}>
+            <Field.Text
+              name="email"
+              label="Email address"
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+
+            <Field.Text
+              name="password"
+              label="Password"
+              type={password.value ? 'text' : 'password'}
+              slotProps={{
+                inputLabel: { shrink: true },
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={password.onToggle} edge="end">
+                        <Iconify icon={password.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+
+            <LoadingButton
+              fullWidth
+              color="inherit"
+              size="large"
+              type="submit"
+              variant="contained"
+              loading={isSubmitting}
+              loadingIndicator="Signing in..."
+            >
+              Sign in
+            </LoadingButton>
+          </Box>
+        </Form>
+      </Collapse>
     </>
   );
 }
