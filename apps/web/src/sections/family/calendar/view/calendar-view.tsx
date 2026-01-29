@@ -41,6 +41,9 @@ import { CalendarRoot } from '../styles';
 import { CalendarForm } from '../calendar-form';
 import { useCalendar } from '../hooks/use-calendar';
 import { CalendarToolbar } from '../calendar-toolbar';
+import { CalendarFilters } from '../calendar-filters';
+import { CalendarFiltersResult } from '../calendar-filters-result';
+import type { CalendarFiltersState } from '../calendar-filters';
 
 // ----------------------------------------------------------------------
 
@@ -55,10 +58,26 @@ export function CalendarView() {
   // E1: Load event categories for the family
   const { categories: eventCategories } = useEventCategories(family?.id ?? null);
 
-  const mergedEvents = localEvents.length ? localEvents : events;
-
   // E2: Get family members for event assignment
   const familyMembers = useMemo(() => family?.members ?? [], [family?.members]);
+
+  // Filter state
+  const [filters, setFilters] = useState<CalendarFiltersState>(() => ({
+    memberFilter: 'all',
+    selectedMemberIds: [],
+  }));
+
+  // Initialize filter with all members when family loads
+  useMemo(() => {
+    if (familyMembers.length > 0 && filters.selectedMemberIds.length === 0) {
+      setFilters((prev) => ({
+        ...prev,
+        selectedMemberIds: familyMembers.map((m) => m.id),
+      }));
+    }
+  }, [familyMembers, filters.selectedMemberIds.length]);
+
+  const mergedEvents = localEvents.length ? localEvents : events;
 
   // E2: Create a map for quick member lookup by ID
   const memberById = useMemo(() => {
@@ -93,6 +112,83 @@ export function CalendarView() {
     },
     [memberById]
   );
+
+  // Filter events by selected family members
+  const filteredEvents = useMemo(() => {
+    // If no members selected or all members selected, show all events
+    if (
+      filters.selectedMemberIds.length === 0 ||
+      filters.selectedMemberIds.length === familyMembers.length
+    ) {
+      return mergedEvents;
+    }
+
+    return mergedEvents.filter((event) => {
+      const familyAssignments = event.extendedProps?.metadata?.familyAssignments as
+        | EventFamilyAssignments
+        | undefined;
+
+      // If no assignments, show the event (unassigned events are visible to all)
+      if (!familyAssignments) return true;
+
+      // Check if primary member is in selected members
+      if (
+        familyAssignments.primaryFamilyMemberId &&
+        filters.selectedMemberIds.includes(familyAssignments.primaryFamilyMemberId)
+      ) {
+        return true;
+      }
+
+      // Check if any participant is in selected members
+      if (familyAssignments.participantFamilyMemberIds?.length) {
+        return familyAssignments.participantFamilyMemberIds.some((id) =>
+          filters.selectedMemberIds.includes(id)
+        );
+      }
+
+      // Check assignedTo member
+      if (
+        familyAssignments.assignedToMemberId &&
+        filters.selectedMemberIds.includes(familyAssignments.assignedToMemberId)
+      ) {
+        return true;
+      }
+
+      // No matching members found - hide the event
+      return false;
+    });
+  }, [mergedEvents, filters.selectedMemberIds, familyMembers.length]);
+
+  // Filter handlers
+  const handleFilterChange = useCallback((newFilters: CalendarFiltersState) => {
+    setFilters(newFilters);
+  }, []);
+
+  const handleFilterReset = useCallback(() => {
+    setFilters({
+      memberFilter: 'all',
+      selectedMemberIds: familyMembers.map((m) => m.id),
+    });
+  }, [familyMembers]);
+
+  const handleRemoveMemberFilter = useCallback(
+    (memberId: string) => {
+      const newSelectedIds = filters.selectedMemberIds.filter((id) => id !== memberId);
+      // If removing last member, reset to all
+      if (newSelectedIds.length === 0) {
+        handleFilterReset();
+        return;
+      }
+      setFilters((prev) => ({
+        ...prev,
+        memberFilter: 'custom',
+        selectedMemberIds: newSelectedIds,
+      }));
+    },
+    [filters.selectedMemberIds, handleFilterReset]
+  );
+
+  const canResetFilters = filters.selectedMemberIds.length < familyMembers.length;
 
   // E2: Custom event content renderer with avatars
   const renderEventContent = useCallback(
@@ -484,6 +580,28 @@ export function CalendarView() {
           </Alert>
         )}
 
+        {/* Family member filters */}
+        {familyMembers.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <CalendarFilters
+              filters={filters}
+              familyMembers={familyMembers}
+              onFilterChange={handleFilterChange}
+              canReset={canResetFilters}
+              onReset={handleFilterReset}
+            />
+          </Box>
+        )}
+
+        {/* Active filter results */}
+        <CalendarFiltersResult
+          filters={filters}
+          familyMembers={familyMembers}
+          totalResults={filteredEvents.length}
+          onRemoveMember={handleRemoveMemberFilter}
+          onReset={handleFilterReset}
+        />
+
         <Card sx={{ ...flexStyles, minHeight: '50vh' }}>
           <CalendarRoot sx={{ ...flexStyles }}>
             <CalendarToolbar
@@ -515,7 +633,7 @@ export function CalendarView() {
               eventDisplay="block"
               ref={calendarRef}
               initialView={view}
-              events={mergedEvents}
+              events={filteredEvents}
               select={onSelectRange}
               eventClick={onClickEvent}
               eventContent={renderEventContent}
