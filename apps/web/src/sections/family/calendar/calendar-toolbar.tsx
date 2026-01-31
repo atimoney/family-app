@@ -1,16 +1,21 @@
 import type { IconifyName } from 'src/components/iconify';
 import type { CalendarView, UseCalendarReturn } from './hooks/use-calendar';
 
+import { usePopover } from 'minimal-shared/hooks';
+
 import Box from '@mui/material/Box';
 import Badge from '@mui/material/Badge';
 import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
+import MenuList from '@mui/material/MenuList';
+import MenuItem from '@mui/material/MenuItem';
 import IconButton from '@mui/material/IconButton';
 import ToggleButton from '@mui/material/ToggleButton';
 import LinearProgress from '@mui/material/LinearProgress';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
 import { Iconify } from 'src/components/iconify';
+import { CustomPopover } from 'src/components/custom-popover';
 
 // ----------------------------------------------------------------------
 
@@ -37,6 +42,10 @@ export function CalendarToolbar({
   onOpenFilters,
   onDateNavigation,
 }: CalendarToolbarProps) {
+  const mobileActions = usePopover();
+
+  const selectedView = viewOptions.find((option) => option.value === view) ?? viewOptions[0];
+
   return (
     <Box sx={{ position: 'relative' }}>
       {loading && (
@@ -60,7 +69,7 @@ export function CalendarToolbar({
           alignItems: 'center',
         }}
       >
-        {/* View options on the left */}
+        {/* Desktop view options */}
         <ToggleButtonGroup
           exclusive
           size="small"
@@ -81,6 +90,40 @@ export function CalendarToolbar({
             </Tooltip>
           ))}
         </ToggleButtonGroup>
+
+        {/* Mobile view dropdown */}
+        <Button
+          size="small"
+          color="inherit"
+          onClick={mobileActions.onOpen}
+          sx={{ minWidth: 'auto', display: { sm: 'none' } }}
+        >
+          <Iconify icon={selectedView.icon} sx={{ mr: 0.5 }} />
+          <Iconify icon="eva:arrow-ios-downward-fill" width={18} />
+        </Button>
+
+        <CustomPopover
+          open={mobileActions.open}
+          anchorEl={mobileActions.anchorEl}
+          onClose={mobileActions.onClose}
+          slotProps={{ arrow: { placement: 'top-left' } }}
+        >
+          <MenuList>
+            {viewOptions.map((option) => (
+              <MenuItem
+                key={option.value}
+                selected={option.value === view}
+                onClick={() => {
+                  mobileActions.onClose();
+                  onChangeView?.(option.value);
+                }}
+              >
+                <Iconify icon={option.icon} />
+                {option.label}
+              </MenuItem>
+            ))}
+          </MenuList>
+        </CustomPopover>
 
         {/* Date navigation centered */}
         <Box

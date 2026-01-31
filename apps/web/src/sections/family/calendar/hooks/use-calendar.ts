@@ -62,6 +62,10 @@ export function useCalendar({
   const [title, setTitle] = useState<ViewApi['title']>('');
   const [view, setView] = useState<CalendarView>(defaultDesktopView);
   const [lastDesktopView, setLastDesktopView] = useState<CalendarView>(defaultDesktopView);
+  const [lastMobileView, setLastMobileView] = useState<CalendarView>(defaultMobileView);
+
+  // Track the previous smUp value to detect breakpoint changes
+  const prevSmUp = useRef(smUp);
 
   const getCalendarApi = useCallback(() => {
     const calendarApi = calendarRef.current?.getApi();
@@ -82,39 +86,35 @@ export function useCalendar({
     setSelectedEventId('');
   }, []);
 
-  const syncView = useCallback(() => {
+  // Only sync view on breakpoint changes (desktop <-> mobile), not on every render
+  useEffect(() => {
     const calendarApi = getCalendarApi();
     if (!calendarApi) return;
 
-    const targetView = smUp ? lastDesktopView : defaultMobileView;
-
-    if (targetView !== calendarApi.view.type) {
+    // Only change view if breakpoint actually changed
+    if (prevSmUp.current !== smUp) {
+      const targetView = smUp ? lastDesktopView : lastMobileView;
       calendarApi.changeView(targetView);
       setView(targetView);
+      prevSmUp.current = smUp;
     }
 
+    // Always sync title
     if (title !== calendarApi.view.title) {
       setTitle(calendarApi.view.title);
     }
-  }, [defaultMobileView, getCalendarApi, lastDesktopView, smUp, title]);
-
-  useEffect(() => {
-    // Use setTimeout to completely escape React's rendering cycle
-    // queueMicrotask is not enough as React's commit phase can span microtasks
-    const timeoutId = setTimeout(() => {
-      syncView();
-    }, 0);
-    
-    return () => clearTimeout(timeoutId);
-  }, [syncView]);
+  }, [getCalendarApi, lastDesktopView, lastMobileView, smUp, title]);
 
   const onChangeView = useCallback(
     (newView: CalendarView) => {
       const calendarApi = getCalendarApi();
       if (!calendarApi) return;
 
+      // Save the view for the current breakpoint
       if (smUp) {
         setLastDesktopView(newView);
+      } else {
+        setLastMobileView(newView);
       }
 
       calendarApi.changeView(newView);

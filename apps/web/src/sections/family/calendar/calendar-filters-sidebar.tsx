@@ -12,20 +12,23 @@ import Switch from '@mui/material/Switch';
 import Drawer from '@mui/material/Drawer';
 import Divider from '@mui/material/Divider';
 import Tooltip from '@mui/material/Tooltip';
+import { alpha } from '@mui/material/styles';
 import Checkbox from '@mui/material/Checkbox';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
+import ToggleButton from '@mui/material/ToggleButton';
 import ListItemText from '@mui/material/ListItemText';
 import ListItemButton from '@mui/material/ListItemButton';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
 import { fDate, fIsAfter, fDateTime } from 'src/utils/format-time';
 
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
 
-import { type CalendarFiltersState } from './calendar-filters';
+import { isChildMember, type ColorMode, type MemberFilterType, type CalendarFiltersState } from './calendar-filters';
 
 // ----------------------------------------------------------------------
 
@@ -105,6 +108,70 @@ export function CalendarFiltersSidebar({
     [events]
   );
 
+  // Handle quick filter change (All/Adults/Kids)
+  const handleQuickFilterChange = useCallback(
+    (_: React.MouseEvent<HTMLElement>, newValue: MemberFilterType | null) => {
+      if (newValue === null) return;
+
+      if (newValue === 'all') {
+        onFilterChange({
+          ...filters,
+          memberFilter: 'all',
+          selectedMemberIds: [],
+          showUnassigned: true,
+        });
+      } else if (newValue === 'adults') {
+        const adultIds = familyMembers.filter((m) => !isChildMember(m)).map((m) => m.id);
+        onFilterChange({
+          ...filters,
+          memberFilter: 'adults',
+          selectedMemberIds: adultIds,
+          showUnassigned: false,
+        });
+      } else if (newValue === 'kids') {
+        const kidIds = familyMembers.filter((m) => isChildMember(m)).map((m) => m.id);
+        onFilterChange({
+          ...filters,
+          memberFilter: 'kids',
+          selectedMemberIds: kidIds,
+          showUnassigned: false,
+        });
+      }
+    },
+    [familyMembers, filters, onFilterChange]
+  );
+
+  // Handle individual member click - toggles selection (multi-select)
+  const handleMemberToggle = useCallback(
+    (memberId: string) => {
+      const isSelected = filters.selectedMemberIds.includes(memberId);
+      
+      let newSelectedIds: string[];
+      if (isSelected) {
+        newSelectedIds = filters.selectedMemberIds.filter((id) => id !== memberId);
+      } else {
+        newSelectedIds = [...filters.selectedMemberIds, memberId];
+      }
+
+      if (newSelectedIds.length === 0) {
+        onFilterChange({
+          ...filters,
+          memberFilter: 'all',
+          selectedMemberIds: [],
+          showUnassigned: true,
+        });
+        return;
+      }
+
+      onFilterChange({
+        ...filters,
+        memberFilter: 'custom',
+        selectedMemberIds: newSelectedIds,
+      });
+    },
+    [filters, onFilterChange]
+  );
+
   const renderHead = () => (
     <>
       <Box
@@ -135,6 +202,185 @@ export function CalendarFiltersSidebar({
 
       <Divider sx={{ borderStyle: 'dashed' }} />
     </>
+  );
+
+  // Mobile-only: Quick member filters (shown in sidebar on mobile, hidden on desktop)
+  const renderMemberFilters = () => (
+    <Box
+      sx={{
+        my: 3,
+        px: 2.5,
+        display: { xs: 'block', sm: 'none' },
+      }}
+    >
+      <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+        Family Members
+      </Typography>
+
+      {/* Member avatars */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+        {familyMembers.map((member) => {
+          const isSelected = filters.selectedMemberIds.includes(member.id);
+          const noOneSelected = filters.selectedMemberIds.length === 0;
+          const memberName = member.displayName || member.profile?.displayName || 'Member';
+          const memberColor = member.color || '#637381';
+
+          return (
+            <Tooltip key={member.id} title={memberName}>
+              <Box
+                onClick={() => handleMemberToggle(member.id)}
+                sx={{
+                  cursor: 'pointer',
+                  position: 'relative',
+                  p: 0.25,
+                  borderRadius: '50%',
+                  border: '2px solid',
+                  borderColor: isSelected ? memberColor : 'transparent',
+                  bgcolor: isSelected ? alpha(memberColor, 0.08) : 'transparent',
+                  transition: 'all 0.2s ease-in-out',
+                  '&:hover': {
+                    bgcolor: alpha(memberColor, 0.16),
+                  },
+                }}
+              >
+                <Avatar
+                  alt={memberName}
+                  src={member.profile?.avatarUrl || undefined}
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    bgcolor: memberColor,
+                    opacity: noOneSelected || isSelected ? 1 : 0.4,
+                    transition: 'opacity 0.2s ease-in-out',
+                    fontSize: '1rem',
+                  }}
+                >
+                  {memberName.charAt(0).toUpperCase()}
+                </Avatar>
+                {member.color && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      bottom: 0,
+                      right: 0,
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      bgcolor: member.color,
+                      border: '2px solid',
+                      borderColor: 'background.paper',
+                    }}
+                  />
+                )}
+              </Box>
+            </Tooltip>
+          );
+        })}
+      </Box>
+
+      {/* Quick filter toggle buttons */}
+      <ToggleButtonGroup
+        exclusive
+        size="small"
+        fullWidth
+        value={filters.memberFilter === 'custom' ? null : filters.memberFilter}
+        onChange={handleQuickFilterChange}
+        aria-label="member filter"
+        sx={{ mb: 1 }}
+      >
+        <ToggleButton value="all" aria-label="all members">
+          All
+        </ToggleButton>
+        <ToggleButton value="adults" aria-label="adults only">
+          Adults
+        </ToggleButton>
+        <ToggleButton value="kids" aria-label="kids only">
+          Kids
+        </ToggleButton>
+      </ToggleButtonGroup>
+
+      {/* Unassigned toggle - only show when not in "All" mode */}
+      {filters.memberFilter !== 'all' && (
+        <ToggleButton
+          size="small"
+          fullWidth
+          value="unassigned"
+          selected={filters.showUnassigned}
+          onChange={() => {
+            onFilterChange({
+              ...filters,
+              showUnassigned: !filters.showUnassigned,
+            });
+          }}
+          aria-label="show unassigned"
+          sx={{ mt: 1 }}
+        >
+          <Iconify icon="solar:info-circle-bold" width={18} sx={{ mr: 0.5 }} />
+          Show Unassigned
+        </ToggleButton>
+      )}
+    </Box>
+  );
+
+  // Color mode options for mobile
+  const colorModeOptions: { value: ColorMode; label: string; icon: 'mdi:tag' | 'solar:user-rounded-bold' | 'solar:calendar-date-bold' | 'mdi:palette' }[] = [
+    { value: 'category', label: 'By Category', icon: 'mdi:tag' },
+    { value: 'member', label: 'By Member', icon: 'solar:user-rounded-bold' },
+    { value: 'event', label: 'By Google Event Color', icon: 'mdi:palette' },
+    { value: 'calendar', label: 'By Calendar', icon: 'solar:calendar-date-bold' },
+  ];
+
+  const handleColorModeChange = useCallback(
+    (mode: ColorMode) => {
+      onFilterChange({
+        ...filters,
+        colorMode: mode,
+      });
+    },
+    [filters, onFilterChange]
+  );
+
+  // Mobile-only: Color mode selector
+  const renderColorMode = () => (
+    <Box
+      sx={{
+        mb: 3,
+        px: 2.5,
+        display: { xs: 'block', sm: 'none' },
+      }}
+    >
+      <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+        Event Colors
+      </Typography>
+
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+        {colorModeOptions.map((option) => (
+          <Box
+            key={option.value}
+            onClick={() => handleColorModeChange(option.value)}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              px: 1.5,
+              py: 1,
+              borderRadius: 1,
+              cursor: 'pointer',
+              bgcolor: filters.colorMode === option.value ? 'action.selected' : 'transparent',
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
+          >
+            <Iconify
+              icon={filters.colorMode === option.value ? 'solar:check-circle-bold' : option.icon}
+              width={20}
+              sx={{ mr: 1.5, color: filters.colorMode === option.value ? 'primary.main' : 'text.secondary' }}
+            />
+            <Typography variant="body2">
+              {option.label}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+    </Box>
   );
 
   const renderDateRange = () => (
@@ -364,6 +610,10 @@ export function CalendarFiltersSidebar({
       {renderHead()}
 
       <Scrollbar>
+        {renderMemberFilters()}
+        <Divider sx={{ borderStyle: 'dashed', display: { xs: 'block', sm: 'none' } }} />
+        {renderColorMode()}
+        <Divider sx={{ borderStyle: 'dashed', display: { xs: 'block', sm: 'none' } }} />
         {renderDateRange()}
         <Divider sx={{ borderStyle: 'dashed' }} />
         {renderCategories()}

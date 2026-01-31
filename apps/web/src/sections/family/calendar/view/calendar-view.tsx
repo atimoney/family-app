@@ -859,9 +859,9 @@ export function CalendarView() {
           </Alert>
         )}
 
-        {/* Quick filters bar - Family member avatars & toggles */}
+        {/* Quick filters bar - Family member avatars & toggles (hidden on mobile) */}
         {familyMembers.length > 0 && (
-          <Box sx={{ mb: 2 }}>
+          <Box sx={{ mb: 2, display: { xs: 'none', sm: 'block' } }}>
             <CalendarFilters
               filters={filters}
               familyMembers={familyMembers}
@@ -934,23 +934,45 @@ export function CalendarView() {
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
+                      justifyContent: { xs: 'center', sm: 'flex-start' },
                       gap: 1,
                       py: 0.5,
-                      px: 1,
+                      px: { xs: 0.5, sm: 1 },
                     }}
                   >
-                    <Avatar
-                      src={avatarUrl || undefined}
-                      sx={{
-                        width: 24,
-                        height: 24,
-                        bgcolor: color || 'grey.400',
-                        fontSize: '0.75rem',
-                      }}
+                    <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                      <Avatar
+                        src={avatarUrl || undefined}
+                        sx={{
+                          width: { xs: 28, sm: 24 },
+                          height: { xs: 28, sm: 24 },
+                          bgcolor: color || 'grey.400',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        {arg.resource.title?.[0]?.toUpperCase()}
+                      </Avatar>
+                      {color && (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            bottom: -2,
+                            right: -2,
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            bgcolor: color,
+                            border: '2px solid',
+                            borderColor: 'background.paper',
+                          }}
+                        />
+                      )}
+                    </Box>
+                    <Typography
+                      variant="subtitle2"
+                      noWrap
+                      sx={{ display: { xs: 'none', sm: 'block' } }}
                     >
-                      {arg.resource.title?.[0]?.toUpperCase()}
-                    </Avatar>
-                    <Typography variant="subtitle2" noWrap>
                       {arg.resource.title}
                     </Typography>
                   </Box>
