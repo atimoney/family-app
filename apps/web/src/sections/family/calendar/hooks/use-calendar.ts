@@ -87,22 +87,25 @@ export function useCalendar({
   }, []);
 
   // Only sync view on breakpoint changes (desktop <-> mobile), not on every render
+  // Use queueMicrotask to defer calendar API calls and avoid flushSync conflicts
   useEffect(() => {
-    const calendarApi = getCalendarApi();
-    if (!calendarApi) return;
+    queueMicrotask(() => {
+      const calendarApi = getCalendarApi();
+      if (!calendarApi) return;
 
-    // Only change view if breakpoint actually changed
-    if (prevSmUp.current !== smUp) {
-      const targetView = smUp ? lastDesktopView : lastMobileView;
-      calendarApi.changeView(targetView);
-      setView(targetView);
-      prevSmUp.current = smUp;
-    }
+      // Only change view if breakpoint actually changed
+      if (prevSmUp.current !== smUp) {
+        const targetView = smUp ? lastDesktopView : lastMobileView;
+        calendarApi.changeView(targetView);
+        setView(targetView);
+        prevSmUp.current = smUp;
+      }
 
-    // Always sync title
-    if (title !== calendarApi.view.title) {
-      setTitle(calendarApi.view.title);
-    }
+      // Always sync title
+      if (title !== calendarApi.view.title) {
+        setTitle(calendarApi.view.title);
+      }
+    });
   }, [getCalendarApi, lastDesktopView, lastMobileView, smUp, title]);
 
   const onChangeView = useCallback(
