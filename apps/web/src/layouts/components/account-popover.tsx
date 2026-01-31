@@ -13,6 +13,8 @@ import { paths } from 'src/routes/paths';
 import { usePathname } from 'src/routes/hooks';
 import { RouterLink } from 'src/routes/components';
 
+import { useFamily } from 'src/features/family/hooks/use-family';
+
 import { Label } from 'src/components/label';
 import { CustomPopover } from 'src/components/custom-popover';
 
@@ -38,6 +40,10 @@ export function AccountPopover({ data = [], sx, ...other }: AccountPopoverProps)
   const { open, anchorEl, onClose, onOpen } = usePopover();
 
   const { user } = useMockedUser();
+  const { family } = useFamily();
+
+  // Get the current member's color from the family membership
+  const memberColor = family?.myMembership?.color ?? null;
 
   const renderMenuActions = () => (
     <CustomPopover
@@ -119,6 +125,7 @@ export function AccountPopover({ data = [], sx, ...other }: AccountPopoverProps)
         onClick={onOpen}
         photoURL={user?.photoURL}
         displayName={user?.displayName}
+        memberColor={memberColor}
         sx={sx}
         {...other}
       />

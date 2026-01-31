@@ -8,6 +8,8 @@ import Drawer from '@mui/material/Drawer';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 
+import { useFamily } from 'src/features/family/hooks/use-family';
+
 import { Iconify } from 'src/components/iconify';
 import { AnimateBorder } from 'src/components/animate';
 
@@ -30,6 +32,10 @@ export type AccountDrawerProps = IconButtonProps & {
 export function AccountDrawer({ data = [], sx, ...other }: AccountDrawerProps) {
   const { user, authenticated } = useAuthContext();
   const { value: open, onFalse: onClose, onTrue: onOpen } = useBoolean();
+  const { family } = useFamily();
+
+  // Get the current member's color from the family membership
+  const memberColor = family?.myMembership?.color ?? null;
 
   if (!authenticated || !user) {
     return null;
@@ -41,6 +47,7 @@ export function AccountDrawer({ data = [], sx, ...other }: AccountDrawerProps) {
         onClick={onOpen}
         photoURL={user?.photoURL}
         displayName={user?.displayName}
+        memberColor={memberColor}
         sx={sx}
         {...other}
       />
