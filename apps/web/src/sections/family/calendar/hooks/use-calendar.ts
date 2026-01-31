@@ -1,7 +1,7 @@
 import type FullCalendar from '@fullcalendar/react';
 import type { Breakpoint } from '@mui/material/styles';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
-import type { ViewApi, CalendarApi, EventDropArg, DateSelectArg, EventClickArg, DatesSetArg } from '@fullcalendar/core';
+import type { ViewApi, CalendarApi, DatesSetArg, EventDropArg, DateSelectArg, EventClickArg } from '@fullcalendar/core';
 import type { CalendarEventItem } from 'src/features/calendar/types';
 
 import { useRef, useState, useEffect, useCallback } from 'react';

@@ -2,10 +2,9 @@ import '@fullcalendar/core';
 
 import type { FamilyMember } from '@family/shared';
 import type { EventContentArg } from '@fullcalendar/core';
-import type { ResourceInput } from '@fullcalendar/resource';
-import type { CalendarEventItem, EventFamilyAssignments, CalendarEventMetadata } from 'src/features/calendar/types';
-
 import type { Theme, SxProps } from '@mui/material/styles';
+import type { ResourceInput } from '@fullcalendar/resource';
+import type { CalendarEventItem, CalendarEventMetadata, EventFamilyAssignments } from 'src/features/calendar/types';
 
 import Calendar from '@fullcalendar/react';
 import listPlugin from '@fullcalendar/list';

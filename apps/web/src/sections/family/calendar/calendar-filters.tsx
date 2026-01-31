@@ -3,7 +3,6 @@ import type { FamilyMember, EventCategoryConfig } from '@family/shared';
 import { useState, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
 import Badge from '@mui/material/Badge';
 import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
