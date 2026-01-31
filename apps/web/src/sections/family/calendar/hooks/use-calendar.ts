@@ -99,7 +99,13 @@ export function useCalendar({
   }, [defaultMobileView, getCalendarApi, lastDesktopView, smUp, title]);
 
   useEffect(() => {
-    syncView();
+    // Use setTimeout to completely escape React's rendering cycle
+    // queueMicrotask is not enough as React's commit phase can span microtasks
+    const timeoutId = setTimeout(() => {
+      syncView();
+    }, 0);
+    
+    return () => clearTimeout(timeoutId);
   }, [syncView]);
 
   const onChangeView = useCallback(
