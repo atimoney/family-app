@@ -184,6 +184,37 @@ export const CalendarRoot = styled('div')(({ theme }) => {
     },
   };
 
+  // Resource (Family Day) view styles
+  const resourceStyles: CSSObject = {
+    // Resource column headers
+    '& .fc-resource-timeline-divider, & .fc-resource-group': {
+      backgroundColor: theme.vars.palette.background.neutral,
+    },
+    '& .fc-col-header-cell.fc-resource': {
+      '& .fc-col-header-cell-cushion': {
+        paddingTop: 8,
+        paddingBottom: 8,
+      },
+    },
+    // Resource lane cells
+    '& .fc-resource': {
+      borderColor: 'var(--fc-border-color)',
+    },
+    // Give each resource column a subtle alternating background
+    '& .fc-timegrid-col.fc-resource:nth-of-type(even)': {
+      backgroundColor: varAlpha(theme.vars.palette.grey['500Channel'], 0.02),
+    },
+    // Resource header area
+    '& .fc-datagrid-cell-frame': {
+      display: 'flex',
+      alignItems: 'center',
+    },
+    // Unassigned column styling (last column)
+    '& .fc-resource[data-resource-id="unassigned"]': {
+      backgroundColor: varAlpha(theme.vars.palette.grey['500Channel'], 0.04),
+    },
+  };
+
   return {
     ...cssVars,
     ...containerStyles,
@@ -193,5 +224,6 @@ export const CalendarRoot = styled('div')(({ theme }) => {
     ...eventStyles,
     ...popoverStyles,
     ...moreLinkStyles,
+    ...resourceStyles,
   };
 });

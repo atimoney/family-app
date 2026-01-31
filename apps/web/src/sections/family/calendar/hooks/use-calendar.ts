@@ -10,7 +10,7 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 
 // ----------------------------------------------------------------------
 
-export type CalendarView = 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay' | 'listWeek';
+export type CalendarView = 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay' | 'listWeek' | 'resourceTimeGridDay';
 
 export type CalendarRange = {
   start: string;

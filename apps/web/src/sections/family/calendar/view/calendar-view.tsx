@@ -2,6 +2,7 @@ import '@fullcalendar/core';
 
 import type { FamilyMember } from '@family/shared';
 import type { EventContentArg } from '@fullcalendar/core';
+import type { ResourceInput } from '@fullcalendar/resource';
 import type { Theme, SxProps } from '@mui/material/styles';
 import type { CalendarEventItem, EventFamilyAssignments, CalendarEventMetadata } from 'src/features/calendar/types';
 
@@ -9,7 +10,9 @@ import Calendar from '@fullcalendar/react';
 import listPlugin from '@fullcalendar/list';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
+import resourcePlugin from '@fullcalendar/resource';
 import interactionPlugin from '@fullcalendar/interaction';
+import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
 import { useMemo, useState, useCallback, startTransition } from 'react';
 
 import Box from '@mui/material/Box';
@@ -77,6 +80,31 @@ export function CalendarView() {
     const map = new Map<string, FamilyMember>();
     familyMembers.forEach((m) => map.set(m.id, m));
     return map;
+  }, [familyMembers]);
+
+  // Create resources for the Family Day View (columns for each family member + unassigned)
+  const resources: ResourceInput[] = useMemo(() => {
+    const memberResources = familyMembers.map((member) => ({
+      id: member.id,
+      title: member.displayName || member.profile?.displayName || 'Member',
+      extendedProps: {
+        color: member.color,
+        avatarUrl: member.profile?.avatarUrl,
+      },
+    }));
+
+    // Add "Unassigned" resource at the end
+    return [
+      ...memberResources,
+      {
+        id: 'unassigned',
+        title: 'Unassigned',
+        extendedProps: {
+          color: null,
+          avatarUrl: null,
+        },
+      },
+    ];
   }, [familyMembers]);
 
   // E2: Get assigned members from familyAssignments
@@ -286,9 +314,36 @@ export function CalendarView() {
           finalColor = calendarColor;
       }
 
+      // Compute resourceIds for Family Day View
+      // An event can appear in multiple columns if assigned to multiple family members
+      const resourceIds: string[] = [];
+      if (familyAssignments) {
+        // Add primary member
+        if (familyAssignments.primaryFamilyMemberId) {
+          resourceIds.push(familyAssignments.primaryFamilyMemberId);
+        }
+        // Add participants
+        if (familyAssignments.participantFamilyMemberIds?.length) {
+          familyAssignments.participantFamilyMemberIds.forEach((id) => {
+            if (!resourceIds.includes(id)) {
+              resourceIds.push(id);
+            }
+          });
+        }
+        // Add assignedTo member if different
+        if (familyAssignments.assignedToMemberId && !resourceIds.includes(familyAssignments.assignedToMemberId)) {
+          resourceIds.push(familyAssignments.assignedToMemberId);
+        }
+      }
+      // If no members assigned, put in "unassigned" column
+      if (resourceIds.length === 0) {
+        resourceIds.push('unassigned');
+      }
+
       // Always return with the computed color to ensure FullCalendar uses it
       return {
         ...event,
+        resourceIds, // For Family Day View - event appears in all assigned member columns
         backgroundColor: finalColor || undefined,
         borderColor: finalColor || undefined,
         extendedProps: {
@@ -806,6 +861,7 @@ export function CalendarView() {
                 { value: 'dayGridMonth', label: 'Month', icon: 'mingcute:calendar-month-line' },
                 { value: 'timeGridWeek', label: 'Week', icon: 'mingcute:calendar-week-line' },
                 { value: 'timeGridDay', label: 'Day', icon: 'mingcute:calendar-day-line' },
+                { value: 'resourceTimeGridDay', label: 'Family', icon: 'solar:users-group-rounded-bold' },
                 { value: 'listWeek', label: 'Agenda', icon: 'custom:calendar-agenda-outline' },
               ]}
             />
@@ -827,10 +883,44 @@ export function CalendarView() {
               ref={calendarRef}
               initialView={view}
               events={coloredEvents}
+              resources={resources}
+              schedulerLicenseKey="GPL-My-Project-Is-Open-Source"
               select={onSelectRange}
               eventClick={onClickEvent}
               datesSet={onDatesSet}
               eventContent={renderEventContent}
+              resourceLabelContent={(arg) => {
+                const { color, avatarUrl } = arg.resource.extendedProps as {
+                  color: string | null;
+                  avatarUrl: string | null;
+                };
+                return (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      py: 0.5,
+                      px: 1,
+                    }}
+                  >
+                    <Avatar
+                      src={avatarUrl || undefined}
+                      sx={{
+                        width: 24,
+                        height: 24,
+                        bgcolor: color || 'grey.400',
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      {arg.resource.title?.[0]?.toUpperCase()}
+                    </Avatar>
+                    <Typography variant="subtitle2" noWrap>
+                      {arg.resource.title}
+                    </Typography>
+                  </Box>
+                );
+              }}
               businessHours={{
                 daysOfWeek: [1, 2, 3, 4, 5], // Mon-Fri
               }}
@@ -844,7 +934,14 @@ export function CalendarView() {
                   onResizeEvent(arg, updateEventFromDragResize);
                 });
               }}
-              plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
+              plugins={[
+                dayGridPlugin,
+                timeGridPlugin,
+                listPlugin,
+                interactionPlugin,
+                resourcePlugin,
+                resourceTimeGridPlugin,
+              ]}
             />
           </CalendarRoot>
         </Card>
