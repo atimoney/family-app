@@ -45,12 +45,15 @@ export type UseCalendarProps = {
   breakpoint?: Breakpoint;
   defaultMobileView?: CalendarView;
   defaultDesktopView?: CalendarView;
+  /** Callback when view changes - use for persisting preferences */
+  onViewChange?: (view: CalendarView, isMobile: boolean) => void;
 };
 
 export function useCalendar({
   breakpoint = 'sm',
   defaultMobileView = 'timeGridDay',
   defaultDesktopView = 'dayGridMonth',
+  onViewChange,
 }: UseCalendarProps = {}): UseCalendarReturn {
   const calendarRef = useRef<FullCalendar>(null);
   const smUp = useMediaQuery((theme) => theme.breakpoints.up(breakpoint));
@@ -60,12 +63,13 @@ export function useCalendar({
   const [selectedRange, setSelectedRange] = useState<CalendarRange>(null);
 
   const [title, setTitle] = useState<ViewApi['title']>('');
+  // Always start with desktop view - the effect below will correct if needed
   const [view, setView] = useState<CalendarView>(defaultDesktopView);
   const [lastDesktopView, setLastDesktopView] = useState<CalendarView>(defaultDesktopView);
   const [lastMobileView, setLastMobileView] = useState<CalendarView>(defaultMobileView);
 
   // Track the previous smUp value to detect breakpoint changes
-  const prevSmUp = useRef(smUp);
+  const prevSmUp = useRef<boolean | null>(null);
 
   const getCalendarApi = useCallback(() => {
     const calendarApi = calendarRef.current?.getApi();
@@ -86,17 +90,20 @@ export function useCalendar({
     setSelectedEventId('');
   }, []);
 
-  // Only sync view on breakpoint changes (desktop <-> mobile), not on every render
+  // Sync view on breakpoint changes and initial mount
   // Use queueMicrotask to defer calendar API calls and avoid flushSync conflicts
   useEffect(() => {
     queueMicrotask(() => {
       const calendarApi = getCalendarApi();
       if (!calendarApi) return;
 
-      // Only change view if breakpoint actually changed
-      if (prevSmUp.current !== smUp) {
+      // On first run (prevSmUp.current is null) or when breakpoint changes
+      if (prevSmUp.current === null || prevSmUp.current !== smUp) {
         const targetView = smUp ? lastDesktopView : lastMobileView;
-        calendarApi.changeView(targetView);
+        // Only change if different from current view
+        if (calendarApi.view.type !== targetView) {
+          calendarApi.changeView(targetView);
+        }
         setView(targetView);
         prevSmUp.current = smUp;
       }
@@ -120,10 +127,13 @@ export function useCalendar({
         setLastMobileView(newView);
       }
 
+      // Notify parent about view change for persistence
+      onViewChange?.(newView, !smUp);
+
       calendarApi.changeView(newView);
       setView(newView);
     },
-    [getCalendarApi, smUp]
+    [getCalendarApi, smUp, onViewChange]
   );
 
   const onDateNavigation = useCallback(

@@ -46,11 +46,12 @@ import { Iconify } from 'src/components/iconify';
 
 import { CalendarRoot } from '../styles';
 import { CalendarForm } from '../calendar-form';
-import { useCalendar } from '../hooks/use-calendar';
 import { CalendarToolbar } from '../calendar-toolbar';
 import { CalendarFiltersResult } from '../calendar-filters-result';
 import { CalendarFiltersSidebar } from '../calendar-filters-sidebar';
 import { CalendarFilters, type CalendarFiltersState } from '../calendar-filters';
+import { useCalendar, type CalendarView as CalendarViewType } from '../hooks/use-calendar';
+import { useCalendarPreferences, getStoredCalendarPreferences } from '../hooks/use-calendar-preferences';
 
 // ----------------------------------------------------------------------
 
@@ -63,6 +64,16 @@ export function CalendarView() {
   const { calendars } = useSelectedCalendars();
   const { family } = useFamily();
   const [localEvents, setLocalEvents] = useState<CalendarEventItem[]>([]);
+  
+  // Read stored preferences fresh on each mount (lazy initializer runs once per mount)
+  const [initialPrefs] = useState(() => getStoredCalendarPreferences());
+
+  // Load calendar preferences mutation handlers
+  const {
+    setDesktopView,
+    setMobileView,
+    syncFiltersToPreferences,
+  } = useCalendarPreferences();
 
   // E1: Load event categories for the family
   const { categories: eventCategories } = useEventCategories(family?.id ?? null);
@@ -70,13 +81,13 @@ export function CalendarView() {
   // E2: Get family members for event assignment
   const familyMembers = useMemo(() => family?.members ?? [], [family?.members]);
 
-  // Filter state - empty selectedMemberIds means "show all"
+  // Filter state - initialized from localStorage preferences
   const [filters, setFilters] = useState<CalendarFiltersState>(() => ({
     memberFilter: 'all',
     selectedMemberIds: [],
-    showUnassigned: true,
+    showUnassigned: initialPrefs.showUnassigned,
     selectedCategoryIds: [],
-    colorMode: 'category',
+    colorMode: initialPrefs.colorMode,
     startDate: null,
     endDate: null,
   }));
@@ -371,10 +382,12 @@ export function CalendarView() {
     });
   }, [filteredEvents, eventCategories, filters.colorMode, getMemberColors, createStripeGradient]);
 
-  // Filter handlers
+  // Filter handlers - sync preferences to localStorage for persistence
   const handleFilterChange = useCallback((newFilters: CalendarFiltersState) => {
     setFilters(newFilters);
-  }, []);
+    // Persist colorMode and showUnassigned to localStorage
+    syncFiltersToPreferences(newFilters);
+  }, [syncFiltersToPreferences]);
 
   const handleFilterReset = useCallback(() => {
     setFilters((prev) => ({
@@ -545,6 +558,18 @@ export function CalendarView() {
   // Mutations with auto-sync
   const { createEvent, updateEvent, deleteEvent, loading: mutating } = useCalendarMutations(refresh);
 
+  // Handle view changes - persist to localStorage
+  const handleViewChange = useCallback(
+    (newView: CalendarViewType, isMobile: boolean) => {
+      if (isMobile) {
+        setMobileView(newView);
+      } else {
+        setDesktopView(newView);
+      }
+    },
+    [setDesktopView, setMobileView]
+  );
+
   const {
     calendarRef,
     /********/
@@ -565,7 +590,12 @@ export function CalendarView() {
     /********/
     selectedRange,
     selectedEventId,
-  } = useCalendar({ defaultDesktopView: 'timeGridWeek' });
+  } = useCalendar({
+    // Use initialPrefs for initial values (read fresh from localStorage on mount)
+    defaultDesktopView: initialPrefs.desktopView,
+    defaultMobileView: initialPrefs.mobileView,
+    onViewChange: handleViewChange,
+  });
 
   // Find current event for editing
   const currentEvent = selectedEventId ? mergedEvents.find((e) => e.id === selectedEventId) : null;
