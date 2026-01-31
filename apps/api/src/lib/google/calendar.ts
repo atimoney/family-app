@@ -553,3 +553,22 @@ export async function deleteEvent(options: {
     eventId: options.eventId,
   });
 }
+
+/**
+ * Move an event from one calendar to another using Google Calendar's move API
+ * https://developers.google.com/calendar/api/v3/reference/events/move
+ */
+export async function moveEvent(options: {
+  auth: OAuth2Client;
+  sourceCalendarId: string;
+  destinationCalendarId: string;
+  eventId: string;
+}) {
+  const calendar = getCalendarClient(options.auth);
+  const response = await calendar.events.move({
+    calendarId: options.sourceCalendarId,
+    eventId: options.eventId,
+    destination: options.destinationCalendarId,
+  });
+  return response.data;
+}

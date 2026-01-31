@@ -388,6 +388,10 @@ export function CalendarView() {
         }
         extraData.lastModifiedAudit = getAuditInfo('user');
 
+        // Check if calendar changed - need to pass sourceCalendarId for move operation
+        const sourceCalendarId = existingEvent?.calendarId;
+        const calendarChanged = sourceCalendarId && updatedEvent.calendarId && sourceCalendarId !== updatedEvent.calendarId;
+
         // Persist to Google Calendar
         await updateEvent(googleEventId, {
           title: updatedEvent.title,
@@ -395,6 +399,8 @@ export function CalendarView() {
           end: updatedEvent.end,
           allDay: updatedEvent.allDay,
           calendarId: updatedEvent.calendarId,
+          // Pass sourceCalendarId if calendar changed so backend can move the event
+          sourceCalendarId: calendarChanged ? sourceCalendarId : undefined,
           description: updatedEvent.description,
           location: updatedEvent.location,
           color: updatedEvent.color,

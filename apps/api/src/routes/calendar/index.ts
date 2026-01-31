@@ -5,7 +5,7 @@ import authPlugin from '../../plugins/auth.js';
 import { encryptSecret, decryptSecret } from '../../lib/crypto.js';
 import { createOAuthState, verifyOAuthState } from '../../lib/oauth-state.js';
 import { buildAuthUrl, exchangeCodeForTokens, getAuthorizedClient, getOAuthClient } from '../../lib/google/oauth.js';
-import { createEvent, deleteEvent, listCalendars, listEvents, updateEvent } from '../../lib/google/calendar.js';
+import { createEvent, deleteEvent, listCalendars, listEvents, updateEvent, moveEvent } from '../../lib/google/calendar.js';
 import {
   createEventSchema,
   updateEventSchema,
@@ -533,18 +533,56 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { eventId } = request.params as { eventId: string };
-    const { title, start, end, allDay, calendarId, description, location, color, recurrence, reminders, extraData } = parsed.data;
-    const resolvedCalendarId = getActiveCalendarId(calendarId);
+    const { title, start, end, allDay, calendarId, sourceCalendarId, description, location, color, recurrence, reminders, extraData } = parsed.data;
+    
+    // Determine the current calendar ID (where the event currently lives)
+    const currentCalendarId = sourceCalendarId ?? calendarId ?? 'primary';
+    // Determine the target calendar ID (where the event should end up)
+    const targetCalendarId = calendarId ?? currentCalendarId;
+    
+    // Check if we need to move the event to a different calendar
+    const needsMove = sourceCalendarId && calendarId && sourceCalendarId !== calendarId;
 
     const oauthClient = getAuthorizedClient({
       oauthClient: getOauthClient(),
       refreshToken,
     });
 
+    let movedEventId = eventId;
+    
+    // If calendar changed, move the event first
+    if (needsMove) {
+      fastify.log.info({ eventId, sourceCalendarId, targetCalendarId }, 'Moving event between calendars');
+      
+      try {
+        const movedEvent = await moveEvent({
+          auth: oauthClient,
+          sourceCalendarId: currentCalendarId,
+          destinationCalendarId: targetCalendarId,
+          eventId,
+        });
+        
+        // The event ID might change after a move in some cases
+        movedEventId = movedEvent.id ?? eventId;
+        
+        // Also move the EventLink record to the new calendar
+        await fastify.prisma.eventLink.deleteMany({
+          where: {
+            userId,
+            calendarId: currentCalendarId,
+            eventId,
+          },
+        });
+      } catch (err) {
+        fastify.log.error({ err, eventId, sourceCalendarId, targetCalendarId }, 'Failed to move event');
+        return reply.status(500).send({ error: 'Failed to move event to new calendar' });
+      }
+    }
+
     const event = await updateEvent({
       auth: oauthClient,
-      calendarId: resolvedCalendarId,
-      eventId,
+      calendarId: targetCalendarId,
+      eventId: movedEventId,
       event: {
         summary: title,
         description: description !== undefined ? (description ?? undefined) : undefined,
@@ -593,13 +631,13 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
         where: {
           userId_calendarId_eventId: {
             userId,
-            calendarId: resolvedCalendarId,
+            calendarId: targetCalendarId,
             eventId: event.id,
           },
         },
         create: {
           userId,
-          calendarId: resolvedCalendarId,
+          calendarId: targetCalendarId,
           eventId: event.id,
           extraData: eventExtraData,
         },
@@ -618,7 +656,7 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       start: new Date(startValue).toISOString(),
       end: new Date(endValue).toISOString(),
       allDay: Boolean(event.start?.date ?? allDay),
-      calendarId: resolvedCalendarId,
+      calendarId: targetCalendarId,
       description: event.description ?? null,
       location: event.location ?? null,
       extraData: eventExtraData,

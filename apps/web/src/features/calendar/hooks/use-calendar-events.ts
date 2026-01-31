@@ -221,7 +221,7 @@ export function useUpdateEventMetadata(): UseUpdateEventMetadataState {
 
 export type UseCalendarMutationsState = {
   createEvent: (event: CreateEventInput) => Promise<void>;
-  updateEvent: (eventId: string, event: Partial<CreateEventInput> & { calendarId?: string }) => Promise<void>;
+  updateEvent: (eventId: string, event: Partial<CreateEventInput> & { calendarId?: string; sourceCalendarId?: string }) => Promise<void>;
   deleteEvent: (eventId: string, calendarId?: string) => Promise<void>;
   loading: boolean;
   error: Error | null;
@@ -254,7 +254,7 @@ export function useCalendarMutations(
   );
 
   const handleUpdate = useCallback(
-    async (eventId: string, event: Partial<CreateEventInput> & { calendarId?: string }) => {
+    async (eventId: string, event: Partial<CreateEventInput> & { calendarId?: string; sourceCalendarId?: string }) => {
       try {
         setLoading(true);
         setError(null);

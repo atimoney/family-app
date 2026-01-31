@@ -91,6 +91,8 @@ export const updateEventSchema = z.object({
   end: z.string().datetime().optional(),
   allDay: z.boolean().optional(),
   calendarId: z.string().optional(),
+  // sourceCalendarId is the calendar the event is currently in (required for moves)
+  sourceCalendarId: z.string().optional(),
   description: z.string().max(8000).nullable().optional(),
   location: z.string().max(1000).nullable().optional(),
   color: z.string().nullable().optional(),

@@ -127,7 +127,7 @@ export async function createCalendarEvent(event: CreateEventInput): Promise<Goog
 
 export async function updateCalendarEvent(
   eventId: string,
-  event: Partial<CreateEventInput> & { calendarId?: string }
+  event: Partial<CreateEventInput> & { calendarId?: string; sourceCalendarId?: string }
 ): Promise<GoogleCalendarEvent> {
   const headers = await getAuthHeaders();
   return apiClient.patch<GoogleCalendarEvent>(`/v1/calendar/events/${eventId}`, event, {
