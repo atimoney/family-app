@@ -33,6 +33,18 @@ export function useEventFiltering({
   const filteredEvents = useMemo(() => {
     let result = events;
 
+    // Filter by selected calendars (if not all calendars are selected)
+    if (filters.selectedCalendarIds.length > 0) {
+      result = result.filter((event) => {
+        const eventCalendarId = event.calendarId;
+        if (!eventCalendarId) return true; // Show events without calendarId
+        return filters.selectedCalendarIds.includes(eventCalendarId);
+      });
+    } else {
+      // If no calendars selected, hide all events
+      result = [];
+    }
+
     // Filter by date range (if specified and valid)
     if (!dateError && filters.startDate && filters.endDate) {
       result = result.filter((event) => fIsBetween(event.start, filters.startDate, filters.endDate));
@@ -109,6 +121,7 @@ export function useEventFiltering({
     });
   }, [
     events,
+    filters.selectedCalendarIds,
     filters.selectedMemberIds,
     filters.showUnassigned,
     filters.selectedCategoryIds,

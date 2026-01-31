@@ -1,5 +1,6 @@
 import type { FamilyMember, EventCategoryConfig } from '@family/shared';
 import type { CalendarFiltersState } from './calendar-filters';
+import type { CalendarInfo } from 'src/features/calendar/types';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -15,9 +16,11 @@ type Props = {
   filters: CalendarFiltersState;
   familyMembers: FamilyMember[];
   eventCategories: EventCategoryConfig[];
+  calendars: CalendarInfo[];
   totalResults: number;
   onRemoveMember: (memberId: string) => void;
   onRemoveCategory: (categoryId: string) => void;
+  onRemoveCalendar: (calendarId: string) => void;
   onRemoveDateRange?: () => void;
   onReset: () => void;
 };
@@ -26,9 +29,11 @@ export function CalendarFiltersResult({
   filters,
   familyMembers,
   eventCategories,
+  calendars,
   totalResults,
   onRemoveMember,
   onRemoveCategory,
+  onRemoveCalendar,
   onRemoveDateRange,
   onReset,
 }: Props) {
@@ -42,13 +47,21 @@ export function CalendarFiltersResult({
     filters.selectedCategoryIds.includes(c.id)
   );
 
+  // Get hidden calendars (calendars NOT selected) for display
+  const hiddenCalendars = calendars.filter(
+    (c) => !filters.selectedCalendarIds.includes(c.id)
+  );
+
   // Check for date range filter
   const hasDateRangeFilter = !!filters.startDate && !!filters.endDate;
+
+  // Check for calendar filter (not all calendars selected)
+  const hasCalendarFilter = calendars.length > 0 && filters.selectedCalendarIds.length < calendars.length;
 
   // Don't show if no filters active
   const hasMemberFilter = filters.selectedMemberIds.length > 0;
   const hasCategoryFilter = filters.selectedCategoryIds.length > 0;
-  const isFiltered = hasMemberFilter || hasCategoryFilter || hasDateRangeFilter;
+  const isFiltered = hasMemberFilter || hasCategoryFilter || hasCalendarFilter || hasDateRangeFilter;
 
   if (!isFiltered) {
     return null;
@@ -128,6 +141,34 @@ export function CalendarFiltersResult({
               }
               label={category.label}
               onDelete={() => onRemoveCategory(category.id)}
+            />
+          ))}
+        </>
+      )}
+
+      {/* Calendar chips - show which calendars are hidden */}
+      {hasCalendarFilter && (
+        <>
+          <Typography variant="caption" sx={{ color: 'text.secondary', mx: 0.5 }}>
+            Hiding:
+          </Typography>
+          {hiddenCalendars.map((calendar) => (
+            <Chip
+              key={calendar.id}
+              size="small"
+              icon={
+                <Box
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    bgcolor: calendar.backgroundColor || '#637381',
+                    ml: 0.5,
+                  }}
+                />
+              }
+              label={calendar.summary}
+              onDelete={() => onRemoveCalendar(calendar.id)}
             />
           ))}
         </>

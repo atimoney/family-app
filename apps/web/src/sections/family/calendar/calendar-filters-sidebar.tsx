@@ -1,6 +1,6 @@
 import type { FamilyMember, EventCategoryConfig } from '@family/shared';
 import type { IDatePickerControl } from 'src/types/common';
-import type { CalendarEventItem } from 'src/features/calendar/types';
+import type { CalendarEventItem, CalendarInfo } from 'src/features/calendar/types';
 
 import { orderBy } from 'es-toolkit';
 import { useMemo, useCallback } from 'react';
@@ -38,6 +38,7 @@ type Props = {
   filters: CalendarFiltersState;
   familyMembers: FamilyMember[];
   eventCategories: EventCategoryConfig[];
+  calendars: CalendarInfo[];
   events: CalendarEventItem[];
   canReset: boolean;
   onFilterChange: (filters: CalendarFiltersState) => void;
@@ -51,6 +52,7 @@ export function CalendarFiltersSidebar({
   filters,
   familyMembers,
   eventCategories,
+  calendars,
   events,
   canReset,
   onFilterChange,
@@ -86,6 +88,32 @@ export function CalendarFiltersSidebar({
     },
     [filters, onFilterChange]
   );
+
+  // Handle calendar toggle
+  const handleCalendarToggle = useCallback(
+    (calendarId: string) => {
+      const isSelected = filters.selectedCalendarIds.includes(calendarId);
+      const newSelectedIds = isSelected
+        ? filters.selectedCalendarIds.filter((id) => id !== calendarId)
+        : [...filters.selectedCalendarIds, calendarId];
+      
+      // Prevent deselecting all calendars
+      if (newSelectedIds.length === 0) {
+        return;
+      }
+      
+      onFilterChange({ ...filters, selectedCalendarIds: newSelectedIds });
+    },
+    [filters, onFilterChange]
+  );
+
+  // Handle select all calendars
+  const handleSelectAllCalendars = useCallback(() => {
+    onFilterChange({
+      ...filters,
+      selectedCalendarIds: calendars.map((c) => c.id),
+    });
+  }, [filters, calendars, onFilterChange]);
 
   // Handle show unassigned toggle
   const handleShowUnassignedToggle = useCallback(() => {
@@ -478,6 +506,111 @@ export function CalendarFiltersSidebar({
     </Box>
   );
 
+  // Check if all calendars are selected
+  const allCalendarsSelected = calendars.length > 0 && filters.selectedCalendarIds.length === calendars.length;
+
+  const renderCalendars = () => (
+    <Box
+      sx={{
+        mb: 3,
+        px: 2.5,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+        <Typography variant="subtitle2">
+          Calendars
+        </Typography>
+        {calendars.length > 1 && !allCalendarsSelected && (
+          <Typography
+            variant="caption"
+            onClick={handleSelectAllCalendars}
+            sx={{
+              color: 'primary.main',
+              cursor: 'pointer',
+              '&:hover': { textDecoration: 'underline' },
+            }}
+          >
+            Select all
+          </Typography>
+        )}
+      </Box>
+
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+        {calendars.map((calendar) => {
+          const isSelected = filters.selectedCalendarIds.includes(calendar.id);
+          const isOnlySelected = filters.selectedCalendarIds.length === 1 && isSelected;
+          return (
+            <Box
+              key={calendar.id}
+              onClick={() => !isOnlySelected && handleCalendarToggle(calendar.id)}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                px: 1,
+                py: 0.75,
+                borderRadius: 1,
+                cursor: isOnlySelected ? 'not-allowed' : 'pointer',
+                opacity: isOnlySelected ? 0.6 : 1,
+                '&:hover': { bgcolor: isOnlySelected ? 'transparent' : 'action.hover' },
+              }}
+            >
+              <Checkbox
+                size="small"
+                checked={isSelected}
+                disabled={isOnlySelected}
+                sx={{ p: 0, mr: 1.5 }}
+              />
+              <Box
+                sx={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: '50%',
+                  bgcolor: calendar.backgroundColor || '#637381',
+                  mr: 1.5,
+                  flexShrink: 0,
+                }}
+              />
+              <Typography
+                variant="body2"
+                noWrap
+                sx={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {calendar.summary}
+              </Typography>
+              {calendar.primary && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    ml: 1,
+                    px: 0.5,
+                    py: 0.125,
+                    borderRadius: 0.5,
+                    bgcolor: 'action.selected',
+                    color: 'text.secondary',
+                    fontSize: '0.65rem',
+                  }}
+                >
+                  Primary
+                </Typography>
+              )}
+            </Box>
+          );
+        })}
+
+        {calendars.length === 0 && (
+          <Typography variant="body2" sx={{ color: 'text.secondary', py: 1 }}>
+            No calendars configured
+          </Typography>
+        )}
+      </Box>
+    </Box>
+  );
+
   const renderOptions = () => (
     <Box
       sx={{
@@ -615,6 +748,8 @@ export function CalendarFiltersSidebar({
         {renderColorMode()}
         <Divider sx={{ borderStyle: 'dashed', display: { xs: 'block', sm: 'none' } }} />
         {renderDateRange()}
+        <Divider sx={{ borderStyle: 'dashed' }} />
+        {renderCalendars()}
         <Divider sx={{ borderStyle: 'dashed' }} />
         {renderCategories()}
         <Divider sx={{ borderStyle: 'dashed' }} />

@@ -15,7 +15,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import resourcePlugin from '@fullcalendar/resource';
 import interactionPlugin from '@fullcalendar/interaction';
 import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
-import { useMemo, useState, useCallback, startTransition } from 'react';
+import { useMemo, useState, useEffect, useCallback, startTransition } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -89,10 +89,21 @@ export function CalendarView() {
     selectedMemberIds: [],
     showUnassigned: initialPrefs.showUnassigned,
     selectedCategoryIds: [],
+    selectedCalendarIds: [], // Will be populated when calendars load
     colorMode: initialPrefs.colorMode,
     startDate: null,
     endDate: null,
   }));
+
+  // Initialize selected calendars when calendars load (select all by default)
+  useEffect(() => {
+    if (calendars.length > 0 && filters.selectedCalendarIds.length === 0) {
+      setFilters((prev) => ({
+        ...prev,
+        selectedCalendarIds: calendars.map((c) => c.id),
+      }));
+    }
+  }, [calendars, filters.selectedCalendarIds.length]);
 
   const mergedEvents = localEvents.length ? localEvents : events;
 
@@ -155,11 +166,12 @@ export function CalendarView() {
       selectedMemberIds: [],
       showUnassigned: true,
       selectedCategoryIds: [],
+      selectedCalendarIds: calendars.map((c) => c.id), // Reset to all calendars selected
       colorMode: prev.colorMode, // Preserve color mode on reset
       startDate: null,
       endDate: null,
     }));
-  }, []);
+  }, [calendars]);
 
   const handleRemoveMemberFilter = useCallback(
     (memberId: string) => {
@@ -194,6 +206,20 @@ export function CalendarView() {
     [filters.selectedCategoryIds]
   );
 
+  const handleRemoveCalendarFilter = useCallback(
+    (calendarId: string) => {
+      // This is called when user wants to "un-hide" a calendar (add it back to selection)
+      if (filters.selectedCalendarIds.includes(calendarId)) {
+        return; // Already selected, nothing to do
+      }
+      setFilters((prev) => ({
+        ...prev,
+        selectedCalendarIds: [...prev.selectedCalendarIds, calendarId],
+      }));
+    },
+    [filters.selectedCalendarIds]
+  );
+
   const handleRemoveDateRangeFilter = useCallback(() => {
     setFilters((prev) => ({
       ...prev,
@@ -202,10 +228,12 @@ export function CalendarView() {
     }));
   }, []);
 
-  // Can reset if any filters are active (members, categories, or date range)
+  // Can reset if any filters are active (members, categories, calendars, or date range)
+  const hasCalendarFilter = calendars.length > 0 && filters.selectedCalendarIds.length < calendars.length;
   const canResetFilters =
     filters.selectedMemberIds.length > 0 ||
     filters.selectedCategoryIds.length > 0 ||
+    hasCalendarFilter ||
     (!!filters.startDate && !!filters.endDate);
 
   // Event content renderer
@@ -574,6 +602,7 @@ export function CalendarView() {
             <CalendarFilters
               filters={filters}
               familyMembers={familyMembers}
+              calendars={calendars}
               onFilterChange={handleFilterChange}
             />
           </Box>
@@ -584,9 +613,11 @@ export function CalendarView() {
           filters={filters}
           familyMembers={familyMembers}
           eventCategories={eventCategories}
+          calendars={calendars}
           totalResults={filteredEvents.length}
           onRemoveMember={handleRemoveMemberFilter}
           onRemoveCategory={handleRemoveCategoryFilter}
+          onRemoveCalendar={handleRemoveCalendarFilter}
           onRemoveDateRange={handleRemoveDateRangeFilter}
           onReset={handleFilterReset}
         />
@@ -668,6 +699,7 @@ export function CalendarView() {
         filters={filters}
         familyMembers={familyMembers}
         eventCategories={eventCategories}
+        calendars={calendars}
         events={filteredEvents}
         canReset={canResetFilters}
         onFilterChange={handleFilterChange}

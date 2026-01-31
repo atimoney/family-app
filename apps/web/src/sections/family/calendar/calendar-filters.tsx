@@ -1,5 +1,6 @@
 import type { FamilyMember } from '@family/shared';
 import type { IDatePickerControl } from 'src/types/common';
+import type { CalendarInfo } from 'src/features/calendar/types';
 
 import { useState, useCallback } from 'react';
 
@@ -26,6 +27,7 @@ export type CalendarFiltersState = {
   selectedMemberIds: string[];
   showUnassigned: boolean;
   selectedCategoryIds: string[];
+  selectedCalendarIds: string[];
   colorMode: ColorMode;
   // Date range filters
   startDate: IDatePickerControl;
@@ -35,17 +37,23 @@ export type CalendarFiltersState = {
 type Props = {
   filters: CalendarFiltersState;
   familyMembers: FamilyMember[];
+  calendars: CalendarInfo[];
   onFilterChange: (filters: CalendarFiltersState) => void;
 };
 
 export function CalendarFilters({
   filters,
   familyMembers,
+  calendars,
   onFilterChange,
 }: Props) {
   // Color mode popover state
   const [colorModeAnchorEl, setColorModeAnchorEl] = useState<HTMLElement | null>(null);
   const colorModePopoverOpen = Boolean(colorModeAnchorEl);
+
+  // Calendar selector popover state
+  const [calendarAnchorEl, setCalendarAnchorEl] = useState<HTMLElement | null>(null);
+  const calendarPopoverOpen = Boolean(calendarAnchorEl);
 
   // Color mode options
   const colorModeOptions: { value: ColorMode; label: string; icon: 'mdi:tag' | 'solar:user-rounded-bold' | 'solar:calendar-date-bold' | 'mdi:palette' }[] = [
@@ -66,6 +74,33 @@ export function CalendarFilters({
     },
     [filters, onFilterChange]
   );
+
+  // Handle calendar toggle
+  const handleCalendarToggle = useCallback(
+    (calendarId: string) => {
+      const isSelected = filters.selectedCalendarIds.includes(calendarId);
+      const newSelectedIds = isSelected
+        ? filters.selectedCalendarIds.filter((id) => id !== calendarId)
+        : [...filters.selectedCalendarIds, calendarId];
+      
+      onFilterChange({
+        ...filters,
+        selectedCalendarIds: newSelectedIds,
+      });
+    },
+    [filters, onFilterChange]
+  );
+
+  // Handle select all calendars
+  const handleSelectAllCalendars = useCallback(() => {
+    onFilterChange({
+      ...filters,
+      selectedCalendarIds: calendars.map((c) => c.id),
+    });
+  }, [filters, calendars, onFilterChange]);
+
+  // Check if all calendars are selected
+  const allCalendarsSelected = calendars.length > 0 && filters.selectedCalendarIds.length === calendars.length;
 
   // Handle quick filter change (All/Adults/Kids)
   const handleQuickFilterChange = useCallback(
@@ -266,6 +301,119 @@ export function CalendarFilters({
             </Box>
           ))}
         </Popover>
+
+        {/* Calendar selector dropdown */}
+        {calendars.length > 0 && (
+          <>
+            <Button
+              size="small"
+              color="inherit"
+              onClick={(e) => setCalendarAnchorEl(e.currentTarget)}
+              endIcon={<Iconify icon="eva:chevron-down-fill" width={16} />}
+              sx={{
+                px: 1.5,
+                py: 0.5,
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
+            >
+              <Iconify icon="solar:calendar-date-bold" width={18} sx={{ mr: 0.5 }} />
+              Calendars
+              {filters.selectedCalendarIds.length < calendars.length && (
+                <Box
+                  component="span"
+                  sx={{
+                    ml: 0.5,
+                    px: 0.5,
+                    py: 0.125,
+                    borderRadius: 0.5,
+                    bgcolor: 'primary.main',
+                    color: 'primary.contrastText',
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  {filters.selectedCalendarIds.length}/{calendars.length}
+                </Box>
+              )}
+            </Button>
+
+            <Popover
+              open={calendarPopoverOpen}
+              anchorEl={calendarAnchorEl}
+              onClose={() => setCalendarAnchorEl(null)}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              slotProps={{
+                paper: {
+                  sx: { p: 1, minWidth: 200, maxWidth: 280 },
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, px: 0.5 }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Select calendars to show
+                </Typography>
+                {!allCalendarsSelected && (
+                  <Button
+                    size="small"
+                    onClick={handleSelectAllCalendars}
+                    sx={{ minWidth: 'auto', px: 1, py: 0, fontSize: '0.7rem' }}
+                  >
+                    All
+                  </Button>
+                )}
+              </Box>
+              {calendars.map((calendar) => {
+                const isSelected = filters.selectedCalendarIds.includes(calendar.id);
+                return (
+                  <Box
+                    key={calendar.id}
+                    onClick={() => handleCalendarToggle(calendar.id)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      px: 1.5,
+                      py: 1,
+                      borderRadius: 1,
+                      cursor: 'pointer',
+                      bgcolor: isSelected ? 'action.selected' : 'transparent',
+                      '&:hover': { bgcolor: 'action.hover' },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        bgcolor: calendar.backgroundColor || '#637381',
+                        mr: 1.5,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        flexGrow: 1,
+                      }}
+                    >
+                      {calendar.summary}
+                    </Typography>
+                    {isSelected && (
+                      <Iconify
+                        icon="solar:check-circle-bold"
+                        width={18}
+                        sx={{ ml: 1, color: 'primary.main', flexShrink: 0 }}
+                      />
+                    )}
+                  </Box>
+                );
+              })}
+            </Popover>
+          </>
+        )}
 
         <ToggleButtonGroup
           exclusive
