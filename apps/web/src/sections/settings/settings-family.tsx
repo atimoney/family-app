@@ -34,8 +34,23 @@ import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomPopover } from 'src/components/custom-popover';
+import { ColorPickerWithCustom } from 'src/components/color-utils';
 
 // ----------------------------------------------------------------------
+
+// Preset colors for member color picker
+const MEMBER_COLORS = [
+  '#FF5630', // Red
+  '#FF8C00', // Orange
+  '#FFAB00', // Amber
+  '#22C55E', // Green
+  '#00B8D9', // Cyan
+  '#0076D3', // Blue
+  '#7C3AED', // Purple
+  '#FF1493', // Pink
+  '#637381', // Gray
+  '#212B36', // Dark
+];
 
 export function SettingsFamily() {
   const {
@@ -661,7 +676,10 @@ type MemberRowProps = {
 function MemberRow({ member, isCurrentUser, myRole, familyId, onRefresh }: MemberRowProps) {
   const popover = usePopover();
   const removeDialog = useBoolean();
+  const editDialog = useBoolean();
   const [submitting, setSubmitting] = useState(false);
+  const [editColor, setEditColor] = useState(member.color || '');
+  const [editDisplayName, setEditDisplayName] = useState(member.displayName || '');
 
   const { updateMemberRole, updateMemberDetails, removeMember } = useFamilyMembers(familyId);
 
@@ -669,7 +687,8 @@ function MemberRow({ member, isCurrentUser, myRole, familyId, onRefresh }: Membe
   const avatarLetter = displayName.charAt(0).toUpperCase();
 
   const canManage = (myRole === 'owner') || (myRole === 'admin' && member.role === 'member');
-  const showMenu = canManage && !isCurrentUser && member.role !== 'owner';
+  // Show menu: admins can manage members, or current user can edit themselves
+  const showMenu = isCurrentUser || (canManage && member.role !== 'owner');
 
   const handleToggleChild = async () => {
     setSubmitting(true);
@@ -681,6 +700,29 @@ function MemberRow({ member, isCurrentUser, myRole, familyId, onRefresh }: Membe
     } else {
       toast.error('Failed to update member');
     }
+  };
+
+  const handleSaveEdit = async () => {
+    setSubmitting(true);
+    const success = await updateMemberDetails(member.id, { 
+      color: editColor || null,
+      displayName: editDisplayName || null,
+    });
+    setSubmitting(false);
+    if (success) {
+      toast.success('Member updated');
+      editDialog.onFalse();
+      onRefresh();
+    } else {
+      toast.error('Failed to update member');
+    }
+  };
+
+  const handleOpenEditDialog = () => {
+    setEditColor(member.color || '');
+    setEditDisplayName(member.displayName || '');
+    popover.onClose();
+    editDialog.onTrue();
   };
 
   const handleChangeRole = async (newRole: 'admin' | 'member') => {
@@ -721,9 +763,26 @@ function MemberRow({ member, isCurrentUser, myRole, familyId, onRefresh }: Membe
     >
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Stack direction="row" alignItems="center" spacing={2}>
-          <Avatar src={member.profile?.avatarUrl || undefined} sx={{ width: 36, height: 36 }}>
-            {avatarLetter}
-          </Avatar>
+          <Box sx={{ position: 'relative' }}>
+            <Avatar src={member.profile?.avatarUrl || undefined} sx={{ width: 36, height: 36 }}>
+              {avatarLetter}
+            </Avatar>
+            {member.color && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  bottom: -2,
+                  right: -2,
+                  width: 14,
+                  height: 14,
+                  borderRadius: '50%',
+                  bgcolor: member.color,
+                  border: '2px solid',
+                  borderColor: 'background.paper',
+                }}
+              />
+            )}
+          </Box>
           <Box>
             <Stack direction="row" alignItems="center" spacing={1}>
               <Typography variant="body2" fontWeight="medium">
@@ -768,6 +827,17 @@ function MemberRow({ member, isCurrentUser, myRole, familyId, onRefresh }: Membe
 
       {/* Member Actions Popover */}
       <CustomPopover open={popover.open} anchorEl={popover.anchorEl} onClose={popover.onClose}>
+        {/* Edit - available to owner and admin for any member, or self */}
+        {(canManage || isCurrentUser) && (
+          <>
+            <MenuItem onClick={handleOpenEditDialog}>
+              <Iconify icon="solar:pen-bold" sx={{ mr: 1 }} />
+              Edit
+            </MenuItem>
+            <Divider sx={{ borderStyle: 'dashed' }} />
+          </>
+        )}
+        
         {/* Child toggle - available to owner and admin */}
         {canManage && !isCurrentUser && (
           <>
@@ -824,6 +894,45 @@ function MemberRow({ member, isCurrentUser, myRole, familyId, onRefresh }: Membe
           </Button>
         }
       />
+
+      {/* Edit Member Dialog */}
+      <Dialog open={editDialog.value} onClose={editDialog.onFalse} maxWidth="xs" fullWidth>
+        <DialogTitle>Edit Member</DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Display Name"
+              value={editDisplayName}
+              onChange={(e) => setEditDisplayName(e.target.value)}
+              placeholder={member.profile?.displayName || member.profile?.email || 'Name'}
+              helperText="Override the member's display name in this family"
+            />
+            <ColorPickerWithCustom
+              label="Calendar Color"
+              options={MEMBER_COLORS}
+              value={editColor}
+              onChange={setEditColor}
+            />
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              This color is used to identify {member.displayName || member.profile?.displayName || 'this member'}&apos;s events on the calendar when using member color mode.
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={editDialog.onFalse} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveEdit}
+            disabled={submitting}
+            startIcon={submitting ? <CircularProgress size={16} /> : undefined}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

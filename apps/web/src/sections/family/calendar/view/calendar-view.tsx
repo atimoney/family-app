@@ -105,6 +105,58 @@ export function CalendarView() {
     [memberById]
   );
 
+  // E2: Get all unique member colors from family assignments (for stripe pattern)
+  const getMemberColors = useCallback(
+    (assignments: EventFamilyAssignments | null | undefined): string[] => {
+      if (!assignments) return [];
+      const colors: string[] = [];
+
+      // Add primary member color first
+      if (assignments.primaryFamilyMemberId) {
+        const primary = memberById.get(assignments.primaryFamilyMemberId);
+        if (primary?.color) colors.push(primary.color);
+      }
+
+      // Add participant colors
+      if (assignments.participantFamilyMemberIds?.length) {
+        assignments.participantFamilyMemberIds.forEach((id) => {
+          const member = memberById.get(id);
+          if (member?.color && !colors.includes(member.color)) {
+            colors.push(member.color);
+          }
+        });
+      }
+
+      return colors;
+    },
+    [memberById]
+  );
+
+  // E2: Create diagonal split gradient for multi-member events
+  // Each member gets a solid diagonal section (not repeating stripes)
+  const createStripeGradient = useCallback((colors: string[]): string | null => {
+    if (colors.length <= 1) return null;
+
+    // Build gradient stops for solid diagonal sections
+    // Each color gets an equal portion of the diagonal
+    const gradientStops: string[] = [];
+    const segmentSize = 100 / colors.length;
+
+    colors.forEach((color, i) => {
+      const start = i * segmentSize;
+      const end = (i + 1) * segmentSize;
+      // Use hard stops (same position for end of one color and start of next)
+      // to create solid sections instead of gradual transitions
+      gradientStops.push(`${color} ${start}%`);
+      gradientStops.push(`${color} ${end}%`);
+    });
+
+    return `linear-gradient(
+      135deg,
+      ${gradientStops.join(', ')}
+    )`;
+  }, []);
+
   // Filter events by selected family members and categories
   const filteredEvents = useMemo(() => {
     let result = mergedEvents;
@@ -195,22 +247,16 @@ export function CalendarView() {
       const categoryConfig = eventCategory ? categoryByName.get(eventCategory) : null;
       const categoryColor = categoryConfig?.color || null;
 
-      // Get member color (primary or first participant)
-      let memberColor: string | null = null;
-      if (familyAssignments?.primaryFamilyMemberId) {
-        const primaryMember = memberById.get(familyAssignments.primaryFamilyMemberId);
-        memberColor = primaryMember?.color || null;
-      }
-      if (!memberColor && familyAssignments?.participantFamilyMemberIds?.length) {
-        const firstParticipant = memberById.get(familyAssignments.participantFamilyMemberIds[0]);
-        memberColor = firstParticipant?.color || null;
-      }
+      // Get all member colors for potential stripe pattern
+      const memberColors = getMemberColors(familyAssignments);
+      const memberColor = memberColors[0] || null;
 
       // Original calendar color is already on the event
       const calendarColor = event.backgroundColor || null;
 
       // Apply color based on mode - ALWAYS compute the final color
       let finalColor: string | null = null;
+      let stripeGradient: string | null = null;
       
       switch (filters.colorMode) {
         case 'category':
@@ -219,7 +265,13 @@ export function CalendarView() {
           break;
         case 'member':
           // Priority: Member > Category > Calendar
-          finalColor = memberColor || categoryColor || calendarColor;
+          // Use stripe pattern if multiple members assigned
+          if (memberColors.length > 1) {
+            stripeGradient = createStripeGradient(memberColors);
+            finalColor = memberColors[0]; // Fallback/border color
+          } else {
+            finalColor = memberColor || categoryColor || calendarColor;
+          }
           break;
         case 'event':
           // Use the Google event's own color (from colorId)
@@ -238,9 +290,14 @@ export function CalendarView() {
         ...event,
         backgroundColor: finalColor || undefined,
         borderColor: finalColor || undefined,
+        extendedProps: {
+          ...event.extendedProps,
+          stripeGradient,
+          memberColors: memberColors.length > 1 ? memberColors : undefined,
+        },
       };
     });
-  }, [filteredEvents, eventCategories, memberById, filters.colorMode]);
+  }, [filteredEvents, eventCategories, memberById, filters.colorMode, getMemberColors, createStripeGradient]);
 
   // Filter handlers
   const handleFilterChange = useCallback((newFilters: CalendarFiltersState) => {
@@ -301,6 +358,9 @@ export function CalendarView() {
         | EventFamilyAssignments
         | undefined;
       const assignedMembers = getAssignedMembers(familyAssignments);
+      
+      // E2: Get stripe gradient for multi-member events
+      const stripeGradient = event.extendedProps?.stripeGradient as string | undefined;
 
       return (
         <Box
@@ -312,6 +372,13 @@ export function CalendarView() {
             height: '100%',
             px: 0.5,
             py: 0.25,
+            // Apply diagonal stripe gradient for multi-member events
+            ...(stripeGradient && {
+              background: stripeGradient,
+              borderRadius: 'inherit',
+              // Ensure text remains readable with a subtle text shadow
+              textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+            }),
           }}
         >
           {/* Title row */}

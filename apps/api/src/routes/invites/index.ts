@@ -12,6 +12,35 @@ const createInviteSchema = z.object({
   expiresInDays: z.number().int().min(1).max(30).default(7),
 });
 
+// Default colors for family members (same as frontend MEMBER_COLORS)
+const DEFAULT_MEMBER_COLORS = [
+  '#FF5630', // Red
+  '#FF8C00', // Orange
+  '#FFAB00', // Amber
+  '#22C55E', // Green
+  '#00B8D9', // Cyan
+  '#0076D3', // Blue
+  '#7C3AED', // Purple
+  '#FF1493', // Pink
+  '#637381', // Gray
+  '#212B36', // Dark
+];
+
+// Helper to get next available color for a new family member
+function getNextAvailableColor(existingColors: (string | null)[]): string {
+  const usedColors = new Set(existingColors.filter(Boolean).map(c => c!.toUpperCase()));
+  
+  // Find first color not already used
+  for (const color of DEFAULT_MEMBER_COLORS) {
+    if (!usedColors.has(color.toUpperCase())) {
+      return color;
+    }
+  }
+  
+  // All colors used, return first color (will have duplicates)
+  return DEFAULT_MEMBER_COLORS[0];
+}
+
 // Helper to generate secure token
 function generateToken(): string {
   return randomBytes(32).toString('base64url');
@@ -406,22 +435,32 @@ const inviteRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       // Accept invite and create membership in transaction
-      await fastify.prisma.$transaction([
-        fastify.prisma.familyInvite.update({
+      await fastify.prisma.$transaction(async (tx) => {
+        // Get existing member colors to avoid duplicates
+        const existingMembers = await tx.familyMember.findMany({
+          where: { familyId: invite.familyId, removedAt: null },
+          select: { color: true },
+        });
+        const existingColors = existingMembers.map(m => m.color);
+        const assignedColor = getNextAvailableColor(existingColors);
+
+        await tx.familyInvite.update({
           where: { id: invite.id },
           data: {
             status: 'accepted',
             respondedAt: new Date(),
           },
-        }),
-        fastify.prisma.familyMember.create({
+        });
+
+        await tx.familyMember.create({
           data: {
             familyId: invite.familyId,
             profileId: userId,
             role: invite.role,
+            color: assignedColor,
           },
-        }),
-      ]);
+        });
+      });
 
       return { success: true, familyId: invite.familyId };
     }
