@@ -426,10 +426,27 @@ export function CalendarView() {
               >
                 {assignedMembers.map((member) => (
                   <Tooltip key={member.id} title={member.displayName || member.profile?.displayName || ''}>
-                    <Avatar
-                      alt={member.displayName || member.profile?.displayName || ''}
-                      src={member.profile?.avatarUrl || undefined}
-                    />
+                    <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                      <Avatar
+                        alt={member.displayName || member.profile?.displayName || ''}
+                        src={member.profile?.avatarUrl || undefined}
+                      />
+                      {member.color && (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            bottom: -1,
+                            right: -1,
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            bgcolor: member.color,
+                            border: '1px solid',
+                            borderColor: 'background.paper',
+                          }}
+                        />
+                      )}
+                    </Box>
                   </Tooltip>
                 ))}
               </AvatarGroup>

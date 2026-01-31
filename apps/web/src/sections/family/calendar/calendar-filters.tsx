@@ -231,6 +231,21 @@ export function CalendarFilters({
                 >
                   {memberName.charAt(0).toUpperCase()}
                 </Avatar>
+                {member.color && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      bottom: 0,
+                      right: 0,
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      bgcolor: member.color,
+                      border: '2px solid',
+                      borderColor: 'background.paper',
+                    }}
+                  />
+                )}
               </Box>
             </Tooltip>
           );
