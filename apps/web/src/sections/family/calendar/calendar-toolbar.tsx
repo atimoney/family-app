@@ -5,7 +5,6 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import IconButton from '@mui/material/IconButton';
-import Typography from '@mui/material/Typography';
 import ToggleButton from '@mui/material/ToggleButton';
 import LinearProgress from '@mui/material/LinearProgress';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
@@ -39,10 +38,10 @@ export function CalendarToolbar({
         <LinearProgress
           color="inherit"
           sx={{
-            top: 0,
             left: 0,
             width: 1,
             height: 2,
+            bottom: 0,
             borderRadius: 0,
             position: 'absolute',
           }}
@@ -54,53 +53,62 @@ export function CalendarToolbar({
           p: 2.5,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        {/* View options on the left */}
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          aria-label="calendar view"
+          value={view}
+          onChange={(_, newView: CalendarView | null) => {
+            if (newView !== null) {
+              onChangeView?.(newView);
+            }
+          }}
+          sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+        >
+          {viewOptions.map((option) => (
+            <Tooltip key={option.value} title={option.label}>
+              <ToggleButton value={option.value} aria-label={`${option.label} view`}>
+                <Iconify icon={option.icon} />
+              </ToggleButton>
+            </Tooltip>
+          ))}
+        </ToggleButtonGroup>
+
+        {/* Date navigation centered */}
+        <Box
+          sx={{
+            gap: { sm: 1 },
+            display: 'flex',
+            flex: '1 1 auto',
+            textAlign: 'center',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
           <IconButton onClick={() => onDateNavigation?.('prev')}>
             <Iconify icon="eva:arrow-ios-back-fill" />
           </IconButton>
 
-          <Typography variant="h6" sx={{ mx: 1, minWidth: 180, textAlign: 'center' }}>
-            {title}
-          </Typography>
+          <Box sx={{ typography: { xs: 'subtitle2', sm: 'h6' } }}>{title}</Box>
 
           <IconButton onClick={() => onDateNavigation?.('next')}>
             <Iconify icon="eva:arrow-ios-forward-fill" />
           </IconButton>
         </Box>
 
+        {/* Today button on the right */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Button
             size="small"
-            color="inherit"
-            variant="outlined"
+            color="error"
+            variant="contained"
             onClick={() => onDateNavigation?.('today')}
           >
             Today
           </Button>
-
-          <ToggleButtonGroup
-            exclusive
-            size="small"
-            aria-label="calendar view"
-            value={view}
-            onChange={(_, newView: CalendarView | null) => {
-              if (newView !== null) {
-                onChangeView?.(newView);
-              }
-            }}
-            sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-          >
-            {viewOptions.map((option) => (
-              <Tooltip key={option.value} title={option.label}>
-                <ToggleButton value={option.value} aria-label={`${option.label} view`}>
-                  <Iconify icon={option.icon} />
-                </ToggleButton>
-              </Tooltip>
-            ))}
-          </ToggleButtonGroup>
         </Box>
       </Box>
     </Box>

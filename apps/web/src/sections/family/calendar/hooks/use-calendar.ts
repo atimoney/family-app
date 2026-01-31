@@ -1,7 +1,7 @@
 import type FullCalendar from '@fullcalendar/react';
 import type { Breakpoint } from '@mui/material/styles';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
-import type { ViewApi, CalendarApi, EventDropArg, DateSelectArg, EventClickArg } from '@fullcalendar/core';
+import type { ViewApi, CalendarApi, EventDropArg, DateSelectArg, EventClickArg, DatesSetArg } from '@fullcalendar/core';
 import type { CalendarEventItem } from 'src/features/calendar/types';
 
 import { useRef, useState, useEffect, useCallback } from 'react';
@@ -10,7 +10,7 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 
 // ----------------------------------------------------------------------
 
-export type CalendarView = 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay';
+export type CalendarView = 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay' | 'listWeek';
 
 export type CalendarRange = {
   start: string;
@@ -32,6 +32,7 @@ export type UseCalendarReturn = {
   onClickEvent: (arg: EventClickArg) => void;
   onSelectRange: (arg: DateSelectArg) => void;
   onChangeView: (view: CalendarView) => void;
+  onDatesSet: (arg: DatesSetArg) => void;
   onDateNavigation: (action: DateNavigationAction) => void;
   onDropEvent: (arg: EventDropArg, updateEvent: (event: Partial<CalendarEventItem>) => void) => void;
   onResizeEvent: (
@@ -141,6 +142,11 @@ export function useCalendar({
     [getCalendarApi]
   );
 
+  const onDatesSet = useCallback((arg: DatesSetArg) => {
+    setTitle(arg.view.title);
+    setView(arg.view.type as CalendarView);
+  }, []);
+
   const onSelectRange = useCallback(
     (arg: DateSelectArg) => {
       const calendarApi = getCalendarApi();
@@ -203,6 +209,7 @@ export function useCalendar({
     onChangeView,
     onSelectRange,
     onResizeEvent,
+    onDatesSet,
     onDateNavigation,
     /********/
     openForm,

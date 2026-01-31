@@ -6,6 +6,7 @@ import type { Theme, SxProps } from '@mui/material/styles';
 import type { CalendarEventItem, EventFamilyAssignments, CalendarEventMetadata } from 'src/features/calendar/types';
 
 import Calendar from '@fullcalendar/react';
+import listPlugin from '@fullcalendar/list';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
@@ -454,6 +455,7 @@ export function CalendarView() {
     onSelectRange,
     onClickEvent,
     onResizeEvent,
+    onDatesSet,
     onDateNavigation,
     /********/
     openForm,
@@ -784,9 +786,10 @@ export function CalendarView() {
               onChangeView={onChangeView}
               onDateNavigation={onDateNavigation}
               viewOptions={[
+                { value: 'dayGridMonth', label: 'Month', icon: 'mingcute:calendar-month-line' },
                 { value: 'timeGridWeek', label: 'Week', icon: 'mingcute:calendar-week-line' },
                 { value: 'timeGridDay', label: 'Day', icon: 'mingcute:calendar-day-line' },
-                { value: 'dayGridMonth', label: 'Month', icon: 'mingcute:calendar-month-line' },
+                { value: 'listWeek', label: 'Agenda', icon: 'custom:calendar-agenda-outline' },
               ]}
             />
 
@@ -809,6 +812,7 @@ export function CalendarView() {
               events={coloredEvents}
               select={onSelectRange}
               eventClick={onClickEvent}
+              datesSet={onDatesSet}
               eventContent={renderEventContent}
               businessHours={{
                 daysOfWeek: [1, 2, 3, 4, 5], // Mon-Fri
@@ -823,7 +827,7 @@ export function CalendarView() {
                   onResizeEvent(arg, updateEventFromDragResize);
                 });
               }}
-              plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+              plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
             />
           </CalendarRoot>
         </Card>
