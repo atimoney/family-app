@@ -55,7 +55,7 @@ export const familyAssignmentsSchema = z.object({
 export const eventCategorySchema = z.string().transform(val => val.toLowerCase());
 
 // E1: Event audience enum
-export const eventAudienceSchema = z.enum(['family', 'adults', 'kids']);
+export const eventAudienceSchema = z.enum(['family', 'adults', 'kids', 'me']);
 
 export const getEventsResponseSchema = z.array(
   z.object({

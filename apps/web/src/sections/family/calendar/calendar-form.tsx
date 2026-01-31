@@ -82,6 +82,7 @@ export const EVENT_AUDIENCES: { value: EventAudience; label: string }[] = [
   { value: 'family', label: 'Everyone' },
   { value: 'adults', label: 'Adults only' },
   { value: 'kids', label: 'Kids only' },
+  { value: 'me', label: 'Me' },
 ];
 
 // Recurrence options
@@ -150,7 +151,7 @@ const familyAssignmentsSchema = z.object({
 const eventCategorySchema = z.string().nullable().optional();
 
 // E1: Audience schema
-const eventAudienceSchema = z.enum(['family', 'adults', 'kids']).default('family');
+const eventAudienceSchema = z.enum(['family', 'adults', 'kids', 'me']).default('family');
 
 // Category metadata - generic schema to allow any user-defined fields
 const categoryMetadataSchema = z.record(z.string(), z.any()).nullable().optional();
@@ -188,6 +189,7 @@ type Props = {
   calendars: CalendarInfo[];
   familyMembers?: FamilyMember[];
   eventCategories?: EventCategoryConfig[];
+  isDashboardMode?: boolean;
   onCreateEvent: (event: CalendarEventItem) => void | Promise<void>;
   onUpdateEvent: (event: CalendarEventItem) => void;
   onDeleteEvent: (eventId: string) => void;
@@ -199,6 +201,7 @@ export function CalendarForm({
   calendars,
   familyMembers = [],
   eventCategories,
+  isDashboardMode = false,
   onClose,
   onCreateEvent,
   onUpdateEvent,
@@ -217,6 +220,12 @@ export function CalendarForm({
     }
     return DEFAULT_EVENT_CATEGORIES;
   }, [eventCategories]);
+
+  // Find primary calendar
+  const primaryCalendar = useMemo(
+    () => calendars.find((c) => c.primary) || calendars[0],
+    [calendars]
+  );
 
   // Get default calendar (first selected one)
   const defaultCalendarId = calendars[0]?.id ?? '';
@@ -495,7 +504,7 @@ export function CalendarForm({
             }}
           />
 
-          {calendars.length > 1 && (
+          {calendars.length > 1 && values.audience !== 'me' && (
             <Field.Select name="calendarId" label="Calendar">
               {calendars.map((calendar) => (
                 <MenuItem key={calendar.id} value={calendar.id}>
@@ -514,6 +523,35 @@ export function CalendarForm({
                 </MenuItem>
               ))}
             </Field.Select>
+          )}
+
+          {/* Show read-only calendar info when "Me" is selected */}
+          {values.audience === 'me' && primaryCalendar && (
+            <TextField
+              fullWidth
+              label="Calendar"
+              value={primaryCalendar.summary}
+              size="small"
+              disabled
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <Box
+                      component="span"
+                      sx={{
+                        display: 'inline-block',
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        bgcolor: primaryCalendar.backgroundColor || 'primary.main',
+                        mr: 1.5,
+                      }}
+                    />
+                  ),
+                },
+              }}
+              helperText="Personal events are saved to your primary calendar"
+            />
           )}
 
           <Field.Switch name="allDay" label="All day" />
@@ -839,22 +877,37 @@ export function CalendarForm({
               <Controller
                 name="audience"
                 control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    select
-                    fullWidth
-                    label="Who should see this?"
-                    size="small"
-                    value={field.value || 'family'}
-                  >
-                    {EVENT_AUDIENCES.map((aud) => (
-                      <MenuItem key={aud.value} value={aud.value}>
-                        {aud.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                )}
+                render={({ field }) => {
+                  // Filter out 'me' option when in dashboard mode
+                  const audienceOptions = isDashboardMode
+                    ? EVENT_AUDIENCES.filter((aud) => aud.value !== 'me')
+                    : EVENT_AUDIENCES;
+
+                  return (
+                    <TextField
+                      {...field}
+                      select
+                      fullWidth
+                      label="Who should see this?"
+                      size="small"
+                      value={field.value || 'family'}
+                      onChange={(e) => {
+                        const newValue = e.target.value;
+                        field.onChange(newValue);
+                        // When 'me' is selected, automatically switch to primary calendar
+                        if (newValue === 'me' && primaryCalendar) {
+                          setValue('calendarId', primaryCalendar.id);
+                        }
+                      }}
+                    >
+                      {audienceOptions.map((aud) => (
+                        <MenuItem key={aud.value} value={aud.value}>
+                          {aud.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  );
+                }}
               />
 
               {/* Tags */}

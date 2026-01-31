@@ -43,7 +43,7 @@ export const familyAssignmentsSchema = z.object({
 export const eventCategorySchema = z.string().transform(val => val.toLowerCase());
 
 // E1: Event audience enum
-export const eventAudienceSchema = z.enum(['family', 'adults', 'kids']);
+export const eventAudienceSchema = z.enum(['family', 'adults', 'kids', 'me']);
 
 // Category metadata - generic schema to allow any user-defined fields
 export const categoryMetadataSchema = z.record(z.any()).nullable().optional();

@@ -146,7 +146,7 @@ export type EventCategory =
   | 'Admin';
 
 /** E1: Event audience enum */
-export type EventAudience = 'family' | 'adults' | 'kids';
+export type EventAudience = 'family' | 'adults' | 'kids' | 'me';
 
 /** Category metadata - generic type for user-defined category fields */
 export type CategoryMetadata = Record<string, unknown>;

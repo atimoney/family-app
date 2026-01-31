@@ -523,6 +523,7 @@ export function CalendarView() {
         calendars={calendars}
         familyMembers={familyMembers}
         eventCategories={eventCategories}
+        isDashboardMode={isDashboardMode}
         onClose={onCloseForm}
         onCreateEvent={handleCreateEvent}
         onUpdateEvent={handleUpdateEvent}
