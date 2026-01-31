@@ -3,6 +3,7 @@
     /* Bundler */
     "baseUrl": ".",
     "paths": {
+      "src/*": ["./src/*"],
       "@family/shared": ["../../packages/shared/src/index.ts"],
       "@family/shared/*": ["../../packages/shared/src/*"]
     },

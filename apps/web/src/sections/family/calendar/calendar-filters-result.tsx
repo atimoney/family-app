@@ -7,6 +7,8 @@ import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 
+import { fDate } from 'src/utils/format-time';
+
 // ----------------------------------------------------------------------
 
 type Props = {
@@ -16,6 +18,7 @@ type Props = {
   totalResults: number;
   onRemoveMember: (memberId: string) => void;
   onRemoveCategory: (categoryId: string) => void;
+  onRemoveDateRange?: () => void;
   onReset: () => void;
 };
 
@@ -26,6 +29,7 @@ export function CalendarFiltersResult({
   totalResults,
   onRemoveMember,
   onRemoveCategory,
+  onRemoveDateRange,
   onReset,
 }: Props) {
   // Get selected members for display
@@ -38,10 +42,13 @@ export function CalendarFiltersResult({
     filters.selectedCategoryIds.includes(c.id)
   );
 
+  // Check for date range filter
+  const hasDateRangeFilter = !!filters.startDate && !!filters.endDate;
+
   // Don't show if no filters active
   const hasMemberFilter = filters.selectedMemberIds.length > 0;
   const hasCategoryFilter = filters.selectedCategoryIds.length > 0;
-  const isFiltered = hasMemberFilter || hasCategoryFilter;
+  const isFiltered = hasMemberFilter || hasCategoryFilter || hasDateRangeFilter;
 
   if (!isFiltered) {
     return null;
@@ -124,6 +131,15 @@ export function CalendarFiltersResult({
             />
           ))}
         </>
+      )}
+
+      {/* Date range chip */}
+      {hasDateRangeFilter && (
+        <Chip
+          size="small"
+          label={`${fDate(filters.startDate)} - ${fDate(filters.endDate)}`}
+          onDelete={onRemoveDateRange}
+        />
       )}
 
       {/* Clear all button */}

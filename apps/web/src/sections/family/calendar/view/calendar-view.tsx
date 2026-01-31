@@ -9,6 +9,7 @@ import type { CalendarEventItem, CalendarEventMetadata, EventFamilyAssignments }
 import Calendar from '@fullcalendar/react';
 import listPlugin from '@fullcalendar/list';
 import dayGridPlugin from '@fullcalendar/daygrid';
+import { useBoolean } from 'minimal-shared/hooks';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import resourcePlugin from '@fullcalendar/resource';
 import interactionPlugin from '@fullcalendar/interaction';
@@ -30,6 +31,8 @@ import AvatarGroup from '@mui/material/AvatarGroup';
 import DialogTitle from '@mui/material/DialogTitle';
 import CircularProgress from '@mui/material/CircularProgress';
 
+import { fIsAfter, fIsBetween } from 'src/utils/format-time';
+
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useFamily } from 'src/features/family/hooks/use-family';
 import { useSelectedCalendars } from 'src/features/calendar/hooks/use-calendars';
@@ -46,12 +49,15 @@ import { CalendarForm } from '../calendar-form';
 import { useCalendar } from '../hooks/use-calendar';
 import { CalendarToolbar } from '../calendar-toolbar';
 import { CalendarFiltersResult } from '../calendar-filters-result';
+import { CalendarFiltersSidebar } from '../calendar-filters-sidebar';
 import { CalendarFilters, type CalendarFiltersState } from '../calendar-filters';
 
 // ----------------------------------------------------------------------
 
 export function CalendarView() {
   const theme = useTheme();
+
+  const openFilters = useBoolean();
 
   const { events, loading, syncing, error, refresh, sync } = useCalendarEvents();
   const { calendars } = useSelectedCalendars();
@@ -71,7 +77,12 @@ export function CalendarView() {
     showUnassigned: true,
     selectedCategoryIds: [],
     colorMode: 'category',
+    startDate: null,
+    endDate: null,
   }));
+
+  // Date range filter validation
+  const dateError = fIsAfter(filters.startDate, filters.endDate);
 
   const mergedEvents = localEvents.length ? localEvents : events;
 
@@ -186,11 +197,16 @@ export function CalendarView() {
     )`;
   }, []);
 
-  // Filter events by selected family members and categories
+  // Filter events by selected family members, categories, and date range
   const filteredEvents = useMemo(() => {
     let result = mergedEvents;
 
-    // Filter by category first (if any selected)
+    // Filter by date range (if specified and valid)
+    if (!dateError && filters.startDate && filters.endDate) {
+      result = result.filter((event) => fIsBetween(event.start, filters.startDate, filters.endDate));
+    }
+
+    // Filter by category (if any selected)
     if (filters.selectedCategoryIds.length > 0) {
       result = result.filter((event) => {
         const eventCategory = event.extendedProps?.metadata?.category as string | undefined;
@@ -256,7 +272,7 @@ export function CalendarView() {
       // No matching members found - hide the event
       return false;
     });
-  }, [mergedEvents, filters.selectedMemberIds, filters.showUnassigned, filters.memberFilter, filters.selectedCategoryIds, familyMembers.length, eventCategories]);
+  }, [mergedEvents, filters.selectedMemberIds, filters.showUnassigned, filters.selectedCategoryIds, filters.startDate, filters.endDate, dateError, eventCategories]);
 
   // Apply color based on selected color mode
   const coloredEvents = useMemo(() => {
@@ -353,7 +369,7 @@ export function CalendarView() {
         },
       };
     });
-  }, [filteredEvents, eventCategories, memberById, filters.colorMode, getMemberColors, createStripeGradient]);
+  }, [filteredEvents, eventCategories, filters.colorMode, getMemberColors, createStripeGradient]);
 
   // Filter handlers
   const handleFilterChange = useCallback((newFilters: CalendarFiltersState) => {
@@ -367,6 +383,8 @@ export function CalendarView() {
       showUnassigned: true,
       selectedCategoryIds: [],
       colorMode: prev.colorMode, // Preserve color mode on reset
+      startDate: null,
+      endDate: null,
     }));
   }, []);
 
@@ -403,8 +421,19 @@ export function CalendarView() {
     [filters.selectedCategoryIds]
   );
 
-  // Can reset if any filters are active
-  const canResetFilters = filters.selectedMemberIds.length > 0 || filters.selectedCategoryIds.length > 0;
+  const handleRemoveDateRangeFilter = useCallback(() => {
+    setFilters((prev) => ({
+      ...prev,
+      startDate: null,
+      endDate: null,
+    }));
+  }, []);
+
+  // Can reset if any filters are active (members, categories, or date range)
+  const canResetFilters = 
+    filters.selectedMemberIds.length > 0 || 
+    filters.selectedCategoryIds.length > 0 ||
+    (!!filters.startDate && !!filters.endDate);
 
   // E2: Custom event content renderer with avatars
   const renderEventContent = useCallback(
@@ -540,6 +569,12 @@ export function CalendarView() {
 
   // Find current event for editing
   const currentEvent = selectedEventId ? mergedEvents.find((e) => e.id === selectedEventId) : null;
+
+  // Handler for clicking an event in the sidebar
+  const handleClickEventInSidebar = useCallback((eventId: string) => {
+    // Open the event form for editing
+    onClickEvent({ event: { id: eventId } } as any);
+  }, [onClickEvent]);
 
   // Event handlers
   const handleCreateEvent = useCallback(
@@ -824,16 +859,13 @@ export function CalendarView() {
           </Alert>
         )}
 
-        {/* Family member filters */}
+        {/* Quick filters bar - Family member avatars & toggles */}
         {familyMembers.length > 0 && (
           <Box sx={{ mb: 2 }}>
             <CalendarFilters
               filters={filters}
               familyMembers={familyMembers}
-              eventCategories={eventCategories}
               onFilterChange={handleFilterChange}
-              canReset={canResetFilters}
-              onReset={handleFilterReset}
             />
           </Box>
         )}
@@ -846,6 +878,7 @@ export function CalendarView() {
           totalResults={filteredEvents.length}
           onRemoveMember={handleRemoveMemberFilter}
           onRemoveCategory={handleRemoveCategoryFilter}
+          onRemoveDateRange={handleRemoveDateRangeFilter}
           onReset={handleFilterReset}
         />
 
@@ -855,8 +888,10 @@ export function CalendarView() {
               view={view}
               title={title}
               loading={loading || syncing}
+              canReset={canResetFilters}
               onChangeView={onChangeView}
               onDateNavigation={onDateNavigation}
+              onOpenFilters={openFilters.onTrue}
               viewOptions={[
                 { value: 'dayGridMonth', label: 'Month', icon: 'mingcute:calendar-month-line' },
                 { value: 'timeGridWeek', label: 'Week', icon: 'mingcute:calendar-week-line' },
@@ -948,6 +983,19 @@ export function CalendarView() {
       </DashboardContent>
 
       {renderCreateFormDialog()}
+
+      <CalendarFiltersSidebar
+        open={openFilters.value}
+        onClose={openFilters.onFalse}
+        filters={filters}
+        familyMembers={familyMembers}
+        eventCategories={eventCategories}
+        events={filteredEvents}
+        canReset={canResetFilters}
+        onFilterChange={handleFilterChange}
+        onReset={handleFilterReset}
+        onClickEvent={handleClickEventInSidebar}
+      />
     </>
   );
 }

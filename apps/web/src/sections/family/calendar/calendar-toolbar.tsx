@@ -2,6 +2,7 @@ import type { IconifyName } from 'src/components/iconify';
 import type { CalendarView, UseCalendarReturn } from './hooks/use-calendar';
 
 import Box from '@mui/material/Box';
+import Badge from '@mui/material/Badge';
 import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import IconButton from '@mui/material/IconButton';
@@ -22,6 +23,8 @@ type ViewOption = {
 type CalendarToolbarProps = Partial<UseCalendarReturn> & {
   loading?: boolean;
   viewOptions: ViewOption[];
+  canReset?: boolean;
+  onOpenFilters?: () => void;
 };
 
 export function CalendarToolbar({
@@ -29,7 +32,9 @@ export function CalendarToolbar({
   title,
   loading,
   viewOptions,
+  canReset,
   onChangeView,
+  onOpenFilters,
   onDateNavigation,
 }: CalendarToolbarProps) {
   return (
@@ -109,6 +114,14 @@ export function CalendarToolbar({
           >
             Today
           </Button>
+
+          {onOpenFilters && (
+            <IconButton onClick={onOpenFilters}>
+              <Badge color="error" variant="dot" invisible={!canReset}>
+                <Iconify icon="ic:round-filter-list" />
+              </Badge>
+            </IconButton>
+          )}
         </Box>
       </Box>
     </Box>
