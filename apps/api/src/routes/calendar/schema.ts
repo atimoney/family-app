@@ -48,6 +48,16 @@ export const eventAudienceSchema = z.enum(['family', 'adults', 'kids']);
 // Category metadata - generic schema to allow any user-defined fields
 export const categoryMetadataSchema = z.record(z.any()).nullable().optional();
 
+// Event audit info schema - tracks who made changes and when
+export const eventAuditInfoSchema = z.object({
+  modifiedBy: z.string().nullable(),
+  modifiedByName: z.string().nullable(),
+  modifiedAt: z.string(),
+  editSource: z.enum(['user', 'dashboard', 'system', 'sync']),
+  isDashboardMode: z.boolean(),
+  changeNote: z.string().nullable().optional(),
+}).nullable().optional();
+
 export const extraDataSchema = z.object({
   tags: z.array(z.string()).default([]),
   category: eventCategorySchema.nullable().optional().default(null),
@@ -56,6 +66,9 @@ export const extraDataSchema = z.object({
   color: z.string().nullable().optional().default(null),
   metadata: categoryMetadataSchema.default({}),
   familyAssignments: familyAssignmentsSchema,
+  // Audit tracking
+  createdAudit: eventAuditInfoSchema,
+  lastModifiedAudit: eventAuditInfoSchema,
 });
 
 export const createEventSchema = z.object({

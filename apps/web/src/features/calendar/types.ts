@@ -14,6 +14,44 @@ export type EventFamilyAssignments = {
 };
 
 // ============================================================================
+// EVENT AUDIT TRACKING
+// ============================================================================
+
+/**
+ * Source of an event modification - helps track where changes came from
+ */
+export type EventEditSource = 'user' | 'dashboard' | 'system' | 'sync';
+
+/**
+ * Audit information for tracking who made changes and when.
+ * Used for both creation and updates of calendar events.
+ */
+export type EventAuditInfo = {
+  /** ID of the user who made the change (profile ID) */
+  modifiedBy: string | null;
+  /** Display name of the user at time of change */
+  modifiedByName: string | null;
+  /** Timestamp of when the change was made */
+  modifiedAt: string;
+  /** Source of the modification */
+  editSource: EventEditSource;
+  /** Whether this was made in dashboard mode (shared device) */
+  isDashboardMode: boolean;
+  /** Optional note about the change */
+  changeNote?: string | null;
+};
+
+/**
+ * Full audit trail entry for event history
+ */
+export type EventAuditEntry = EventAuditInfo & {
+  /** Type of change made */
+  action: 'created' | 'updated' | 'deleted';
+  /** Previous values (for updates) */
+  previousValues?: Record<string, unknown>;
+};
+
+// ============================================================================
 // E1: EVENT METADATA - CATEGORIES, AUDIENCE & CATEGORY-SPECIFIC DATA
 // ============================================================================
 
@@ -45,6 +83,9 @@ export type CalendarEventMetadata = {
   categoryMetadata?: CategoryMetadata | null;
   customJson?: Record<string, unknown>;
   familyAssignments?: EventFamilyAssignments | null;
+  // Audit tracking
+  createdAudit?: EventAuditInfo | null;
+  lastModifiedAudit?: EventAuditInfo | null;
 };
 
 export type CalendarInfo = {

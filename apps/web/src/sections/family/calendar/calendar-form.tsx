@@ -41,6 +41,8 @@ import { Scrollbar } from 'src/components/scrollbar';
 import { ColorPicker } from 'src/components/color-utils';
 import { Form, Field, zodResolver } from 'src/components/hook-form';
 
+import { EventAuditPopover } from './event-audit-popover';
+
 // ----------------------------------------------------------------------
 
 // Color options for event picker
@@ -253,6 +255,9 @@ export function CalendarForm({
     count: 10,
     until: dayjs().add(1, 'month').format('YYYY-MM-DD'),
   });
+
+  // State for audit history popover
+  const [auditAnchorEl, setAuditAnchorEl] = useState<HTMLElement | null>(null);
 
   // E2: Get existing family assignments from event
   const existingAssignments = currentEvent?.familyAssignments || currentEvent?.extendedProps?.metadata?.familyAssignments;
@@ -905,6 +910,28 @@ export function CalendarForm({
               <Iconify icon="solar:trash-bin-trash-bold" />
             </IconButton>
           </Tooltip>
+        )}
+
+        {isEdit && (
+          <>
+            <Tooltip title="View history">
+              <Chip
+                size="small"
+                variant="soft"
+                color="default"
+                icon={<Iconify icon="solar:clock-circle-bold" width={16} />}
+                label="History"
+                onClick={(e) => setAuditAnchorEl(e.currentTarget)}
+                sx={{ cursor: 'pointer' }}
+              />
+            </Tooltip>
+            <EventAuditPopover
+              open={auditAnchorEl}
+              onClose={() => setAuditAnchorEl(null)}
+              createdAudit={existingMetadata?.createdAudit}
+              lastModifiedAudit={existingMetadata?.lastModifiedAudit}
+            />
+          </>
         )}
 
         <Box component="span" sx={{ flexGrow: 1 }} />

@@ -91,6 +91,16 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
+    // Fetch EventLink data for audit info
+    const googleEventIds = events.map(e => e.googleEventId);
+    const eventLinks = await fastify.prisma.eventLink.findMany({
+      where: {
+        userId,
+        eventId: { in: googleEventIds },
+      },
+    });
+    const eventLinkMap = new Map(eventLinks.map(link => [link.eventId, link.extraData as Record<string, unknown>]));
+
     const response = events.map((event) => {
       // E2: Extract familyAssignments from customJson if present
       const customJson = (event.metadata?.customJson ?? {}) as Record<string, unknown>;
@@ -99,6 +109,8 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       const categoryMetadata = (event.metadata?.categoryMetadata ?? {}) as Record<string, unknown>;
       // Extract Google event color from rawJson
       const googleEventColor = getGoogleEventColor(event.rawJson);
+      // Get EventLink data for audit info
+      const eventLinkData = eventLinkMap.get(event.googleEventId) ?? {};
 
       return {
         id: event.id,
@@ -125,6 +137,9 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
               categoryMetadata,
               customJson,
               familyAssignments: familyAssignments ?? null,
+              // Audit tracking from EventLink
+              createdAudit: eventLinkData.createdAudit ?? null,
+              lastModifiedAudit: eventLinkData.lastModifiedAudit ?? null,
             }
           : null,
       };
@@ -167,6 +182,14 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     const categoryMetadata = (event.metadata?.categoryMetadata ?? {}) as Record<string, unknown>;
     // Extract Google event color from rawJson
     const googleEventColor = getGoogleEventColor(event.rawJson);
+    // Get EventLink data for audit info
+    const eventLink = await fastify.prisma.eventLink.findFirst({
+      where: {
+        userId,
+        eventId: event.googleEventId,
+      },
+    });
+    const eventLinkData = (eventLink?.extraData ?? {}) as Record<string, unknown>;
 
     return {
       id: event.id,
@@ -193,6 +216,9 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
             categoryMetadata,
             customJson,
             familyAssignments: familyAssignments ?? null,
+            // Audit tracking from EventLink
+            createdAudit: eventLinkData.createdAudit ?? null,
+            lastModifiedAudit: eventLinkData.lastModifiedAudit ?? null,
           }
         : null,
     };

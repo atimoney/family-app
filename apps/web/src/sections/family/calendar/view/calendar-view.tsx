@@ -35,7 +35,9 @@ import { fIsAfter, fIsBetween } from 'src/utils/format-time';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useFamily } from 'src/features/family/hooks/use-family';
+import { useEventAudit } from 'src/features/calendar/hooks/use-event-audit';
 import { useSelectedCalendars } from 'src/features/calendar/hooks/use-calendars';
+import { useAppPreferences } from 'src/features/calendar/hooks/use-app-preferences';
 import { useEventCategories } from 'src/features/calendar/hooks/use-event-categories';
 import {
   useCalendarEvents,
@@ -64,6 +66,12 @@ export function CalendarView() {
   const { calendars } = useSelectedCalendars();
   const { family } = useFamily();
   const [localEvents, setLocalEvents] = useState<CalendarEventItem[]>([]);
+  
+  // Dashboard mode indicator
+  const { isDashboardMode, dashboardDeviceName } = useAppPreferences();
+  
+  // Audit tracking for event changes
+  const { getAuditInfo } = useEventAudit();
   
   // Read stored preferences fresh on each mount (lazy initializer runs once per mount)
   const [initialPrefs] = useState(() => getStoredCalendarPreferences());
@@ -625,12 +633,16 @@ export function CalendarView() {
         if (eventData.audience) {
           extraData.audience = eventData.audience;
         }
-        if (eventData.tags && eventData.tags.length > 0) {
-          extraData.tags = eventData.tags;
-        }
+        // Always include tags (even empty array) so backend can clear them
+        extraData.tags = eventData.tags || [];
         if (eventData.categoryMetadata) {
           extraData.metadata = eventData.categoryMetadata;
         }
+
+        // Add audit info for tracking who created the event
+        const auditInfo = getAuditInfo('user');
+        extraData.createdAudit = auditInfo;
+        extraData.lastModifiedAudit = auditInfo;
 
         await createEvent({
           title: eventData.title,
@@ -650,7 +662,7 @@ export function CalendarView() {
         console.error('Failed to create event:', err);
       }
     },
-    [createEvent, onCloseForm]
+    [createEvent, onCloseForm, getAuditInfo]
   );
 
   const handleUpdateEvent = useCallback(
@@ -665,7 +677,35 @@ export function CalendarView() {
         }
 
         // Optimistically update local state
-        setLocalEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
+        // Merge the updated data with existing event to preserve extendedProps
+        setLocalEvents((prev) => {
+          const currentEvents = prev.length > 0 ? prev : events;
+          return currentEvents.map((e) => {
+            if (e.id !== updatedEvent.id) return e;
+            // Merge: keep extendedProps from existing, update top-level fields
+            // Also update the metadata inside extendedProps to stay in sync
+            const updatedMetadata: CalendarEventMetadata = {
+              ...(e.extendedProps?.metadata || { tags: [], notes: null, color: null }),
+              tags: updatedEvent.tags || [],
+              category: updatedEvent.category || null,
+              audience: updatedEvent.audience || 'family',
+              categoryMetadata: updatedEvent.categoryMetadata || null,
+              familyAssignments: updatedEvent.familyAssignments || null,
+              // Preserve createdAudit, update lastModifiedAudit
+              createdAudit: e.extendedProps?.metadata?.createdAudit || null,
+              lastModifiedAudit: getAuditInfo('user'),
+            };
+            return {
+              ...e,
+              ...updatedEvent,
+              extendedProps: {
+                ...e.extendedProps,
+                googleEventId: e.extendedProps?.googleEventId || googleEventId,
+                metadata: updatedMetadata,
+              },
+            };
+          });
+        });
 
         // E1: Build extraData with both E2 family assignments and E1 metadata
         const extraData: Record<string, unknown> = {};
@@ -682,12 +722,19 @@ export function CalendarView() {
         if (updatedEvent.audience) {
           extraData.audience = updatedEvent.audience;
         }
-        if (updatedEvent.tags && updatedEvent.tags.length > 0) {
-          extraData.tags = updatedEvent.tags;
-        }
+        // Always include tags (even empty array) so backend can clear them
+        extraData.tags = updatedEvent.tags || [];
         if (updatedEvent.categoryMetadata) {
           extraData.metadata = updatedEvent.categoryMetadata;
         }
+
+        // Add audit info for tracking who modified the event
+        // Preserve createdAudit from existing event, update lastModifiedAudit
+        const existingMetadata = existingEvent?.extendedProps?.metadata;
+        if (existingMetadata?.createdAudit) {
+          extraData.createdAudit = existingMetadata.createdAudit;
+        }
+        extraData.lastModifiedAudit = getAuditInfo('user');
 
         // Persist to Google Calendar
         await updateEvent(googleEventId, {
@@ -709,7 +756,7 @@ export function CalendarView() {
         await refresh();
       }
     },
-    [mergedEvents, updateEvent, refresh]
+    [events, mergedEvents, updateEvent, refresh, getAuditInfo]
   );
 
   const handleDeleteEvent = useCallback(
@@ -855,7 +902,30 @@ export function CalendarView() {
             mb: { xs: 3, md: 5 },
           }}
         >
-          <Typography variant="h4">Calendar</Typography>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Typography variant="h4">Calendar</Typography>
+            {isDashboardMode && (
+              <Tooltip title={`Dashboard Mode: Changes won't be attributed to you${dashboardDeviceName ? ` (${dashboardDeviceName})` : ''}`}>
+                <Box
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    px: 1,
+                    py: 0.25,
+                    borderRadius: 1,
+                    bgcolor: 'warning.lighter',
+                    color: 'warning.darker',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                  }}
+                >
+                  <Iconify icon="solar:monitor-bold" width={14} />
+                  Dashboard
+                </Box>
+              </Tooltip>
+            )}
+          </Stack>
           <Stack direction="row" spacing={1}>
             <Tooltip title={syncing ? 'Syncing...' : 'Sync with Google Calendar'}>
               <span>

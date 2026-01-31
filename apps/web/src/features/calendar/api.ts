@@ -6,6 +6,7 @@ import type {
   EventCategory,
   EventReminder,
   RecurrenceRule,
+  EventAuditInfo,
   CalendarEventApi,
   CategoryMetadata,
   CalendarEventsQuery,
@@ -101,6 +102,8 @@ export type CreateEventInput = {
     audience?: EventAudience | null;
     metadata?: CategoryMetadata | null;
     familyAssignments?: EventFamilyAssignments;
+    /** Audit info for tracking who made the change */
+    auditInfo?: EventAuditInfo;
   };
 };
 

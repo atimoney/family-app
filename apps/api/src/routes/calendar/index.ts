@@ -464,7 +464,7 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       categoryMetadata: extraData?.metadata ?? undefined,
     });
 
-    // Store extra data including color preference and family assignments
+    // Store extra data including color preference, family assignments, and audit info
     const eventExtraData = {
       tags: extraData?.tags ?? [],
       category: extraData?.category ?? null,
@@ -476,6 +476,9 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
         participantFamilyMemberIds: extraData.familyAssignments.participantFamilyMemberIds ?? undefined,
       } : undefined,
       color: color ?? extraData?.color ?? null,
+      // Audit tracking
+      createdAudit: extraData?.createdAudit ?? null,
+      lastModifiedAudit: extraData?.lastModifiedAudit ?? null,
     };
 
     if (event.id) {
@@ -568,7 +571,7 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       categoryMetadata: extraData?.metadata !== undefined ? extraData.metadata : undefined,
     });
 
-    // Store extra data including color preference and family assignments
+    // Store extra data including color preference, family assignments, and audit info
     const eventExtraData = {
       tags: extraData?.tags ?? [],
       category: extraData?.category ?? null,
@@ -580,6 +583,9 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
         participantFamilyMemberIds: extraData.familyAssignments.participantFamilyMemberIds ?? undefined,
       } : undefined,
       color: color ?? extraData?.color ?? null,
+      // Audit tracking - preserve createdAudit, update lastModifiedAudit
+      createdAudit: extraData?.createdAudit ?? null,
+      lastModifiedAudit: extraData?.lastModifiedAudit ?? null,
     };
 
     if (event.id) {
