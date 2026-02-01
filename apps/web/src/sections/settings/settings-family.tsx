@@ -28,7 +28,7 @@ import DialogActions from '@mui/material/DialogActions';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { setSharedCalendar } from 'src/features/family/api';
-import { useFamily, useFamilyMembers, useFamilyInvites } from 'src/features/family';
+import { useFamily, useFamilyMembers, useFamilyInvites, useSharedCalendarAccess } from 'src/features/family';
 import { useCalendarSelection, updateCalendarSelection, getGoogleCalendars } from 'src/features/integrations';
 
 import { Label } from 'src/components/label';
@@ -83,6 +83,14 @@ export function SettingsFamily({ onSharedCalendarChange }: SettingsFamilyProps) 
     loading: calendarsLoading,
     refresh: refreshCalendars,
   } = useCalendarSelection();
+
+  // Shared calendar access check for non-owners
+  const {
+    hasAccess: hasSharedCalendarAccess,
+    calendarName: sharedCalendarName,
+    hasSharedCalendar,
+    loading: sharedCalendarAccessLoading,
+  } = useSharedCalendarAccess(family?.id ?? null);
 
   // Dialog states
   const createFamilyDialog = useBoolean();
@@ -457,84 +465,136 @@ export function SettingsFamily({ onSharedCalendarChange }: SettingsFamilyProps) 
             </>
           )}
 
-          {/* Shared Family Calendar Section (Owner only) */}
-          {isOwner && (
-            <>
-              <Divider />
-              <Box>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                  <Box>
-                    <Typography variant="subtitle1">
-                      Shared Family Calendar
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      Select the Google Calendar that will be shared with all family members
-                    </Typography>
-                  </Box>
-                  {sharedCalendarChanged && (
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={handleSaveSharedCalendar}
-                      disabled={savingSharedCalendar}
-                      startIcon={savingSharedCalendar ? <CircularProgress size={16} /> : <Iconify icon="eva:checkmark-fill" />}
-                    >
-                      Save
-                    </Button>
-                  )}
-                </Stack>
+          {/* Shared Family Calendar Section */}
+          <>
+            <Divider />
+            <Box>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                <Box>
+                  <Typography variant="subtitle1">
+                    Shared Family Calendar
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {isOwner
+                      ? 'Select the Google Calendar that will be shared with all family members'
+                      : 'The calendar shared with all family members'}
+                  </Typography>
+                </Box>
+                {isOwner && sharedCalendarChanged && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={handleSaveSharedCalendar}
+                    disabled={savingSharedCalendar}
+                    startIcon={savingSharedCalendar ? <CircularProgress size={16} /> : <Iconify icon="eva:checkmark-fill" />}
+                  >
+                    Save
+                  </Button>
+                )}
+              </Stack>
 
-                {calendarsLoading ? (
-                  <Skeleton variant="rectangular" height={56} />
-                ) : calendars.length === 0 ? (
-                  <Alert severity="info" sx={{ mt: 1 }}>
-                    Connect your Google Calendar in the Integrations section to select a shared family calendar.
-                  </Alert>
-                ) : (
-                  <FormControl fullWidth>
-                    <InputLabel>Shared Calendar</InputLabel>
-                    <Select
-                      value={selectedSharedCalendar}
-                      label="Shared Calendar"
-                      onChange={(e) => setSelectedSharedCalendar(e.target.value)}
-                    >
-                      <MenuItem value="">
-                        <em>None selected</em>
-                      </MenuItem>
-                      {calendars.map((cal) => (
-                        <MenuItem key={cal.id} value={cal.id}>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <Box
-                              sx={{
-                                width: 12,
-                                height: 12,
-                                borderRadius: '50%',
-                                bgcolor: cal.backgroundColor || '#4285f4',
-                              }}
-                            />
-                            <span>{cal.summary}</span>
-                            {cal.primary && (
-                              <Label variant="soft" color="info" sx={{ ml: 1 }}>
-                                Primary
-                              </Label>
-                            )}
-                          </Stack>
+              {isOwner ? (
+                // Owner view: can select the shared calendar
+                <>
+                  {calendarsLoading ? (
+                    <Skeleton variant="rectangular" height={56} />
+                  ) : calendars.length === 0 ? (
+                    <Alert severity="info" sx={{ mt: 1 }}>
+                      Connect your Google Calendar in the Integrations section to select a shared family calendar.
+                    </Alert>
+                  ) : (
+                    <FormControl fullWidth>
+                      <InputLabel>Shared Calendar</InputLabel>
+                      <Select
+                        value={selectedSharedCalendar}
+                        label="Shared Calendar"
+                        onChange={(e) => setSelectedSharedCalendar(e.target.value)}
+                      >
+                        <MenuItem value="">
+                          <em>None selected</em>
                         </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                )}
+                        {calendars.map((cal) => (
+                          <MenuItem key={cal.id} value={cal.id}>
+                            <Stack direction="row" alignItems="center" spacing={1}>
+                              <Box
+                                sx={{
+                                  width: 12,
+                                  height: 12,
+                                  borderRadius: '50%',
+                                  bgcolor: cal.backgroundColor || '#4285f4',
+                                }}
+                              />
+                              <span>{cal.summary}</span>
+                              {cal.primary && (
+                                <Label variant="soft" color="info" sx={{ ml: 1 }}>
+                                  Primary
+                                </Label>
+                              )}
+                            </Stack>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
 
-                {family.sharedCalendarId && (
-                  <Alert severity="success" sx={{ mt: 2 }}>
-                    <Typography variant="body2">
-                      Family members need to have access to this calendar in their Google account and select it in their Integrations settings.
-                    </Typography>
-                  </Alert>
-                )}
-              </Box>
-            </>
-          )}
+                  {family.sharedCalendarId && (
+                    <Alert severity="success" sx={{ mt: 2 }}>
+                      <Typography variant="body2">
+                        Family members need to have access to this calendar in their Google account and select it in their Integrations settings.
+                      </Typography>
+                    </Alert>
+                  )}
+                </>
+              ) : (
+                // Non-owner view: show the shared calendar info and access status
+                <>
+                  {sharedCalendarAccessLoading ? (
+                    <Skeleton variant="rectangular" height={56} />
+                  ) : !hasSharedCalendar ? (
+                    <Alert severity="info">
+                      <Typography variant="body2">
+                        No shared family calendar has been set up yet. Ask the family owner to configure one.
+                      </Typography>
+                    </Alert>
+                  ) : (
+                    <Stack spacing={2}>
+                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                        <Iconify icon="solar:calendar-date-bold" width={24} sx={{ color: 'primary.main' }} />
+                        <Typography variant="subtitle2">
+                          {sharedCalendarName || 'Family Calendar'}
+                        </Typography>
+                        <Label
+                          variant="soft"
+                          color={hasSharedCalendarAccess ? 'success' : 'warning'}
+                        >
+                          {hasSharedCalendarAccess ? 'Access granted' : 'No access'}
+                        </Label>
+                      </Stack>
+
+                      {!hasSharedCalendarAccess && (
+                        <Alert severity="warning">
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                            You don&apos;t have access to the shared calendar
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                            Ask the family owner to share the calendar with your Google account. Once shared, make sure to select it in the Integrations section below.
+                          </Typography>
+                        </Alert>
+                      )}
+
+                      {hasSharedCalendarAccess && (
+                        <Alert severity="success">
+                          <Typography variant="body2">
+                            You have access to the shared family calendar. Make sure it&apos;s selected in your Integrations settings to see family events.
+                          </Typography>
+                        </Alert>
+                      )}
+                    </Stack>
+                  )}
+                </>
+              )}
+            </Box>
+          </>
 
           <Divider />
 
