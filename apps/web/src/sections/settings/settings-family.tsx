@@ -1,12 +1,13 @@
 import type { FamilyRole, FamilyMember, FamilyInvite } from '@family/shared';
 
 import { varAlpha } from 'minimal-shared/utils';
-import { useMemo, useState, useCallback } from 'react';
 import { useBoolean, usePopover } from 'minimal-shared/hooks';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Avatar from '@mui/material/Avatar';
 import Dialog from '@mui/material/Dialog';
@@ -26,7 +27,9 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import CircularProgress from '@mui/material/CircularProgress';
 
+import { setSharedCalendar } from 'src/features/family/api';
 import { useFamily, useFamilyMembers, useFamilyInvites } from 'src/features/family';
+import { useCalendarSelection, updateCalendarSelection } from 'src/features/integrations';
 
 import { Label } from 'src/components/label';
 import { toast } from 'src/components/snackbar';
@@ -51,7 +54,11 @@ const MEMBER_COLORS = [
   '#212B36', // Dark
 ];
 
-export function SettingsFamily() {
+type SettingsFamilyProps = {
+  onSharedCalendarChange?: () => void;
+};
+
+export function SettingsFamily({ onSharedCalendarChange }: SettingsFamilyProps) {
   const {
     family,
     loading,
@@ -69,6 +76,13 @@ export function SettingsFamily() {
     revoke: revokeInvite,
     refresh: refreshInvites,
   } = useFamilyInvites(family?.id ?? null);
+
+  // Calendar selection for shared calendar picker
+  const {
+    calendars,
+    loading: calendarsLoading,
+    refresh: refreshCalendars,
+  } = useCalendarSelection();
 
   // Dialog states
   const createFamilyDialog = useBoolean();
@@ -89,10 +103,30 @@ export function SettingsFamily() {
   const [transferTargetId, setTransferTargetId] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Shared calendar state
+  const [selectedSharedCalendar, setSelectedSharedCalendar] = useState<string | ''>('');
+  const [savingSharedCalendar, setSavingSharedCalendar] = useState(false);
+
   // Get user's role
   const myRole = family?.myMembership?.role;
   const isOwner = myRole === 'owner';
   const isAdmin = myRole === 'admin' || isOwner;
+
+  // Initialize selected shared calendar from family data
+  useEffect(() => {
+    if (family?.sharedCalendarId) {
+      setSelectedSharedCalendar(family.sharedCalendarId);
+    } else {
+      setSelectedSharedCalendar('');
+    }
+  }, [family?.sharedCalendarId]);
+
+  // Load calendars when owner is viewing
+  useEffect(() => {
+    if (isOwner && calendars.length === 0) {
+      refreshCalendars();
+    }
+  }, [isOwner, calendars.length, refreshCalendars]);
 
   // Handlers
   const handleCreateFamily = useCallback(async () => {
@@ -208,6 +242,42 @@ export function SettingsFamily() {
     setEditFamilyName(family?.name || '');
     editFamilyDialog.onTrue();
   }, [family?.name, editFamilyDialog]);
+
+  const handleSaveSharedCalendar = useCallback(async () => {
+    if (!family?.id) return;
+    setSavingSharedCalendar(true);
+    try {
+      const result = await setSharedCalendar(
+        family.id,
+        selectedSharedCalendar || null
+      );
+      if (result.success) {
+        // If setting a family calendar (not removing), ensure it's selected in user's calendars
+        if (selectedSharedCalendar) {
+          const currentSelectedIds = calendars.filter((c) => c.isSelected).map((c) => c.id);
+          if (!currentSelectedIds.includes(selectedSharedCalendar)) {
+            // Add the family calendar to the selection
+            await updateCalendarSelection([...currentSelectedIds, selectedSharedCalendar]);
+            // Refresh the calendar list to reflect the change
+            refreshCalendars();
+          }
+        }
+        toast.success(selectedSharedCalendar ? 'Shared calendar set' : 'Shared calendar removed');
+        refreshFamily();
+        // Notify parent component so other sections can update
+        onSharedCalendarChange?.();
+      } else {
+        toast.error('Failed to update shared calendar');
+      }
+    } catch {
+      toast.error('Failed to update shared calendar');
+    } finally {
+      setSavingSharedCalendar(false);
+    }
+  }, [family?.id, selectedSharedCalendar, calendars, refreshCalendars, refreshFamily, onSharedCalendarChange]);
+
+  // Check if shared calendar selection has changed
+  const sharedCalendarChanged = family?.sharedCalendarId !== (selectedSharedCalendar || null);
 
   // Loading state
   if (loading) {
@@ -383,6 +453,85 @@ export function SettingsFamily() {
                     />
                   ))}
                 </Stack>
+              </Box>
+            </>
+          )}
+
+          {/* Shared Family Calendar Section (Owner only) */}
+          {isOwner && (
+            <>
+              <Divider />
+              <Box>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                  <Box>
+                    <Typography variant="subtitle1">
+                      Shared Family Calendar
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      Select the Google Calendar that will be shared with all family members
+                    </Typography>
+                  </Box>
+                  {sharedCalendarChanged && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={handleSaveSharedCalendar}
+                      disabled={savingSharedCalendar}
+                      startIcon={savingSharedCalendar ? <CircularProgress size={16} /> : <Iconify icon="eva:checkmark-fill" />}
+                    >
+                      Save
+                    </Button>
+                  )}
+                </Stack>
+
+                {calendarsLoading ? (
+                  <Skeleton variant="rectangular" height={56} />
+                ) : calendars.length === 0 ? (
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    Connect your Google Calendar in the Integrations section to select a shared family calendar.
+                  </Alert>
+                ) : (
+                  <FormControl fullWidth>
+                    <InputLabel>Shared Calendar</InputLabel>
+                    <Select
+                      value={selectedSharedCalendar}
+                      label="Shared Calendar"
+                      onChange={(e) => setSelectedSharedCalendar(e.target.value)}
+                    >
+                      <MenuItem value="">
+                        <em>None selected</em>
+                      </MenuItem>
+                      {calendars.map((cal) => (
+                        <MenuItem key={cal.id} value={cal.id}>
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <Box
+                              sx={{
+                                width: 12,
+                                height: 12,
+                                borderRadius: '50%',
+                                bgcolor: cal.backgroundColor || '#4285f4',
+                              }}
+                            />
+                            <span>{cal.summary}</span>
+                            {cal.primary && (
+                              <Label variant="soft" color="info" sx={{ ml: 1 }}>
+                                Primary
+                              </Label>
+                            )}
+                          </Stack>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+
+                {family.sharedCalendarId && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      Family members need to have access to this calendar in their Google account and select it in their Integrations settings.
+                    </Typography>
+                  </Alert>
+                )}
               </Box>
             </>
           )}

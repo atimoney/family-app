@@ -21,7 +21,9 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Alert from '@mui/material/Alert';
 import Dialog from '@mui/material/Dialog';
+import Button from '@mui/material/Button';
 import { useTheme } from '@mui/material/styles';
+import AlertTitle from '@mui/material/AlertTitle';
 import DialogTitle from '@mui/material/DialogTitle';
 import CircularProgress from '@mui/material/CircularProgress';
 
@@ -31,6 +33,7 @@ import { useEventAudit } from 'src/features/calendar/hooks/use-event-audit';
 import { useSelectedCalendars } from 'src/features/calendar/hooks/use-calendars';
 import { useAppPreferences } from 'src/features/calendar/hooks/use-app-preferences';
 import { useEventCategories } from 'src/features/calendar/hooks/use-event-categories';
+import { useSharedCalendarAccess } from 'src/features/family/hooks/use-shared-calendar-access';
 import {
   useCalendarEvents,
   useCalendarMutations,
@@ -61,6 +64,19 @@ export function CalendarView() {
   const { calendars } = useSelectedCalendars();
   const { family } = useFamily();
   const [localEvents, setLocalEvents] = useState<CalendarEventItem[]>([]);
+  
+  // Check shared calendar access for family members
+  const {
+    hasAccess: hasSharedCalendarAccess,
+    hasSharedCalendar,
+    loading: sharedCalendarLoading,
+  } = useSharedCalendarAccess(family?.id ?? null);
+
+  // Determine if we should show the shared calendar warning
+  const isOwner = family?.myMembership?.role === 'owner';
+  const showSharedCalendarWarning = family && !sharedCalendarLoading && (
+    !hasSharedCalendar || (!isOwner && !hasSharedCalendarAccess)
+  );
   
   // Dashboard mode indicator
   const { isDashboardMode, dashboardDeviceName } = useAppPreferences();
@@ -593,6 +609,32 @@ export function CalendarView() {
         {error && (
           <Alert severity="error" sx={{ mb: 3 }}>
             {error.message}
+          </Alert>
+        )}
+
+        {/* Shared Calendar Warning */}
+        {showSharedCalendarWarning && (
+          <Alert 
+            severity="warning" 
+            sx={{ mb: 3 }}
+            action={
+              <Button 
+                color="inherit" 
+                size="small" 
+                href="/settings"
+              >
+                {isOwner ? 'Configure' : 'Settings'}
+              </Button>
+            }
+          >
+            <AlertTitle>Shared Family Calendar Required</AlertTitle>
+            {!hasSharedCalendar ? (
+              isOwner 
+                ? 'No shared family calendar has been selected. Go to Settings to select the Google Calendar that will be shared with your family.'
+                : 'The family owner has not set up a shared family calendar yet. Please ask them to configure it in Settings.'
+            ) : (
+              'You don\'t have access to the family shared calendar. Make sure you have access to the calendar in Google Calendar and have it selected in your Integrations settings.'
+            )}
           </Alert>
         )}
 

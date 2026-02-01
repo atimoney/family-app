@@ -185,3 +185,35 @@ export async function declineInvite(token: string): Promise<{ success: boolean }
   const headers = await getAuthHeaders();
   return apiClient.post<{ success: boolean }>(`/api/invites/${token}/decline`, {}, { headers });
 }
+
+// ----------------------------------------------------------------------
+// SHARED CALENDAR API
+// ----------------------------------------------------------------------
+
+export type SharedCalendarAccess = {
+  hasAccess: boolean;
+  sharedCalendarId: string | null;
+  calendarName: string | null;
+};
+
+export async function setSharedCalendar(
+  familyId: string,
+  calendarId: string | null
+): Promise<{ success: boolean; sharedCalendarId: string | null }> {
+  const headers = await getAuthHeaders();
+  return apiClient.put<{ success: boolean; sharedCalendarId: string | null }>(
+    `/api/families/${familyId}/shared-calendar`,
+    { calendarId },
+    { headers }
+  );
+}
+
+export async function checkSharedCalendarAccess(
+  familyId: string
+): Promise<SharedCalendarAccess> {
+  const headers = await getAuthHeaders();
+  return apiClient.get<SharedCalendarAccess>(
+    `/api/families/${familyId}/shared-calendar/access`,
+    { headers }
+  );
+}

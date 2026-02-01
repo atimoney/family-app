@@ -24,6 +24,10 @@ const transferOwnershipSchema = z.object({
   newOwnerId: z.string().min(1), // family_members.id
 });
 
+const setSharedCalendarSchema = z.object({
+  calendarId: z.string().min(1).nullable(), // Google Calendar ID or null to unset
+});
+
 // Default colors for family members (same as frontend MEMBER_COLORS)
 const DEFAULT_MEMBER_COLORS = [
   '#FF5630', // Red
@@ -145,6 +149,7 @@ const familyRoutes: FastifyPluginAsync = async (fastify) => {
           id: family.id,
           name: family.name,
           createdBy: family.createdBy,
+          sharedCalendarId: family.sharedCalendarId,
           createdAt: family.createdAt.toISOString(),
           updatedAt: family.updatedAt.toISOString(),
           members,
@@ -208,6 +213,7 @@ const familyRoutes: FastifyPluginAsync = async (fastify) => {
         id: result.family.id,
         name: result.family.name,
         createdBy: result.family.createdBy,
+        sharedCalendarId: result.family.sharedCalendarId,
         createdAt: result.family.createdAt.toISOString(),
         updatedAt: result.family.updatedAt.toISOString(),
         members: [member],
@@ -254,6 +260,7 @@ const familyRoutes: FastifyPluginAsync = async (fastify) => {
         id: updated.id,
         name: updated.name,
         createdBy: updated.createdBy,
+        sharedCalendarId: updated.sharedCalendarId,
         createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),
       };
@@ -606,6 +613,97 @@ const familyRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return { success: true };
+    }
+  );
+
+  // PUT /api/families/:familyId/shared-calendar - Set family shared calendar (owner only)
+  fastify.put<{
+    Params: { familyId: string };
+    Body: z.infer<typeof setSharedCalendarSchema>;
+    Reply: { success: boolean; sharedCalendarId: string | null };
+  }>(
+    '/families/:familyId/shared-calendar',
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.ensureProfile,
+        fastify.loadMembership,
+        fastify.requireFamily,
+        fastify.requireRole('owner'),
+      ],
+    },
+    async (request, reply) => {
+      const { familyId } = request.params;
+
+      if (request.membership!.familyId !== familyId) {
+        return reply.status(403).send({ error: 'Access denied' } as unknown as { success: boolean; sharedCalendarId: string | null });
+      }
+
+      const body = setSharedCalendarSchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.status(400).send({ error: 'Invalid request body', details: body.error.issues } as unknown as { success: boolean; sharedCalendarId: string | null });
+      }
+
+      const { calendarId } = body.data;
+
+      // Update family with the shared calendar ID
+      const updated = await fastify.prisma.family.update({
+        where: { id: familyId },
+        data: { sharedCalendarId: calendarId },
+      });
+
+      return { success: true, sharedCalendarId: updated.sharedCalendarId };
+    }
+  );
+
+  // GET /api/families/:familyId/shared-calendar/access - Check if user has access to family shared calendar
+  fastify.get<{
+    Params: { familyId: string };
+    Reply: { hasAccess: boolean; sharedCalendarId: string | null; calendarName: string | null };
+  }>(
+    '/families/:familyId/shared-calendar/access',
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.ensureProfile,
+        fastify.loadMembership,
+        fastify.requireFamily,
+      ],
+    },
+    async (request, reply) => {
+      const { familyId } = request.params;
+      const userId = request.user!.id;
+
+      if (request.membership!.familyId !== familyId) {
+        return reply.status(403).send({ error: 'Access denied' } as unknown as { hasAccess: boolean; sharedCalendarId: string | null; calendarName: string | null });
+      }
+
+      // Get the family's shared calendar ID
+      const family = await fastify.prisma.family.findUnique({
+        where: { id: familyId },
+        select: { sharedCalendarId: true },
+      });
+
+      if (!family?.sharedCalendarId) {
+        return { hasAccess: false, sharedCalendarId: null, calendarName: null };
+      }
+
+      // Check if the user has this calendar selected (which means they have access to it)
+      const selectedCalendar = await fastify.prisma.selectedCalendar.findUnique({
+        where: {
+          userId_calendarId: {
+            userId,
+            calendarId: family.sharedCalendarId,
+          },
+        },
+        select: { isVisible: true, summary: true },
+      });
+
+      return {
+        hasAccess: selectedCalendar?.isVisible ?? false,
+        sharedCalendarId: family.sharedCalendarId,
+        calendarName: selectedCalendar?.summary ?? null,
+      };
     }
   );
 };

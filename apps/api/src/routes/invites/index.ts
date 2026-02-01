@@ -71,6 +71,7 @@ type DbInvite = {
     id: string;
     name: string;
     createdBy: string;
+    sharedCalendarId: string | null;
     createdAt: Date;
     updatedAt: Date;
   } | null;
@@ -105,6 +106,7 @@ function toFamilyInvite(invite: DbInvite): FamilyInvite {
         id: invite.family.id,
         name: invite.family.name,
         createdBy: invite.family.createdBy,
+        sharedCalendarId: invite.family.sharedCalendarId,
         createdAt: invite.family.createdAt.toISOString(),
         updatedAt: invite.family.updatedAt.toISOString(),
       },

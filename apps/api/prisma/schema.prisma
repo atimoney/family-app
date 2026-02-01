@@ -145,11 +145,12 @@ model Profile {
 
 // A family unit that members belong to
 model Family {
-  id        String   @id @default(cuid())
-  name      String
-  createdBy String   @map("created_by")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(cuid())
+  name             String
+  createdBy        String   @map("created_by")
+  sharedCalendarId String?  @map("shared_calendar_id") // Google Calendar ID for family shared calendar
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   // Relations
   creator         Profile         @relation("FamilyCreator", fields: [createdBy], references: [id])

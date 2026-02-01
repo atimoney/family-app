@@ -24,6 +24,7 @@ export type Family = {
   id: string; // CUID
   name: string;
   createdBy: string; // Profile ID
+  sharedCalendarId: string | null; // Google Calendar ID for family shared calendar
   createdAt: string;
   updatedAt: string;
 };

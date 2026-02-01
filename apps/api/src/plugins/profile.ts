@@ -143,6 +143,7 @@ const profilePlugin: FastifyPluginAsync = async (fastify) => {
           id: membership.family.id,
           name: membership.family.name,
           createdBy: membership.family.createdBy,
+          sharedCalendarId: membership.family.sharedCalendarId,
           createdAt: membership.family.createdAt.toISOString(),
           updatedAt: membership.family.updatedAt.toISOString(),
         },

@@ -1,14 +1,15 @@
 import type { IconifyProps } from 'src/components/iconify';
 
-import { useState, useEffect } from 'react';
 import { varAlpha } from 'minimal-shared/utils';
 import { useSearchParams as useRouterSearchParams } from 'react-router';
+import { useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Switch from '@mui/material/Switch';
+import Tooltip from '@mui/material/Tooltip';
 import Skeleton from '@mui/material/Skeleton';
 import Checkbox from '@mui/material/Checkbox';
 import Collapse from '@mui/material/Collapse';
@@ -65,7 +66,16 @@ const INTEGRATIONS: Integration[] = [
 
 // ----------------------------------------------------------------------
 
-export function SettingsIntegrations() {
+type SettingsIntegrationsProps = {
+  familySharedCalendarId?: string | null;
+};
+
+export type SettingsIntegrationsRef = {
+  refreshCalendars: () => Promise<void>;
+};
+
+export const SettingsIntegrations = forwardRef<SettingsIntegrationsRef, SettingsIntegrationsProps>(
+  function SettingsIntegrations({ familySharedCalendarId }, ref) {
   const router = useRouter();
   const [searchParams] = useRouterSearchParams();
   const { status: googleStatus, loading: googleLoading, syncing: googleSyncing, connect: connectGoogle, refresh, sync: syncGoogle } = useGoogleIntegration();
@@ -79,6 +89,12 @@ export function SettingsIntegrations() {
   } = useCalendarSelection();
   const [showCalendars, setShowCalendars] = useState(false);
   const [saving, setSaving] = useState(false);
+  const prevFamilyCalendarIdRef = useRef<string | null | undefined>(undefined);
+
+  // Expose refreshCalendars to parent via ref
+  useImperativeHandle(ref, () => ({
+    refreshCalendars,
+  }), [refreshCalendars]);
 
   // Refresh status when redirected back from Google OAuth
   useEffect(() => {
@@ -90,6 +106,19 @@ export function SettingsIntegrations() {
       refreshCalendars();
     }
   }, [searchParams, router, refresh, refreshCalendars]);
+
+  // Refresh calendar list when family shared calendar changes
+  // This ensures the selection state is updated after a family calendar is set
+  useEffect(() => {
+    // Only refresh if the value actually changed (not on initial mount)
+    if (
+      prevFamilyCalendarIdRef.current !== undefined &&
+      familySharedCalendarId !== prevFamilyCalendarIdRef.current
+    ) {
+      refreshCalendars();
+    }
+    prevFamilyCalendarIdRef.current = familySharedCalendarId;
+  }, [familySharedCalendarId, refreshCalendars]);
 
   const handleSaveSelection = async () => {
     try {
@@ -238,43 +267,60 @@ export function SettingsIntegrations() {
             </Typography>
           ) : (
             <Stack spacing={0.5}>
-              {calendars.map((calendar) => (
-                <FormControlLabel
-                  key={calendar.id}
-                  control={
-                    <Checkbox
-                      checked={Boolean(calendar.isSelected)}
-                      onChange={() => toggleCalendar(calendar.id)}
-                      size="small"
-                      sx={{
-                        color: calendar.backgroundColor,
-                        '&.Mui-checked': {
-                          color: calendar.backgroundColor,
-                        },
-                      }}
+              {calendars.map((calendar) => {
+                const isFamilyCalendar = familySharedCalendarId === calendar.id;
+                const checkboxDisabled = isFamilyCalendar && calendar.isSelected;
+                
+                return (
+                  <Tooltip
+                    key={calendar.id}
+                    title={checkboxDisabled ? 'To unselect this calendar, first remove it as the Family Calendar in Family Settings' : ''}
+                    placement="right"
+                    arrow
+                  >
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={Boolean(calendar.isSelected)}
+                          onChange={() => !checkboxDisabled && toggleCalendar(calendar.id)}
+                          disabled={checkboxDisabled}
+                          size="small"
+                          sx={{
+                            color: calendar.backgroundColor,
+                            '&.Mui-checked': {
+                              color: calendar.backgroundColor,
+                            },
+                          }}
+                        />
+                      }
+                      label={
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <Box
+                            sx={{
+                              width: 12,
+                              height: 12,
+                              borderRadius: '50%',
+                              bgcolor: calendar.backgroundColor,
+                            }}
+                          />
+                          <Typography variant="body2">{calendar.summary}</Typography>
+                          {calendar.primary && (
+                            <Label variant="soft" color="primary" sx={{ ml: 1 }}>
+                              Primary
+                            </Label>
+                          )}
+                          {isFamilyCalendar && (
+                            <Label variant="soft" color="success" sx={{ ml: calendar.primary ? 0 : 1 }}>
+                              Family
+                            </Label>
+                          )}
+                        </Stack>
+                      }
+                      sx={{ ml: 0 }}
                     />
-                  }
-                  label={
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <Box
-                        sx={{
-                          width: 12,
-                          height: 12,
-                          borderRadius: '50%',
-                          bgcolor: calendar.backgroundColor,
-                        }}
-                      />
-                      <Typography variant="body2">{calendar.summary}</Typography>
-                      {calendar.primary && (
-                        <Label variant="soft" color="primary" sx={{ ml: 1 }}>
-                          Primary
-                        </Label>
-                      )}
-                    </Stack>
-                  }
-                  sx={{ ml: 0 }}
-                />
-              ))}
+                  </Tooltip>
+                );
+              })}
             </Stack>
           )}
         </Box>
@@ -354,4 +400,4 @@ export function SettingsIntegrations() {
       </CardContent>
     </Card>
   );
-}
+});
