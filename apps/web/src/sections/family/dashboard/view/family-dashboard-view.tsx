@@ -1,4 +1,4 @@
-import type { Task, ShoppingItem, CalendarEvent } from '@family/shared';
+import type { ShoppingItem, CalendarEvent } from '@family/shared';
 
 import { useMemo, useState } from 'react';
 
@@ -18,6 +18,16 @@ import ListItemText from '@mui/material/ListItemText';
 import { DashboardContent } from 'src/layouts/dashboard';
 
 // ----------------------------------------------------------------------
+
+// Local mock task type for dashboard (different from API Task)
+type DashboardTask = {
+  id: string;
+  title: string;
+  assigneeId?: string;
+  dueDate?: string;
+  completed: boolean;
+  createdAt: string;
+};
 
 type HomeDeviceStatus = {
   id: string;
@@ -60,7 +70,7 @@ export function FamilyDashboardView() {
     },
   ]);
 
-  const [tasks] = useState<Task[]>([
+  const [tasks] = useState<DashboardTask[]>([
     {
       id: 'task-1',
       title: 'Pack school lunches',

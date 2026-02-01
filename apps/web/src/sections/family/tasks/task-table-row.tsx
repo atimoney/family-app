@@ -1,4 +1,5 @@
-import type { Task, LegacyFamilyMember } from '@family/shared';
+import type { LegacyFamilyMember } from '@family/shared';
+import type { Task } from 'src/features/tasks';
 
 import Box from '@mui/material/Box';
 import Avatar from '@mui/material/Avatar';
@@ -23,26 +24,27 @@ type Props = {
 };
 
 export function TaskTableRow({ task, assignee, onToggleComplete, onDelete }: Props) {
-  const isOverdue = task.dueDate && !task.completed && fIsAfter(new Date(), new Date(task.dueDate));
+  const isDone = task.status === 'done';
+  const isOverdue = task.dueAt && !isDone && fIsAfter(new Date(), new Date(task.dueAt));
 
   return (
     <TableRow
       hover
       sx={{
-        ...(task.completed && {
+        ...(isDone && {
           bgcolor: 'action.selected',
         }),
       }}
     >
       <TableCell padding="checkbox">
-        <Checkbox checked={task.completed} onChange={onToggleComplete} />
+        <Checkbox checked={isDone} onChange={onToggleComplete} />
       </TableCell>
 
       <TableCell>
         <Typography
           variant="subtitle2"
           sx={{
-            ...(task.completed && {
+            ...(isDone && {
               textDecoration: 'line-through',
               color: 'text.disabled',
             }),
@@ -72,14 +74,14 @@ export function TaskTableRow({ task, assignee, onToggleComplete, onDelete }: Pro
       </TableCell>
 
       <TableCell>
-        {task.dueDate ? (
+        {task.dueAt ? (
           <Typography
             variant="body2"
             sx={{
               ...(isOverdue && { color: 'error.main', fontWeight: 600 }),
             }}
           >
-            {fDate(task.dueDate)}
+            {fDate(task.dueAt)}
           </Typography>
         ) : (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -91,9 +93,9 @@ export function TaskTableRow({ task, assignee, onToggleComplete, onDelete }: Pro
       <TableCell>
         <Label
           variant="soft"
-          color={task.completed ? 'success' : isOverdue ? 'error' : 'warning'}
+          color={isDone ? 'success' : isOverdue ? 'error' : 'warning'}
         >
-          {task.completed ? 'Done' : isOverdue ? 'Overdue' : 'Open'}
+          {isDone ? 'Done' : isOverdue ? 'Overdue' : 'Open'}
         </Label>
       </TableCell>
 

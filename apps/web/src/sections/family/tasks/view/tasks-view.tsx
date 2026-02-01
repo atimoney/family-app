@@ -1,234 +1,417 @@
-import type { Task, LegacyFamilyMember } from '@family/shared';
+import '@fullcalendar/core';
 
-import { useState, useCallback } from 'react';
-import { varAlpha } from 'minimal-shared/utils';
-import { useSetState } from 'minimal-shared/hooks';
+import type { FamilyMember } from '@family/shared';
+import type { EventContentArg } from '@fullcalendar/core';
+import type { ResourceInput } from '@fullcalendar/resource';
+import type { Task, TaskStatus, TaskTemplate, CreateTaskInput, UpdateTaskInput } from 'src/features/tasks';
+
+import Calendar from '@fullcalendar/react';
+import dayGridPlugin from '@fullcalendar/daygrid';
+import { useBoolean } from 'minimal-shared/hooks';
+import timeGridPlugin from '@fullcalendar/timegrid';
+import resourcePlugin from '@fullcalendar/resource';
+import interactionPlugin from '@fullcalendar/interaction';
+import { useMemo, useState, useEffect, useCallback } from 'react';
+import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
 
 import Box from '@mui/material/Box';
-import Tab from '@mui/material/Tab';
-import Tabs from '@mui/material/Tabs';
 import Card from '@mui/material/Card';
-import Table from '@mui/material/Table';
-import Stack from '@mui/material/Stack';
-import TableBody from '@mui/material/TableBody';
-import Typography from '@mui/material/Typography';
 
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useFamily } from 'src/features/family/hooks/use-family';
+import {
+  useTasks,
+  useTaskMutations,
+  getTaskTemplates,
+  createTaskFromTemplate,
+} from 'src/features/tasks';
 
-import { Label } from 'src/components/label';
-import { Scrollbar } from 'src/components/scrollbar';
-
-import { TaskTableRow } from '../task-table-row';
-import { TaskQuickAdd } from '../task-quick-add';
-
-// ----------------------------------------------------------------------
-
-// Mock family members
-const FAMILY_MEMBERS: LegacyFamilyMember[] = [
-  { id: 'member-1', name: 'Dad', avatarUrl: '', role: 'parent' },
-  { id: 'member-2', name: 'Mom', avatarUrl: '', role: 'parent' },
-  { id: 'member-3', name: 'Alex', avatarUrl: '', role: 'child' },
-  { id: 'member-4', name: 'Emma', avatarUrl: '', role: 'child' },
-];
-
-// Mock initial tasks
-const INITIAL_TASKS: Task[] = [
-  {
-    id: 'task-1',
-    title: 'Take out the trash',
-    assigneeId: 'member-3',
-    dueDate: '2026-01-26',
-    completed: false,
-    createdAt: '2026-01-24T10:00:00.000Z',
-  },
-  {
-    id: 'task-2',
-    title: 'Walk the dog',
-    assigneeId: 'member-4',
-    dueDate: '2026-01-25',
-    completed: true,
-    createdAt: '2026-01-23T08:00:00.000Z',
-  },
-  {
-    id: 'task-3',
-    title: 'Grocery shopping',
-    assigneeId: 'member-2',
-    dueDate: '2026-01-27',
-    completed: false,
-    createdAt: '2026-01-24T14:00:00.000Z',
-  },
-  {
-    id: 'task-4',
-    title: 'Fix leaky faucet',
-    assigneeId: 'member-1',
-    dueDate: '2026-01-28',
-    completed: false,
-    createdAt: '2026-01-25T09:00:00.000Z',
-  },
-  {
-    id: 'task-5',
-    title: 'Clean bedroom',
-    assigneeId: 'member-3',
-    dueDate: '2026-01-25',
-    completed: true,
-    createdAt: '2026-01-22T11:00:00.000Z',
-  },
-];
-
-const STATUS_OPTIONS = [
-  { value: 'all', label: 'All' },
-  { value: 'open', label: 'Open' },
-  { value: 'done', label: 'Done' },
-];
-
-type TaskFilters = {
-  status: string;
-};
+import { TasksForm } from '../tasks-form';
+import { TasksToolbar } from '../tasks-toolbar';
+import { TasksAgendaList } from '../tasks-agenda-list';
+import { TasksCalendarRoot } from '../tasks-calendar-styles';
+import { TasksResourceLabel } from '../tasks-resource-label';
+import { TasksKanbanView } from '../kanban/tasks-kanban-view';
+import { useTasksCalendar } from '../hooks/use-tasks-calendar';
+import { TaskTemplatePicker } from '../templates/task-template-picker';
+import {
+  useTaskAssignment,
+  TasksCalendarContent,
+  tasksToCalendarEvents,
+} from '../tasks-calendar-content';
+import {
+  type TaskView,
+  useTasksPreferences,
+  getStoredTasksPreferences,
+} from '../hooks/use-tasks-preferences';
 
 // ----------------------------------------------------------------------
 
-export function TasksView() {
-  const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
-
-  const filters = useSetState<TaskFilters>({ status: 'all' });
-  const { state: currentFilters, setState: updateFilters } = filters;
-
-  // Filter tasks based on status
-  const filteredTasks = applyFilter({ inputData: tasks, filters: currentFilters });
-
-  const handleFilterStatus = useCallback(
-    (event: React.SyntheticEvent, newValue: string) => {
-      updateFilters({ status: newValue });
-    },
-    [updateFilters]
-  );
-
-  const handleAddTask = useCallback((title: string) => {
-    const newTask: Task = {
-      id: `task-${Date.now()}`,
-      title,
-      completed: false,
-      createdAt: new Date().toISOString(),
-    };
-    setTasks((prev) => [newTask, ...prev]);
-  }, []);
-
-  const handleToggleComplete = useCallback((taskId: string) => {
-    setTasks((prev) =>
-      prev.map((task) => (task.id === taskId ? { ...task, completed: !task.completed } : task))
-    );
-  }, []);
-
-  const handleDeleteTask = useCallback((taskId: string) => {
-    setTasks((prev) => prev.filter((task) => task.id !== taskId));
-  }, []);
-
-  const getMemberById = (id?: string): LegacyFamilyMember | undefined =>
-    FAMILY_MEMBERS.find((m) => m.id === id);
-
-  const openCount = tasks.filter((t) => !t.completed).length;
-  const doneCount = tasks.filter((t) => t.completed).length;
-
-  return (
-    <DashboardContent maxWidth="xl">
-      <Stack
-        direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ mb: { xs: 3, md: 5 } }}
-      >
-        <Typography variant="h4">Tasks</Typography>
-      </Stack>
-
-      <TaskQuickAdd onAdd={handleAddTask} />
-
-      <Card sx={{ mt: 3 }}>
-        <Tabs
-          value={currentFilters.status}
-          onChange={handleFilterStatus}
-          sx={[
-            (theme) => ({
-              px: { md: 2.5 },
-              boxShadow: `inset 0 -2px 0 0 ${varAlpha(theme.vars.palette.grey['500Channel'], 0.08)}`,
-            }),
-          ]}
-        >
-          {STATUS_OPTIONS.map((tab) => (
-            <Tab
-              key={tab.value}
-              iconPosition="end"
-              value={tab.value}
-              label={tab.label}
-              icon={
-                <Label
-                  variant={
-                    (tab.value === 'all' || tab.value === currentFilters.status) ? 'filled' : 'soft'
-                  }
-                  color={
-                    (tab.value === 'done' && 'success') ||
-                    (tab.value === 'open' && 'warning') ||
-                    'default'
-                  }
-                >
-                  {tab.value === 'all' && tasks.length}
-                  {tab.value === 'open' && openCount}
-                  {tab.value === 'done' && doneCount}
-                </Label>
-              }
-            />
-          ))}
-        </Tabs>
-
-        <Scrollbar sx={{ minHeight: 400 }}>
-          <Table size="medium" sx={{ minWidth: 640 }}>
-            <TableBody>
-              {filteredTasks.length === 0 ? (
-                <Box
-                  component="tr"
-                  sx={{ '& td': { border: 0, py: 6, textAlign: 'center' } }}
-                >
-                  <Box component="td" colSpan={5}>
-                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      No tasks found
-                    </Typography>
-                  </Box>
-                </Box>
-              ) : (
-                filteredTasks.map((task) => (
-                  <TaskTableRow
-                    key={task.id}
-                    task={task}
-                    assignee={getMemberById(task.assigneeId)}
-                    onToggleComplete={() => handleToggleComplete(task.id)}
-                    onDelete={() => handleDeleteTask(task.id)}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </Scrollbar>
-      </Card>
-    </DashboardContent>
-  );
+function useMemberLookup(members: FamilyMember[]): Map<string, FamilyMember> {
+  return useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 }
 
 // ----------------------------------------------------------------------
 
-type ApplyFilterProps = {
-  inputData: Task[];
-  filters: TaskFilters;
-};
+export function TasksView() {
+  const { family } = useFamily();
 
-function applyFilter({ inputData, filters }: ApplyFilterProps): Task[] {
-  const { status } = filters;
+  // Memoize family members to prevent unnecessary re-renders
+  const familyMembers = useMemo(() => family?.members ?? [], [family?.members]);
 
-  if (status === 'open') {
-    return inputData.filter((task) => !task.completed);
-  }
+  // Create member lookup map
+  const memberById = useMemberLookup(familyMembers);
 
-  if (status === 'done') {
-    return inputData.filter((task) => task.completed);
-  }
+  // Form state
+  const openFormDialog = useBoolean();
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
-  return inputData;
+  // Template picker state
+  const openTemplatePicker = useBoolean();
+  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+
+  // Preferences - read fresh on mount, persist on change
+  const [initialPrefs] = useState(() => getStoredTasksPreferences());
+  const { preferences, setDesktopView, setMobileView } = useTasksPreferences();
+
+  // Current view state (for non-calendar views)
+  const [activeView, setActiveView] = useState<TaskView>(initialPrefs.desktopView);
+
+  // Tasks data
+  const { tasks, loading, refresh } = useTasks({
+    includeCompleted: preferences.showCompleted,
+  });
+
+  // Task mutations
+  const { create, update, remove, loading: mutating } = useTaskMutations(refresh);
+
+  // Task assignment hook for calendar content
+  const { getAssignedMember } = useTaskAssignment({ memberById });
+
+  // Calendar view change handler
+  const handleCalendarViewChange = useCallback(
+    (view: string, isMobile: boolean) => {
+      if (isMobile) {
+        setMobileView(view as TaskView);
+      } else {
+        setDesktopView(view as TaskView);
+      }
+    },
+    [setDesktopView, setMobileView]
+  );
+
+  // Calendar hook for calendar-style views
+  const {
+    calendarRef,
+    title: calendarTitle,
+    openForm: calendarOpenForm,
+    selectedTaskId,
+    selectedRange,
+    onCloseForm: onCalendarCloseForm,
+    onClickTask,
+    onSelectRange,
+    onDatesSet,
+    onDateNavigation,
+    onDropTask,
+  } = useTasksCalendar({
+    defaultDesktopView: initialPrefs.desktopView === 'agenda' || initialPrefs.desktopView === 'kanban'
+      ? 'dayGridMonth'
+      : (initialPrefs.desktopView as 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay' | 'resourceTimeGridDay'),
+    defaultMobileView: 'timeGridDay',
+    onViewChange: handleCalendarViewChange,
+  });
+
+  // Create resources for the Family Day View (columns for each family member + unassigned)
+  const resources: ResourceInput[] = useMemo(() => {
+    const memberResources = familyMembers.map((member) => ({
+      id: member.id,
+      title: member.displayName || member.profile?.displayName || 'Member',
+      extendedProps: {
+        color: member.color,
+        avatarUrl: member.profile?.avatarUrl,
+      },
+    }));
+
+    return [
+      ...memberResources,
+      {
+        id: 'unassigned',
+        title: 'Unassigned',
+        extendedProps: {
+          color: null,
+          avatarUrl: null,
+        },
+      },
+    ];
+  }, [familyMembers]);
+
+  // Convert tasks to calendar events
+  const calendarEvents = useMemo(
+    () => tasksToCalendarEvents(tasks, memberById),
+    [tasks, memberById]
+  );
+
+  // Find selected task by ID (for calendar click)
+  const selectedTaskFromCalendar = useMemo(
+    () => tasks.find((t) => t.id === selectedTaskId) ?? null,
+    [tasks, selectedTaskId]
+  );
+
+  // Load templates when picker opens
+  useEffect(() => {
+    if (openTemplatePicker.value) {
+      setTemplatesLoading(true);
+      getTaskTemplates()
+        .then(setTemplates)
+        .catch(console.error)
+        .finally(() => setTemplatesLoading(false));
+    }
+  }, [openTemplatePicker.value]);
+
+  // View change handler - persist to preferences
+  const handleChangeView = useCallback(
+    (newView: TaskView) => {
+      setActiveView(newView);
+      setDesktopView(newView);
+
+      // If switching to a calendar view, sync the calendar
+      if (
+        newView !== 'agenda' &&
+        newView !== 'kanban' &&
+        calendarRef.current
+      ) {
+        const calendarApi = calendarRef.current.getApi();
+        if (calendarApi.view.type !== newView) {
+          calendarApi.changeView(newView);
+        }
+      }
+    },
+    [setDesktopView, calendarRef]
+  );
+
+  // Open form for new task
+  const handleOpenNewTask = useCallback(() => {
+    setSelectedTask(null);
+    openFormDialog.onTrue();
+  }, [openFormDialog]);
+
+  // Open template picker
+  const handleOpenTemplatePicker = useCallback(() => {
+    openTemplatePicker.onTrue();
+  }, [openTemplatePicker]);
+
+  // Handle template selection - create task from template
+  const handleSelectTemplate = useCallback(
+    async (template: TaskTemplate) => {
+      try {
+        await createTaskFromTemplate(template.id);
+        openTemplatePicker.onFalse();
+        refresh();
+      } catch (error) {
+        console.error('Failed to create task from template:', error);
+      }
+    },
+    [openTemplatePicker, refresh]
+  );
+
+  // Open form for editing task (agenda view)
+  const handleClickTaskAgenda = useCallback(
+    (task: Task) => {
+      setSelectedTask(task);
+      openFormDialog.onTrue();
+    },
+    [openFormDialog]
+  );
+
+  // Toggle task status (checkbox click)
+  const handleToggleStatus = useCallback(
+    async (task: Task) => {
+      const newStatus = task.status === 'done' ? 'todo' : 'done';
+      await update(task.id, { status: newStatus });
+    },
+    [update]
+  );
+
+  // Toggle status from calendar content
+  const handleToggleStatusFromCalendar = useCallback(
+    async (taskId: string, currentStatus: TaskStatus) => {
+      const newStatus = currentStatus === 'done' ? 'todo' : 'done';
+      await update(taskId, { status: newStatus });
+    },
+    [update]
+  );
+
+  // Handle task drop (drag and drop on calendar)
+  const handleTaskDrop = useCallback(
+    (taskId: string, newDueAt: string) => {
+      update(taskId, { dueAt: newDueAt });
+    },
+    [update]
+  );
+
+  // Handle kanban drag-drop status change
+  const handleKanbanStatusChange = useCallback(
+    (taskId: string, newStatus: TaskStatus) => {
+      update(taskId, { status: newStatus });
+    },
+    [update]
+  );
+
+  // Form submit handler
+  const handleFormSubmit = useCallback(
+    async (data: CreateTaskInput) => {
+      const taskToEdit = selectedTask || selectedTaskFromCalendar;
+      if (taskToEdit) {
+        await update(taskToEdit.id, data as UpdateTaskInput);
+      } else {
+        // If created from calendar range selection, use the selected start date
+        const createData = { ...data };
+        if (selectedRange?.start && !createData.dueAt) {
+          createData.dueAt = selectedRange.start;
+        }
+        await create(createData);
+      }
+    },
+    [selectedTask, selectedTaskFromCalendar, selectedRange, create, update]
+  );
+
+  // Delete handler
+  const handleDelete = useCallback(
+    async (taskId: string) => {
+      await remove(taskId);
+    },
+    [remove]
+  );
+
+  // Close form and reset state
+  const handleCloseForm = useCallback(() => {
+    openFormDialog.onFalse();
+    onCalendarCloseForm();
+    setSelectedTask(null);
+  }, [openFormDialog, onCalendarCloseForm]);
+
+  // Render event content for calendar
+  const renderEventContent = useCallback(
+    (eventInfo: EventContentArg) => (
+      <TasksCalendarContent
+        eventInfo={eventInfo}
+        getAssignedMember={getAssignedMember}
+        onToggleStatus={handleToggleStatusFromCalendar}
+      />
+    ),
+    [getAssignedMember, handleToggleStatusFromCalendar]
+  );
+
+  // Render the appropriate view
+  const renderView = () => {
+    switch (activeView) {
+      case 'agenda':
+        return (
+          <TasksAgendaList
+            tasks={tasks}
+            familyMembers={familyMembers}
+            loading={loading}
+            onToggleStatus={handleToggleStatus}
+            onClickTask={handleClickTaskAgenda}
+          />
+        );
+
+      case 'kanban':
+        return (
+          <TasksKanbanView
+            tasks={tasks}
+            familyMembers={familyMembers}
+            onTaskClick={handleClickTaskAgenda}
+            onStatusChange={handleKanbanStatusChange}
+            onToggleStatus={handleToggleStatus}
+          />
+        );
+
+      case 'dayGridMonth':
+      case 'timeGridWeek':
+      case 'timeGridDay':
+      case 'resourceTimeGridDay':
+        return (
+          <TasksCalendarRoot sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <Calendar
+              ref={calendarRef}
+              plugins={[
+                dayGridPlugin,
+                timeGridPlugin,
+                interactionPlugin,
+                resourcePlugin,
+                resourceTimeGridPlugin,
+              ]}
+              initialView={activeView}
+              initialDate={new Date()}
+              events={calendarEvents}
+              resources={activeView === 'resourceTimeGridDay' ? resources : undefined}
+              headerToolbar={false}
+              editable
+              selectable
+              selectMirror
+              dayMaxEvents
+              allDaySlot
+              eventContent={renderEventContent}
+              select={onSelectRange}
+              eventClick={onClickTask}
+              eventDrop={(arg) => onDropTask(arg, handleTaskDrop)}
+              datesSet={onDatesSet}
+              resourceLabelContent={(arg) => <TasksResourceLabel arg={arg} />}
+              height="100%"
+              nowIndicator
+              slotMinTime="06:00:00"
+              slotMaxTime="22:00:00"
+            />
+          </TasksCalendarRoot>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  // Determine if form should be open
+  const isFormOpen = openFormDialog.value || calendarOpenForm;
+  const currentTask = selectedTask || selectedTaskFromCalendar;
+
+  return (
+    <DashboardContent maxWidth="xl" sx={{ display: 'flex', flexDirection: 'column', height: 1 }}>
+      <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <TasksToolbar
+          view={activeView}
+          title={['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'resourceTimeGridDay'].includes(activeView) ? calendarTitle : undefined}
+          loading={loading || mutating}
+          onChangeView={handleChangeView}
+          onOpenForm={handleOpenNewTask}
+          onOpenTemplates={handleOpenTemplatePicker}
+          onDateNavigation={onDateNavigation}
+          showDateNav={['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'resourceTimeGridDay'].includes(activeView)}
+        />
+
+        <Box sx={{ flex: 1, overflow: 'hidden' }}>{renderView()}</Box>
+      </Card>
+
+      {/* Task Form Dialog */}
+      <TasksForm
+        open={isFormOpen}
+        onClose={handleCloseForm}
+        currentTask={currentTask}
+        familyMembers={familyMembers}
+        onSubmit={handleFormSubmit}
+        onDelete={currentTask ? handleDelete : undefined}
+      />
+
+      {/* Template Picker Dialog */}
+      <TaskTemplatePicker
+        open={openTemplatePicker.value}
+        onClose={openTemplatePicker.onFalse}
+        templates={templates}
+        members={familyMembers}
+        onSelect={handleSelectTemplate}
+        loading={templatesLoading}
+      />
+    </DashboardContent>
+  );
 }

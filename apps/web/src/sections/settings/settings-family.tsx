@@ -29,7 +29,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import { setSharedCalendar } from 'src/features/family/api';
 import { useFamily, useFamilyMembers, useFamilyInvites, useSharedCalendarAccess } from 'src/features/family';
-import { useCalendarSelection, updateCalendarSelection, getGoogleCalendars } from 'src/features/integrations';
+import { getGoogleCalendars, useCalendarSelection, updateCalendarSelection } from 'src/features/integrations';
 
 import { Label } from 'src/components/label';
 import { toast } from 'src/components/snackbar';

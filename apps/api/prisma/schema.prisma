@@ -26,6 +26,7 @@ model GoogleAccount {
 
   selectedCalendars SelectedCalendar[]
   calendarEvents    CalendarEvent[]
+  linkedTasks       Task[]
 
   @@unique([userId, googleUserId])
   @@index([userId])
@@ -157,6 +158,8 @@ model Family {
   members         FamilyMember[]
   invites         FamilyInvite[]
   eventCategories EventCategory[]
+  tasks           Task[]
+  taskTemplates   TaskTemplate[]
 
   @@index([createdBy])
   @@map("families")
@@ -178,6 +181,11 @@ model FamilyMember {
   // Relations
   family  Family  @relation(fields: [familyId], references: [id], onDelete: Cascade)
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  
+  // Task relations
+  assignedTasks             Task[]         @relation("TaskAssignee")
+  createdTasks              Task[]         @relation("TaskCreator")
+  templateDefaultAssignments TaskTemplate[] @relation("TemplateDefaultAssignee")
 
   // Unique active membership per family
   @@unique([familyId, profileId])
@@ -209,14 +217,94 @@ model FamilyInvite {
 }
 
 model Task {
-  id         String    @id @default(cuid())
-  title      String
-  assigneeId String?
-  dueDate    DateTime?
-  status     String    @default("todo")
-  completed  Boolean   @default(false)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  familyId          String    @map("family_id")
+  title             String
+  description       String?
+  status            String    @default("todo") // todo, doing, done
+  priority          String    @default("medium") // low, medium, high, urgent
+  
+  // Time anchors
+  dueAt             DateTime? @map("due_at")
+  completedAt       DateTime? @map("completed_at")
+  
+  // Assignment
+  assignedToUserId  String?   @map("assigned_to_user_id") // FamilyMember.id
+  createdByUserId   String    @map("created_by_user_id")  // FamilyMember.id
+  
+  // Recurrence fields
+  isRecurring       Boolean   @default(false) @map("is_recurring")
+  recurrenceRule    Json?     @map("recurrence_rule") // RRULE-like JSON: {frequency, interval, byDay, etc.}
+  parentTaskId      String?   @map("parent_task_id") // For generated instances, points to the recurring parent
+  recurrenceIndex   Int?      @map("recurrence_index") // Which occurrence this is (0, 1, 2, ...)
+  
+  // Calendar linking (MVP 5)
+  linkedCalendarEventId   String?   @map("linked_calendar_event_id") // Google Calendar event ID
+  linkedCalendarId        String?   @map("linked_calendar_id") // Calendar ID the event is on
+  linkedGoogleAccountId   String?   @map("linked_google_account_id") // GoogleAccount.id
+  
+  // Metadata
+  labels            String[]  @default([])
+  sortOrder         Int       @default(0) @map("sort_order")
+  
+  deletedAt         DateTime? @map("deleted_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  family            Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  assignedTo        FamilyMember? @relation("TaskAssignee", fields: [assignedToUserId], references: [id])
+  createdBy         FamilyMember  @relation("TaskCreator", fields: [createdByUserId], references: [id])
+  parentTask        Task?         @relation("TaskRecurrence", fields: [parentTaskId], references: [id])
+  childTasks        Task[]        @relation("TaskRecurrence")
+  linkedGoogleAccount GoogleAccount? @relation(fields: [linkedGoogleAccountId], references: [id])
+
+  @@index([familyId, status])
+  @@index([familyId, dueAt])
+  @@index([familyId, assignedToUserId])
+  @@index([familyId, deletedAt])
+  @@index([parentTaskId])
+  @@index([linkedGoogleAccountId])
+  @@map("tasks")
+}
+
+// Task template for quick task creation
+model TaskTemplate {
+  id                 String    @id @default(cuid())
+  familyId           String    @map("family_id")
+  name               String    // Template name (e.g., "Weekly Chores", "School Homework")
+  
+  // Task defaults
+  title              String    // Default task title
+  description        String?
+  priority           String    @default("medium") // low, medium, high, urgent
+  labels             String[]  @default([])
+  
+  // Optional default assignee
+  defaultAssigneeId  String?   @map("default_assignee_id") // FamilyMember.id
+  
+  // Due date pattern (relative to creation)
+  dueDaysFromNow     Int?      @map("due_days_from_now") // e.g., 1 = tomorrow, 7 = next week
+  dueTimeOfDay       String?   @map("due_time_of_day") // e.g., "09:00" for morning tasks
+  
+  // Metadata
+  icon               String?   // Optional icon for UI
+  color              String?   // Optional color for UI
+  sortOrder          Int       @default(0) @map("sort_order")
+  usageCount         Int       @default(0) @map("usage_count") // Track how often template is used
+  
+  deletedAt          DateTime? @map("deleted_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  family             Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  defaultAssignee    FamilyMember? @relation("TemplateDefaultAssignee", fields: [defaultAssigneeId], references: [id])
+
+  @@unique([familyId, name])
+  @@index([familyId, sortOrder])
+  @@index([familyId, deletedAt])
+  @@map("task_templates")
 }
 
 model ShoppingItem {

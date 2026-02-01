@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import healthRoutes from './health.js';
 import calendarRoutes from './calendar/index.js';
 import tasksRoutes from './tasks/index.js';
+import taskTemplatesRoutes from './task-templates/index.js';
 import shoppingRoutes from './shopping/index.js';
 import googleIntegrationRoutes from './integrations/google/index.js';
 import eventsRoutes from './events/index.js';
@@ -31,6 +32,7 @@ const routes: FastifyPluginAsync = async (fastify) => {
   // v1 API routes
   fastify.register(calendarRoutes, { prefix: '/v1/calendar' });
   fastify.register(tasksRoutes, { prefix: '/v1/tasks' });
+  fastify.register(taskTemplatesRoutes, { prefix: '/v1/task-templates' });
   fastify.register(shoppingRoutes, { prefix: '/v1/shopping' });
 };
 

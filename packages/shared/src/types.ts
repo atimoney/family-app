@@ -99,14 +99,153 @@ export type LegacyFamilyMember = {
 
 export type TaskStatus = 'todo' | 'doing' | 'done';
 
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+/** Recurrence frequency for tasks */
+export type TaskRecurrenceFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+
+/** Recurrence rule for tasks (RRULE-like) */
+export type TaskRecurrenceRule = {
+  frequency: TaskRecurrenceFrequency;
+  interval?: number; // every N days/weeks/etc (default: 1)
+  count?: number; // stop after N occurrences
+  until?: string; // stop at this date (ISO string)
+  byDay?: ('MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU')[]; // for weekly recurrence
+  byMonthDay?: number[]; // for monthly recurrence (1-31)
+};
+
 export type Task = {
   id: string;
+  familyId: string;
   title: string;
-  assigneeId?: string;
-  dueDate?: string;
-  status?: TaskStatus;
-  completed?: boolean;
+  description?: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueAt?: string | null;
+  completedAt?: string | null;
+  assignedToUserId?: string | null;
+  createdByUserId: string;
+  // Recurrence fields
+  isRecurring: boolean;
+  recurrence?: TaskRecurrenceRule | null;
+  parentTaskId?: string | null; // For generated instances, points to parent
+  recurrenceIndex?: number | null; // Which occurrence this is (0, 1, 2...)
+  // Calendar linking (MVP 5)
+  linkedCalendarEventId?: string | null;
+  linkedCalendarId?: string | null;
+  linkedGoogleAccountId?: string | null;
+  // Metadata
+  labels: string[];
+  sortOrder: number;
+  deletedAt?: string | null;
   createdAt: string;
+  updatedAt: string;
+};
+
+/** Input for creating a new task */
+export type CreateTaskInput = {
+  title: string;
+  description?: string | null;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  dueAt?: string | null;
+  assignedToUserId?: string | null;
+  labels?: string[];
+  recurrence?: TaskRecurrenceRule | null;
+};
+
+/** Input for updating a task */
+export type UpdateTaskInput = {
+  title?: string;
+  description?: string | null;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  dueAt?: string | null;
+  completedAt?: string | null;
+  assignedToUserId?: string | null;
+  labels?: string[];
+  sortOrder?: number;
+  recurrence?: TaskRecurrenceRule | null;
+};
+
+/** Query parameters for listing tasks */
+export type TasksQuery = {
+  status?: TaskStatus | TaskStatus[];
+  assignedTo?: string | 'unassigned';
+  dueBefore?: string;
+  dueAfter?: string;
+  includeCompleted?: boolean;
+  labels?: string[];
+  search?: string;
+};
+
+// ============================================================================
+// TASK TEMPLATES
+// ============================================================================
+
+/** A template for quickly creating tasks */
+export type TaskTemplate = {
+  id: string;
+  familyId: string;
+  name: string; // Internal name for identification
+  title: string; // Default task title
+  description?: string | null;
+  priority: TaskPriority;
+  labels: string[];
+  defaultAssigneeId?: string | null; // FamilyMember.id
+  dueDaysFromNow?: number | null; // e.g., 1 = tomorrow, 7 = next week
+  dueTimeOfDay?: string | null; // e.g., "09:00" for morning tasks
+  icon?: string | null; // Optional icon for UI
+  color?: string | null; // Optional color for UI
+  sortOrder: number;
+  usageCount: number; // Track how often template is used
+  deletedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Input for creating a new task template */
+export type CreateTaskTemplateInput = {
+  name: string;
+  title: string;
+  description?: string | null;
+  priority?: TaskPriority;
+  labels?: string[];
+  defaultAssigneeId?: string | null;
+  dueDaysFromNow?: number | null;
+  dueTimeOfDay?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  sortOrder?: number;
+};
+
+/** Input for updating a task template */
+export type UpdateTaskTemplateInput = {
+  name?: string;
+  title?: string;
+  description?: string | null;
+  priority?: TaskPriority;
+  labels?: string[];
+  defaultAssigneeId?: string | null;
+  dueDaysFromNow?: number | null;
+  dueTimeOfDay?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  sortOrder?: number;
+};
+
+/** Query parameters for listing task templates */
+export type TaskTemplatesQuery = {
+  search?: string;
+  includeDeleted?: boolean;
+};
+
+/** Input for creating a task from a template (allows overrides) */
+export type CreateTaskFromTemplateInput = {
+  title?: string;
+  description?: string | null;
+  assignedToUserId?: string | null;
+  dueAt?: string | null;
 };
 
 // Recurrence rule type
