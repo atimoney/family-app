@@ -20,7 +20,7 @@ export function SettingsView() {
   const handleSharedCalendarChange = async () => {
     await refreshFamily();
     // Also refresh the integrations calendar list to update checkbox states
-    integrationsRef.current?.refreshCalendars();
+    await integrationsRef.current?.refreshCalendars();
   };
 
   return (

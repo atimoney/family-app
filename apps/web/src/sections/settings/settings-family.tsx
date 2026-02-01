@@ -29,7 +29,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import { setSharedCalendar } from 'src/features/family/api';
 import { useFamily, useFamilyMembers, useFamilyInvites } from 'src/features/family';
-import { useCalendarSelection, updateCalendarSelection } from 'src/features/integrations';
+import { useCalendarSelection, updateCalendarSelection, getGoogleCalendars } from 'src/features/integrations';
 
 import { Label } from 'src/components/label';
 import { toast } from 'src/components/snackbar';
@@ -254,18 +254,18 @@ export function SettingsFamily({ onSharedCalendarChange }: SettingsFamilyProps) 
       if (result.success) {
         // If setting a family calendar (not removing), ensure it's selected in user's calendars
         if (selectedSharedCalendar) {
-          const currentSelectedIds = calendars.filter((c) => c.isSelected).map((c) => c.id);
+          // Fetch fresh calendar data from the server to get current selection state
+          const freshCalendars = await getGoogleCalendars();
+          const currentSelectedIds = freshCalendars.filter((c) => c.isSelected).map((c) => c.id);
           if (!currentSelectedIds.includes(selectedSharedCalendar)) {
             // Add the family calendar to the selection
             await updateCalendarSelection([...currentSelectedIds, selectedSharedCalendar]);
-            // Refresh the calendar list to reflect the change
-            refreshCalendars();
           }
         }
         toast.success(selectedSharedCalendar ? 'Shared calendar set' : 'Shared calendar removed');
-        refreshFamily();
-        // Notify parent component so other sections can update
-        onSharedCalendarChange?.();
+        await refreshFamily();
+        // Notify parent component so other sections can update (and refresh calendars)
+        await onSharedCalendarChange?.();
       } else {
         toast.error('Failed to update shared calendar');
       }
@@ -274,7 +274,7 @@ export function SettingsFamily({ onSharedCalendarChange }: SettingsFamilyProps) 
     } finally {
       setSavingSharedCalendar(false);
     }
-  }, [family?.id, selectedSharedCalendar, calendars, refreshCalendars, refreshFamily, onSharedCalendarChange]);
+  }, [family?.id, selectedSharedCalendar, refreshFamily, onSharedCalendarChange]);
 
   // Check if shared calendar selection has changed
   const sharedCalendarChanged = family?.sharedCalendarId !== (selectedSharedCalendar || null);
