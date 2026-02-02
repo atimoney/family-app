@@ -13,6 +13,7 @@ import { NavSectionMini, NavSectionVertical } from 'src/components/nav-section';
 import { layoutClasses } from '../core';
 import { NavUpgrade } from '../components/nav-upgrade';
 import { NavToggleButton } from '../components/nav-toggle-button';
+import { NavListsSection } from '../components/nav-lists-section';
 
 // ----------------------------------------------------------------------
 
@@ -54,6 +55,8 @@ export function NavVertical({
           checkPermissions={checkPermissions}
           sx={{ px: 2, flex: '1 1 auto' }}
         />
+
+        <NavListsSection />
 
         {slots?.bottomArea ?? <NavUpgrade />}
       </Scrollbar>

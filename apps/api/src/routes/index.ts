@@ -10,6 +10,8 @@ import profileRoutes from './profile/index.js';
 import familyRoutes from './family/index.js';
 import inviteRoutes from './invites/index.js';
 import categoriesRoutes from './family/categories.js';
+import listsRoutes from './lists/index.js';
+import listItemsRoutes from './lists/items.js';
 
 const routes: FastifyPluginAsync = async (fastify) => {
   // Health check at root level
@@ -22,6 +24,10 @@ const routes: FastifyPluginAsync = async (fastify) => {
   fastify.register(familyRoutes, { prefix: '/api' });
   fastify.register(inviteRoutes, { prefix: '/api' });
   fastify.register(categoriesRoutes, { prefix: '/api' });
+
+  // Lists routes
+  fastify.register(listsRoutes, { prefix: '/api/lists' });
+  fastify.register(listItemsRoutes, { prefix: '/api/items' });
 
   // Integration routes
   fastify.register(googleIntegrationRoutes, { prefix: '/integrations/google' });

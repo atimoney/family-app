@@ -160,6 +160,7 @@ model Family {
   eventCategories EventCategory[]
   tasks           Task[]
   taskTemplates   TaskTemplate[]
+  lists           List[]
 
   @@index([createdBy])
   @@map("families")
@@ -341,4 +342,66 @@ model EventCategory {
   @@unique([familyId, name])
   @@index([familyId, sortOrder])
   @@map("event_categories")
+}
+
+// ============================================================================
+// LISTS (Generic list primitive - shopping, meal plans, custom)
+// ============================================================================
+
+// A family list (shopping, meal plan, or custom)
+model List {
+  id            String   @id @default(cuid())
+  familyId      String   @map("family_id")
+  name          String
+  templateKey   String   @map("template_key") // shopping, meal_plan, custom
+  navVisibility String   @default("visible") @map("nav_visibility") // pinned, visible, hidden
+  config        Json     @default("{}") // ListConfig: fields, views, etc.
+  icon          String?  // Optional icon identifier
+  color         String?  // Optional color
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  family      Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  items       ListItem[]
+  preferences UserListPreferences[]
+
+  @@index([familyId])
+  @@map("lists")
+}
+
+// An item within a list
+model ListItem {
+  id               String    @id @default(cuid())
+  listId           String    @map("list_id")
+  title            String
+  status           String    @default("open") // open, done, archived
+  sortOrder        Int       @default(0) @map("sort_order")
+  dueAt            DateTime? @map("due_at")
+  assignedToUserId String?   @map("assigned_to_user_id") // Profile ID
+  fields           Json      @default("{}") // Dynamic field values based on list config
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  list List @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@index([listId, status])
+  @@index([listId, sortOrder])
+  @@map("list_items")
+}
+
+// User-specific preferences for a list (view state, filters, etc.)
+model UserListPreferences {
+  userId      String   @map("user_id") // Profile ID
+  listId      String   @map("list_id")
+  lastViewKey String?  @map("last_view_key") // Last selected view (list, table, grouped, week)
+  prefs       Json     @default("{}") // {sort, filters, collapsedGroups, etc.}
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  list List @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@id([userId, listId])
+  @@map("user_list_preferences")
 }

@@ -14,6 +14,7 @@ import { NavSectionVertical } from 'src/components/nav-section';
 
 import { layoutClasses } from '../core';
 import { NavUpgrade } from '../components/nav-upgrade';
+import { NavListsSection } from '../components/nav-lists-section';
 
 // ----------------------------------------------------------------------
 
@@ -76,6 +77,7 @@ export function NavMobile({
           sx={{ px: 2, flex: '1 1 auto' }}
           {...other}
         />
+        <NavListsSection />
         <NavUpgrade />
       </Scrollbar>
 

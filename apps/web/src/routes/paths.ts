@@ -29,6 +29,11 @@ export const paths = {
     tasks: '/family/tasks',
     shopping: '/family/shopping',
   },
+  // LISTS
+  lists: {
+    root: '/lists',
+    view: (id: string) => `/lists/${id}`,
+  },
   // SETTINGS
   settings: '/settings',
 };
