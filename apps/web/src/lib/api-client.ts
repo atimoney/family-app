@@ -1,4 +1,4 @@
-import { appConfig } from 'src/config/app-config';
+import { CONFIG } from 'src/global-config';
 
 // ----------------------------------------------------------------------
 
@@ -22,7 +22,7 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { body, headers, ...rest } = options;
 
-  const url = `${appConfig.apiBaseUrl}${endpoint}`;
+  const url = `${CONFIG.serverUrl}${endpoint}`;
 
   const config: RequestInit = {
     ...rest,
@@ -82,4 +82,49 @@ export const apiClient = {
 
   delete: <T>(endpoint: string, options?: RequestOptions) =>
     request<T>(endpoint, { ...options, method: 'DELETE' }),
+};
+
+// ----------------------------------------------------------------------
+
+/**
+ * API endpoint definitions (Minimals pattern).
+ * Centralizes endpoint paths for easier maintenance.
+ */
+export const endpoints = {
+  // Profile
+  profile: '/api/profile',
+  // Family
+  family: {
+    root: '/api/family',
+    members: '/api/family/members',
+    invites: '/api/family/invites',
+    categories: (familyId: string) => `/api/families/${familyId}/categories`,
+  },
+  // Calendar
+  calendar: {
+    events: '/events',
+    calendars: '/v1/calendar/calendars',
+    selection: '/v1/calendar/calendars/selection',
+    sync: '/v1/calendar/sync',
+    oauth: {
+      status: '/v1/calendar/oauth/status',
+      url: '/v1/calendar/oauth/url',
+    },
+  },
+  // Tasks
+  tasks: {
+    root: '/v1/tasks',
+    byId: (id: string) => `/v1/tasks/${id}`,
+    bulkUpdate: '/v1/tasks/bulk-update',
+    templates: '/v1/tasks/templates',
+  },
+  // Lists
+  lists: {
+    root: '/api/lists',
+    byId: (id: string) => `/api/lists/${id}`,
+    items: (listId: string) => `/api/lists/${listId}/items`,
+    itemById: (listId: string, itemId: string) => `/api/lists/${listId}/items/${itemId}`,
+    preferences: (listId: string) => `/api/lists/${listId}/preferences`,
+    generate: (listId: string) => `/api/lists/${listId}/generate`,
+  },
 };

@@ -1,6 +1,5 @@
 import '@fullcalendar/core';
 
-import type { FamilyMember } from '@family/shared';
 import type { EventContentArg } from '@fullcalendar/core';
 import type { ResourceInput } from '@fullcalendar/resource';
 import type { Task, TaskStatus, TaskTemplate, CreateTaskInput, UpdateTaskInput, CreateTaskTemplateInput } from 'src/features/tasks';
@@ -18,7 +17,7 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { useFamily } from 'src/features/family/hooks/use-family';
+import { useFamily, useMemberLookup } from 'src/features/family';
 import {
   useTasks,
   useTaskMutations,
@@ -28,9 +27,9 @@ import {
 } from 'src/features/tasks';
 
 import { TasksForm } from '../tasks-form';
+import { TasksCalendarRoot } from '../styles';
 import { TasksToolbar } from '../tasks-toolbar';
 import { TasksAgendaList } from '../tasks-agenda-list';
-import { TasksCalendarRoot } from '../tasks-calendar-styles';
 import { TasksResourceLabel } from '../tasks-resource-label';
 import { TasksKanbanView } from '../kanban/tasks-kanban-view';
 import { useTasksCalendar } from '../hooks/use-tasks-calendar';
@@ -45,12 +44,6 @@ import {
   useTasksPreferences,
   getStoredTasksPreferences,
 } from '../hooks/use-tasks-preferences';
-
-// ----------------------------------------------------------------------
-
-function useMemberLookup(members: FamilyMember[]): Map<string, FamilyMember> {
-  return useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
-}
 
 // ----------------------------------------------------------------------
 

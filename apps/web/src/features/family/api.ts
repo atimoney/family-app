@@ -8,34 +8,8 @@ import type {
   FamilyWithMembers,
 } from '@family/shared';
 
-import { getSession } from 'src/lib/supabase';
 import { apiClient } from 'src/lib/api-client';
-
-// ----------------------------------------------------------------------
-// Auth helpers
-// ----------------------------------------------------------------------
-
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const session = await getSession();
-  const accessToken = session?.access_token;
-
-  if (!accessToken) {
-    throw new Error('Not authenticated');
-  }
-
-  return {
-    Authorization: `Bearer ${accessToken}`,
-  };
-}
-
-// Try to get auth headers, return empty if not authenticated
-async function tryGetAuthHeaders(): Promise<Record<string, string>> {
-  try {
-    return await getAuthHeaders();
-  } catch {
-    return {};
-  }
-}
+import { getAuthHeaders, tryGetAuthHeaders } from 'src/lib/auth-helpers';
 
 // ----------------------------------------------------------------------
 // PROFILE API

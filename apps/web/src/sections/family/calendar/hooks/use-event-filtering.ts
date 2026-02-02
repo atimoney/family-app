@@ -1,10 +1,13 @@
-import type { FamilyMember, EventCategoryConfig } from '@family/shared';
+import type { EventCategoryConfig } from '@family/shared';
 import type { CalendarFiltersState } from '../calendar-filters';
 import type { CalendarEventItem, EventFamilyAssignments } from 'src/features/calendar/types';
 
 import { useMemo } from 'react';
 
 import { fIsAfter, fIsBetween } from 'src/utils/format-time';
+
+// Re-export for backward compatibility
+export { useMemberLookup } from 'src/features/family';
 
 // ----------------------------------------------------------------------
 
@@ -132,17 +135,4 @@ export function useEventFiltering({
   ]);
 
   return { filteredEvents, dateError };
-}
-
-// ----------------------------------------------------------------------
-
-/**
- * Create a map for quick member lookup by ID
- */
-export function useMemberLookup(familyMembers: FamilyMember[]) {
-  return useMemo(() => {
-    const map = new Map<string, FamilyMember>();
-    familyMembers.forEach((m) => map.set(m.id, m));
-    return map;
-  }, [familyMembers]);
 }

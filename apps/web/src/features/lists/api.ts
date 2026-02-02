@@ -12,23 +12,8 @@ import type {
   UserListPreferencesInput,
 } from './types';
 
-import { getSession } from 'src/lib/supabase';
 import { apiClient } from 'src/lib/api-client';
-
-// ----------------------------------------------------------------------
-
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const session = await getSession();
-  const accessToken = session?.access_token;
-
-  if (!accessToken) {
-    throw new Error('Not authenticated');
-  }
-
-  return {
-    Authorization: `Bearer ${accessToken}`,
-  };
-}
+import { getAuthHeaders } from 'src/lib/auth-helpers';
 
 // ----------------------------------------------------------------------
 // LISTS CRUD
