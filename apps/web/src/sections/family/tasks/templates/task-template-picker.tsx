@@ -1,4 +1,4 @@
-import type { TaskTemplate, FamilyMember } from '@family/shared';
+import type { TaskTemplate, FamilyMember, CreateTaskTemplateInput } from '@family/shared';
 
 import { useState, useEffect, useCallback } from 'react';
 
@@ -23,6 +23,8 @@ import ListItemSecondaryAction from '@mui/material/ListItemSecondaryAction';
 import { Iconify } from 'src/components/iconify';
 import { EmptyContent } from 'src/components/empty-content';
 
+import { TaskTemplateForm } from './task-template-form';
+
 // ----------------------------------------------------------------------
 
 type Props = {
@@ -31,6 +33,7 @@ type Props = {
   templates: TaskTemplate[];
   members: FamilyMember[];
   onSelect: (template: TaskTemplate) => void;
+  onCreateTemplate?: (data: CreateTaskTemplateInput) => Promise<void>;
   onManageTemplates?: () => void;
   loading?: boolean;
 };
@@ -41,17 +44,35 @@ export function TaskTemplatePicker({
   templates,
   members,
   onSelect,
+  onCreateTemplate,
   onManageTemplates,
   loading = false,
 }: Props) {
   const [search, setSearch] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
 
-  // Reset search when dialog opens
+  // Reset search and form when dialog opens
   useEffect(() => {
     if (open) {
       setSearch('');
+      setShowCreateForm(false);
     }
   }, [open]);
+
+  const handleCreateTemplate = useCallback(
+    async (data: CreateTaskTemplateInput) => {
+      if (!onCreateTemplate) return;
+      setCreateLoading(true);
+      try {
+        await onCreateTemplate(data);
+        setShowCreateForm(false);
+      } finally {
+        setCreateLoading(false);
+      }
+    },
+    [onCreateTemplate]
+  );
 
   const filteredTemplates = templates.filter(
     (t) =>
@@ -91,32 +112,42 @@ export function TaskTemplatePicker({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ pb: 1 }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">Create from Template</Typography>
-          {onManageTemplates && (
-            <Tooltip title="Manage templates">
-              <IconButton onClick={onManageTemplates} size="small">
-                <Iconify icon="solar:settings-bold" />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Stack>
-      </DialogTitle>
+    <>
+      <Dialog open={open && !showCreateForm} onClose={onClose} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Typography variant="h6">Create from Template</Typography>
+            <Stack direction="row" spacing={0.5}>
+              {onCreateTemplate && (
+                <Tooltip title="Create new template">
+                  <IconButton onClick={() => setShowCreateForm(true)} size="small">
+                    <Iconify icon="mingcute:add-line" />
+                  </IconButton>
+                </Tooltip>
+              )}
+              {onManageTemplates && (
+                <Tooltip title="Manage templates">
+                  <IconButton onClick={onManageTemplates} size="small">
+                    <Iconify icon="solar:settings-bold" />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Stack>
+          </Stack>
+        </DialogTitle>
 
-      <DialogContent sx={{ pb: 1 }}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Search templates..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Iconify icon="eva:search-fill" sx={{ color: 'text.disabled' }} />
-              </InputAdornment>
+        <DialogContent sx={{ pb: 1 }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search templates..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Iconify icon="eva:search-fill" sx={{ color: 'text.disabled' }} />
+                </InputAdornment>
             ),
           }}
           sx={{ mb: 2 }}
@@ -229,11 +260,29 @@ export function TaskTemplatePicker({
         )}
       </DialogContent>
 
-      <DialogActions>
+      <DialogActions sx={{ justifyContent: 'space-between' }}>
+        {onCreateTemplate && (
+          <Button
+            onClick={() => setShowCreateForm(true)}
+            startIcon={<Iconify icon="mingcute:add-line" />}
+          >
+            Create Template
+          </Button>
+        )}
         <Button onClick={onClose} color="inherit">
           Cancel
         </Button>
       </DialogActions>
     </Dialog>
+
+      {/* Create Template Form Dialog */}
+      <TaskTemplateForm
+        open={showCreateForm}
+        onClose={() => setShowCreateForm(false)}
+        members={members}
+        onSave={handleCreateTemplate}
+        loading={createLoading}
+      />
+    </>
   );
 }

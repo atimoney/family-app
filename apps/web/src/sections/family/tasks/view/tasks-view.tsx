@@ -3,7 +3,7 @@ import '@fullcalendar/core';
 import type { FamilyMember } from '@family/shared';
 import type { EventContentArg } from '@fullcalendar/core';
 import type { ResourceInput } from '@fullcalendar/resource';
-import type { Task, TaskStatus, TaskTemplate, CreateTaskInput, UpdateTaskInput } from 'src/features/tasks';
+import type { Task, TaskStatus, TaskTemplate, CreateTaskInput, UpdateTaskInput, CreateTaskTemplateInput } from 'src/features/tasks';
 
 import Calendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -23,6 +23,7 @@ import {
   useTasks,
   useTaskMutations,
   getTaskTemplates,
+  createTaskTemplate,
   createTaskFromTemplate,
 } from 'src/features/tasks';
 
@@ -215,6 +216,22 @@ export function TasksView() {
     [openTemplatePicker, refresh]
   );
 
+  // Handle creating a new template
+  const handleCreateTemplate = useCallback(
+    async (data: CreateTaskTemplateInput) => {
+      try {
+        await createTaskTemplate(data);
+        // Refresh templates list
+        const updatedTemplates = await getTaskTemplates();
+        setTemplates(updatedTemplates);
+      } catch (error) {
+        console.error('Failed to create template:', error);
+        throw error;
+      }
+    },
+    []
+  );
+
   // Open form for editing task (agenda view)
   const handleClickTaskAgenda = useCallback(
     (task: Task) => {
@@ -390,7 +407,7 @@ export function TasksView() {
           showDateNav={['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'resourceTimeGridDay'].includes(activeView)}
         />
 
-        <Box sx={{ flex: 1, overflow: 'hidden' }}>{renderView()}</Box>
+        <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>{renderView()}</Box>
       </Card>
 
       {/* Task Form Dialog */}
@@ -410,6 +427,7 @@ export function TasksView() {
         templates={templates}
         members={familyMembers}
         onSelect={handleSelectTemplate}
+        onCreateTemplate={handleCreateTemplate}
         loading={templatesLoading}
       />
     </DashboardContent>

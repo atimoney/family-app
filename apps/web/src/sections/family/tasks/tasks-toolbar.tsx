@@ -26,12 +26,12 @@ export type TaskViewOption = {
 };
 
 export const TASK_VIEW_OPTIONS: TaskViewOption[] = [
-  { value: 'agenda', label: 'Agenda', icon: 'solar:list-bold' },
-  { value: 'dayGridMonth', label: 'Month', icon: 'solar:calendar-date-bold' },
-  { value: 'timeGridWeek', label: 'Week', icon: 'solar:calendar-date-bold' },
-  { value: 'timeGridDay', label: 'Day', icon: 'solar:calendar-date-bold' },
+  { value: 'agenda', label: 'List', icon: 'solar:list-bold' },
+  { value: 'dayGridMonth', label: 'Month', icon: 'mingcute:calendar-month-line' },
+  { value: 'timeGridWeek', label: 'Week', icon: 'mingcute:calendar-week-line' },
+  { value: 'timeGridDay', label: 'Day', icon: 'mingcute:calendar-day-line' },
   { value: 'resourceTimeGridDay', label: 'Team', icon: 'solar:users-group-rounded-bold' },
-  { value: 'kanban', label: 'Board', icon: 'solar:settings-bold' },
+  { value: 'kanban', label: 'Board', icon: 'ic:round-view-module' },
 ];
 
 type TasksToolbarProps = {

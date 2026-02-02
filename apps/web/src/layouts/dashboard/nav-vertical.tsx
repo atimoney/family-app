@@ -14,6 +14,7 @@ import { layoutClasses } from '../core';
 import { NavUpgrade } from '../components/nav-upgrade';
 import { NavToggleButton } from '../components/nav-toggle-button';
 import { NavListsSection } from '../components/nav-lists-section';
+import { familyNavData, settingsNavData } from '../nav-config-dashboard';
 
 // ----------------------------------------------------------------------
 
@@ -49,14 +50,24 @@ export function NavVertical({
       )}
 
       <Scrollbar fillContent>
+        {/* Family section */}
         <NavSectionVertical
-          data={data}
+          data={familyNavData}
           cssVars={cssVars}
           checkPermissions={checkPermissions}
-          sx={{ px: 2, flex: '1 1 auto' }}
+          sx={{ px: 2 }}
         />
 
+        {/* Lists section - positioned between Family and Settings */}
         <NavListsSection />
+
+        {/* Settings section */}
+        <NavSectionVertical
+          data={settingsNavData}
+          cssVars={cssVars}
+          checkPermissions={checkPermissions}
+          sx={{ px: 2 }}
+        />
 
         {slots?.bottomArea ?? <NavUpgrade />}
       </Scrollbar>

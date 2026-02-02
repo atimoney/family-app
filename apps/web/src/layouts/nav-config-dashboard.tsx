@@ -23,10 +23,10 @@ const ICONS = {
 
 // ----------------------------------------------------------------------
 
-export const navData: NavSectionProps['data'] = [
-  /**
-   * Family
-   */
+/**
+ * Family section navigation items
+ */
+export const familyNavData: NavSectionProps['data'] = [
   {
     subheader: 'Family',
     items: [
@@ -36,11 +36,19 @@ export const navData: NavSectionProps['data'] = [
       { title: 'Shopping', path: paths.family.shopping, icon: ICONS.order },
     ],
   },
-  /**
-   * Settings
-   */
+];
+
+/**
+ * Settings section navigation items
+ */
+export const settingsNavData: NavSectionProps['data'] = [
   {
     subheader: 'Settings',
     items: [{ title: 'Settings', path: paths.settings, icon: ICONS.settings }],
   },
 ];
+
+/**
+ * Full nav data (for backwards compatibility)
+ */
+export const navData: NavSectionProps['data'] = [...familyNavData, ...settingsNavData];

@@ -167,18 +167,21 @@ export function NavListsSection() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          px: 2,
-          py: 1,
-          mt: 2,
+          pl: 3.5,
+          pr: 2,
+          pt: 2,
+          pb: 1,
         }}
       >
         <Typography
-          variant="overline"
+          component="div"
           sx={{
+            fontSize: (theme) => theme.typography.pxToRem(11),
+            fontWeight: 700,
+            lineHeight: '18px',
+            letterSpacing: '0.55px',
+            textTransform: 'uppercase',
             color: 'var(--nav-subheader-color)',
-            fontWeight: 'var(--nav-subheader-font-weight)',
-            fontSize: 'var(--nav-subheader-font-size)',
-            lineHeight: 'var(--nav-subheader-line-height)',
           }}
         >
           Lists

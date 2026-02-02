@@ -491,9 +491,10 @@ export function CalendarView() {
   // Update event on drag/resize
   const updateEventFromDragResize = useCallback(
     async (eventData: Partial<CalendarEventItem>) => {
-      // Optimistic update
-      setLocalEvents((prev) =>
-        prev.map((e) =>
+      // Optimistic update - use events as base if localEvents is empty
+      setLocalEvents((prev) => {
+        const currentEvents = prev.length > 0 ? prev : events;
+        return currentEvents.map((e) =>
           e.id === eventData.id
             ? {
                 ...e,
@@ -502,8 +503,8 @@ export function CalendarView() {
                 allDay: eventData.allDay ?? e.allDay,
               }
             : e
-        )
-      );
+        );
+      });
 
       // Persist to Google Calendar
       if (eventData.id && (eventData.start || eventData.end)) {
@@ -527,7 +528,7 @@ export function CalendarView() {
         }
       }
     },
-    [mergedEvents, updateEvent, refresh]
+    [events, mergedEvents, updateEvent, refresh]
   );
 
   const flexStyles: SxProps<Theme> = {
