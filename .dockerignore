@@ -1,0 +1,46 @@
+# Environment files
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Dependencies (will be installed in container)
+node_modules
+**/node_modules
+
+# Build outputs
+**/dist
+**/build
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+**/__tests__
+
+# Documentation
+*.md
+docs/
+
+# Backups
+backups/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { taskPrioritySchema } from '../tasks/schema';
+import { taskPrioritySchema } from '../tasks/schema.js';
 
 // ----------------------------------------------------------------------
 

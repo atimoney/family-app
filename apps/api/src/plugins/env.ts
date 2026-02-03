@@ -87,7 +87,7 @@ const envPlugin: FastifyPluginAsync = async (fastify) => {
   await fastify.register(fastifyEnv, {
     confKey: 'config',
     schema,
-    dotenv: true,
+    dotenv: process.env.NODE_ENV !== 'production',
   });
 };
 
