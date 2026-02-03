@@ -38,6 +38,10 @@ jobs:
       # Build only the web app (adjust if your filter name differs)
       - name: Build web
         run: pnpm --filter web build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
 
       # Deploy the already-built output to Azure SWA
       - name: Deploy to Azure Static Web Apps
