@@ -5,7 +5,6 @@ import * as z from 'zod';
 import dayjs from 'dayjs';
 import { useForm } from 'react-hook-form';
 import { useMemo, useState, useEffect } from 'react';
-import { zodResolver } from '@hookform/resolvers/zod';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -23,6 +22,7 @@ import DialogContent from '@mui/material/DialogContent';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 
 import { Iconify } from 'src/components/iconify';
+import { zodResolver } from 'src/components/hook-form';
 
 import { TaskRecurrencePicker } from './task-recurrence-picker';
 import { TaskCalendarLinkButton } from './task-calendar-link-button';
