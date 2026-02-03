@@ -46,9 +46,9 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }} # for PR comments
           action: "upload"
-          # app_location is the source folder; output_location is RELATIVE to app_location
-          app_location: "apps/web"
-          output_location: "dist"
+          # Point directly at the build output folder
+          app_location: "apps/web/dist"
+          output_location: ""
           # We already built above, so tell the action not to rebuild
           skip_app_build: true
           skip_api_build: true
