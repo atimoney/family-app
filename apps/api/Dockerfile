@@ -17,6 +17,9 @@ COPY apps/api ./apps/api
 # Install deps (prod + build deps)
 RUN pnpm install --frozen-lockfile
 
+# Build shared package first (API depends on it)
+RUN pnpm --filter @family/shared build
+
 # Build API (adjust if your build script name differs)
 WORKDIR /app/apps/api
 RUN pnpm prisma generate
