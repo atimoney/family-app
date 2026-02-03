@@ -1,0 +1,68 @@
+name: Deploy Web (Azure Static Web Apps)
+
+on:
+  push:
+    branches:
+      - main
+
+  # Optional: build & deploy preview environments for PRs
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - main
+
+jobs:
+  build_and_deploy:
+    # Don't deploy on PR close (the "close" is handled by the cleanup job below)
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and Deploy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      # Install from repo root (monorepo)
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build only the web app (adjust if your filter name differs)
+      - name: Build web
+        run: pnpm --filter web build
+
+      # Deploy the already-built output to Azure SWA
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }} # for PR comments
+          action: "upload"
+          # app_location is the source folder (for metadata); output_location is the build folder
+          app_location: "apps/web"
+          output_location: "apps/web/dist"
+          # We already built above, so tell the action not to rebuild
+          skip_app_build: true
+          skip_api_build: true
+
+  close_pr_preview:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close PR Preview
+
+    steps:
+      - name: Close PR Preview Environment
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: "close"
