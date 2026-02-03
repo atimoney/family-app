@@ -3,7 +3,8 @@ import type { Session, SupabaseClient, AuthChangeEvent } from '@supabase/supabas
 import { createClient } from '@supabase/supabase-js';
 
 import { CONFIG } from 'src/global-config';
-import { env, buildRedirectUrl, validateSupabaseEnv } from 'src/config/env';
+import { paths } from 'src/routes/paths';
+import { env, validateSupabaseEnv } from 'src/config/env';
 
 // ----------------------------------------------------------------------
 
@@ -65,15 +66,21 @@ export function onAuthStateChange(
 
 /**
  * Sign in with Google OAuth.
- * Redirects the user to Google for authentication.
+ * Redirects the user to Google for authentication, then back to the callback page.
  *
- * @param redirectTo - Optional path to redirect to after sign-in (defaults to env.app.authRedirectPath)
+ * @param returnTo - Optional path to redirect to after sign-in callback (defaults to /family)
  */
-export async function signInWithGoogle(redirectTo?: string): Promise<void> {
+export async function signInWithGoogle(returnTo?: string): Promise<void> {
+  // Build callback URL with returnTo parameter
+  const callbackUrl = new URL(paths.auth.supabase.callback, window.location.origin);
+  if (returnTo) {
+    callbackUrl.searchParams.set('returnTo', returnTo);
+  }
+
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: buildRedirectUrl(redirectTo),
+      redirectTo: callbackUrl.toString(),
     },
   });
 
