@@ -22,7 +22,9 @@ RUN pnpm --filter @family/shared build
 
 # Build API (adjust if your build script name differs)
 WORKDIR /app/apps/api
-RUN pnpm prisma generate
+# Set NODE_ENV=production to prevent .env loading during prisma generate
+# Prisma generate only needs schema, not actual DB connection
+RUN NODE_ENV=production pnpm prisma generate
 RUN pnpm build
 
 
