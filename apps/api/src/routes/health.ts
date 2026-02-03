@@ -11,6 +11,19 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
     status: z.literal('ok'),
     service: z.string(),
     env: z.string().nullable(),
+    version: z.string().nullable().optional(),
+  });
+
+  // GET / - Root endpoint for probes and clients (public, no auth)
+  fastify.get('/', async () => {
+    const response = {
+      status: 'ok' as const,
+      service: 'family-api',
+      env: process.env.NODE_ENV ?? null,
+      version: process.env.APP_VERSION ?? null,
+    };
+    responseSchema.parse(response);
+    return response;
   });
 
   // GET /healthz - Primary health check endpoint (public, no auth)
@@ -33,6 +46,11 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
     };
     responseSchema.parse(response);
     return response;
+  });
+
+  // GET /favicon.ico - Return 204 to prevent browser spam in logs
+  fastify.get('/favicon.ico', async (_request, reply) => {
+    return reply.code(204).send();
   });
 };
 
