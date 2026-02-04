@@ -38,7 +38,7 @@
 #    - "AcrPush" on the Azure Container Registry
 #    - "Contributor" on the Container App (or Resource Group)
 #
-# =============================================================================
+# ===============================================================================
 
 name: Deploy API to Azure Container Apps
 
