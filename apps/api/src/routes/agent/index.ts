@@ -18,6 +18,7 @@ import {
   registerCalendarToolHandlers,
   registerMealToolHandlers,
   registerShoppingToolHandlers,
+  registerPrefsToolHandlers,
 } from '@family/mcp-server';
 import type { ToolContext } from '@family/mcp-server';
 import authPlugin from '../../plugins/auth.js';
@@ -26,6 +27,7 @@ import {
   createCalendarToolHandlers,
   createMealToolHandlers,
   createShoppingToolHandlers,
+  createPrefsToolHandlers,
 } from '../../lib/agent/index.js';
 import {
   chatRequestSchema,
@@ -91,6 +93,14 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
   registerShoppingToolHandlers(shoppingHandlers);
 
   fastify.log.info('Shopping tool handlers registered');
+
+  // --------------------------------------------------------------------------
+  // REGISTER PREFS (MEMORY) TOOL HANDLERS
+  // --------------------------------------------------------------------------
+  const prefsHandlers = createPrefsToolHandlers({ prisma: fastify.prisma });
+  registerPrefsToolHandlers(prefsHandlers);
+
+  fastify.log.info('Prefs tool handlers registered');
 
   // --------------------------------------------------------------------------
   // REGISTER TASKS AGENT EXECUTOR

@@ -588,6 +588,7 @@ model ShoppingListItem {
 }
 
 // Family preferences for meal planning (dietary restrictions, favorites, etc.)
+// DEPRECATED: Use FamilyPreference with key 'meals.dietary' instead
 model FamilyMealPreferences {
   id                 String   @id @default(cuid())
   familyId           String   @unique @map("family_id")
@@ -605,4 +606,41 @@ model FamilyMealPreferences {
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
   @@map("family_meal_preferences")
+}
+
+// ============================================================================
+// AGENT PREFERENCES (Structured memory for AI agents)
+// ============================================================================
+
+// Family-wide preferences accessible by all agents
+// Examples: meals.allergies, meals.defaultServings, calendar.defaultDuration
+model FamilyPreference {
+  id              String   @id @default(cuid())
+  familyId        String   @map("family_id")
+  key             String   // Dot-notation key, e.g., "meals.allergies", "tasks.defaultAssignee"
+  valueJson       Json     @map("value_json") // Arbitrary JSON value
+  updatedByUserId String   @map("updated_by_user_id") // Profile ID who last updated
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([familyId, key])
+  @@index([familyId])
+  @@map("family_preferences")
+}
+
+// Person-specific preferences within a family
+// Examples: meals.personalAllergies, tasks.preferredDueTime, calendar.timezone
+model PersonPreference {
+  id              String   @id @default(cuid())
+  familyId        String   @map("family_id")
+  userId          String   @map("user_id") // Profile ID (the person this pref is about)
+  key             String   // Dot-notation key, e.g., "meals.personalAllergies"
+  valueJson       Json     @map("value_json") // Arbitrary JSON value
+  updatedByUserId String   @map("updated_by_user_id") // Profile ID who last updated
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([familyId, userId, key])
+  @@index([familyId, userId])
+  @@map("person_preferences")
 }

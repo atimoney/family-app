@@ -112,7 +112,12 @@ export const shoppingGetItemsTool = defineTool({
     if (!shoppingToolHandlers.getItems) {
       return { success: false, error: 'Shopping getItems handler not registered' };
     }
-    return shoppingToolHandlers.getItems(input, context);
+    // Apply defaults
+    const parsedInput: ShoppingGetItemsInput = {
+      ...input,
+      limit: input.limit ?? 100,
+    };
+    return shoppingToolHandlers.getItems(parsedInput, context);
   },
 });
 
@@ -128,6 +133,11 @@ export const shoppingCheckItemsTool = defineTool({
     if (!shoppingToolHandlers.checkItems) {
       return { success: false, error: 'Shopping checkItems handler not registered' };
     }
-    return shoppingToolHandlers.checkItems(input, context);
+    // Apply defaults
+    const parsedInput: ShoppingCheckItemsInput = {
+      ...input,
+      checked: input.checked ?? true,
+    };
+    return shoppingToolHandlers.checkItems(parsedInput, context);
   },
 });

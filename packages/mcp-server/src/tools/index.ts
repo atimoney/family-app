@@ -51,3 +51,18 @@ export {
   shoppingToolHandlers,
   type ShoppingToolHandler,
 } from './shopping-tools.js';
+
+// Prefs (memory) tool schemas
+export * from './prefs-schemas.js';
+
+// Prefs tools
+export {
+  prefsGetTool,
+  prefsSetTool,
+  prefsDeleteTool,
+  prefsListTool,
+  prefsGetBulkTool,
+  registerPrefsToolHandlers,
+  prefsToolHandlers,
+  type PrefsToolHandler,
+} from './prefs-tools.js';

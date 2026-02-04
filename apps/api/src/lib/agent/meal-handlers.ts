@@ -521,7 +521,7 @@ export function createMealToolHandlers(deps: MealHandlerDependencies) {
     );
 
     try {
-      let list: { id: string; name: string } | null = null;
+      let list: { id: string; name: string; type: string } | null = null;
       let listId: string | null = null;
 
       if (input.listId) {
@@ -534,7 +534,7 @@ export function createMealToolHandlers(deps: MealHandlerDependencies) {
           },
         });
         if (found) {
-          list = { id: found.id, name: found.name };
+          list = { id: found.id, name: found.name, type: found.templateKey };
           listId = found.id;
         }
       } else if (input.weekStartDate) {
@@ -548,7 +548,7 @@ export function createMealToolHandlers(deps: MealHandlerDependencies) {
           },
         });
         if (found) {
-          list = { id: found.id, name: found.name };
+          list = { id: found.id, name: found.name, type: found.templateKey };
           listId = found.id;
         }
       }

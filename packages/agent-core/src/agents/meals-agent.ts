@@ -77,9 +77,99 @@ export type ToolExecutor = (
   input: Record<string, unknown>
 ) => Promise<ToolResult>;
 
+/**
+ * Loaded preferences for the meals agent.
+ */
+type MealsPreferences = {
+  allergies?: string[];
+  dietaryRestrictions?: string[];
+  defaultServings?: number;
+  kidFriendlyDefault?: boolean;
+  preferredDinnerTime?: string;
+  weekStartsMonday?: boolean;
+  dislikedIngredients?: string[];
+  budgetLevel?: 'budget' | 'moderate' | 'premium';
+  preferQuickMeals?: boolean;
+};
+
+// Preference keys for meals domain
+const MEALS_PREF_KEYS = {
+  ALLERGIES: 'meals.allergies',
+  DIETARY_RESTRICTIONS: 'meals.dietaryRestrictions',
+  DEFAULT_SERVINGS: 'meals.defaultServings',
+  KID_FRIENDLY_DEFAULT: 'meals.kidFriendlyDefault',
+  PREFERRED_DINNER_TIME: 'meals.preferredDinnerTime',
+  WEEK_STARTS_MONDAY: 'meals.weekStartsMonday',
+  DISLIKED_INGREDIENTS: 'meals.dislikedIngredients',
+  BUDGET_LEVEL: 'meals.budgetLevel',
+  PREFER_QUICK_MEALS: 'meals.preferQuickMeals',
+};
+
 // ----------------------------------------------------------------------
 // HELPERS
 // ----------------------------------------------------------------------
+
+/**
+ * Load meals-related preferences using the prefs.getBulk tool.
+ */
+async function loadMealsPreferences(
+  toolExecutor: ToolExecutor
+): Promise<MealsPreferences> {
+  const prefs: MealsPreferences = {};
+
+  try {
+    const result = await toolExecutor('prefs.getBulk', {
+      requests: [
+        { scope: 'family', key: MEALS_PREF_KEYS.ALLERGIES },
+        { scope: 'family', key: MEALS_PREF_KEYS.DIETARY_RESTRICTIONS },
+        { scope: 'family', key: MEALS_PREF_KEYS.DEFAULT_SERVINGS },
+        { scope: 'family', key: MEALS_PREF_KEYS.KID_FRIENDLY_DEFAULT },
+        { scope: 'family', key: MEALS_PREF_KEYS.PREFERRED_DINNER_TIME },
+        { scope: 'family', key: MEALS_PREF_KEYS.WEEK_STARTS_MONDAY },
+        { scope: 'family', key: MEALS_PREF_KEYS.DISLIKED_INGREDIENTS },
+        { scope: 'family', key: MEALS_PREF_KEYS.BUDGET_LEVEL },
+        { scope: 'family', key: MEALS_PREF_KEYS.PREFER_QUICK_MEALS },
+      ],
+    });
+
+    if (result.success && result.data) {
+      const data = result.data as { results: Record<string, unknown> };
+      const r = data.results;
+
+      if (Array.isArray(r[MEALS_PREF_KEYS.ALLERGIES])) {
+        prefs.allergies = r[MEALS_PREF_KEYS.ALLERGIES] as string[];
+      }
+      if (Array.isArray(r[MEALS_PREF_KEYS.DIETARY_RESTRICTIONS])) {
+        prefs.dietaryRestrictions = r[MEALS_PREF_KEYS.DIETARY_RESTRICTIONS] as string[];
+      }
+      if (typeof r[MEALS_PREF_KEYS.DEFAULT_SERVINGS] === 'number') {
+        prefs.defaultServings = r[MEALS_PREF_KEYS.DEFAULT_SERVINGS] as number;
+      }
+      if (typeof r[MEALS_PREF_KEYS.KID_FRIENDLY_DEFAULT] === 'boolean') {
+        prefs.kidFriendlyDefault = r[MEALS_PREF_KEYS.KID_FRIENDLY_DEFAULT] as boolean;
+      }
+      if (typeof r[MEALS_PREF_KEYS.PREFERRED_DINNER_TIME] === 'string') {
+        prefs.preferredDinnerTime = r[MEALS_PREF_KEYS.PREFERRED_DINNER_TIME] as string;
+      }
+      if (typeof r[MEALS_PREF_KEYS.WEEK_STARTS_MONDAY] === 'boolean') {
+        prefs.weekStartsMonday = r[MEALS_PREF_KEYS.WEEK_STARTS_MONDAY] as boolean;
+      }
+      if (Array.isArray(r[MEALS_PREF_KEYS.DISLIKED_INGREDIENTS])) {
+        prefs.dislikedIngredients = r[MEALS_PREF_KEYS.DISLIKED_INGREDIENTS] as string[];
+      }
+      if (typeof r[MEALS_PREF_KEYS.BUDGET_LEVEL] === 'string') {
+        prefs.budgetLevel = r[MEALS_PREF_KEYS.BUDGET_LEVEL] as 'budget' | 'moderate' | 'premium';
+      }
+      if (typeof r[MEALS_PREF_KEYS.PREFER_QUICK_MEALS] === 'boolean') {
+        prefs.preferQuickMeals = r[MEALS_PREF_KEYS.PREFER_QUICK_MEALS] as boolean;
+      }
+    }
+  } catch (err) {
+    // Preferences are optional, continue without them
+  }
+
+  return prefs;
+}
 
 /**
  * Get the Monday of the current or specified week.
@@ -151,9 +241,19 @@ function parseWeekReference(message: string, now: Date = new Date()): { weekStar
 }
 
 /**
+ * Constraints extracted from user message.
+ */
+type ExtractedConstraints = {
+  lowCarb?: boolean;
+  kidFriendly?: boolean;
+  vegetarian?: boolean;
+  allergies?: string[];
+};
+
+/**
  * Extract dietary constraints from message.
  */
-function extractConstraints(message: string): MealsIntent extends { type: 'generatePlan' } ? MealsIntent['constraints'] : undefined {
+function extractConstraints(message: string): ExtractedConstraints | undefined {
   const lower = message.toLowerCase();
   const constraints: {
     lowCarb?: boolean;
@@ -405,6 +505,60 @@ export async function executeMealsAgent(
 // INTENT HANDLERS
 // ----------------------------------------------------------------------
 
+/**
+ * Merge message-extracted constraints with stored preferences.
+ * Message constraints take precedence over stored prefs.
+ */
+function mergeConstraintsWithPreferences(
+  messageConstraints: ExtractedConstraints | undefined,
+  prefs: MealsPreferences
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+
+  // Start with stored preferences
+  if (prefs.allergies && prefs.allergies.length > 0) {
+    merged.allergies = prefs.allergies;
+  }
+  if (prefs.dietaryRestrictions && prefs.dietaryRestrictions.length > 0) {
+    merged.dietaryRestrictions = prefs.dietaryRestrictions;
+  }
+  if (prefs.kidFriendlyDefault) {
+    merged.kidFriendly = true;
+  }
+  if (prefs.dislikedIngredients && prefs.dislikedIngredients.length > 0) {
+    merged.dislikedIngredients = prefs.dislikedIngredients;
+  }
+  if (prefs.budgetLevel) {
+    merged.budgetLevel = prefs.budgetLevel;
+  }
+  if (prefs.preferQuickMeals) {
+    merged.preferQuickMeals = true;
+  }
+  if (prefs.defaultServings) {
+    merged.servings = prefs.defaultServings;
+  }
+
+  // Override with message constraints (explicit request takes priority)
+  if (messageConstraints) {
+    if (messageConstraints.lowCarb !== undefined) {
+      merged.lowCarb = messageConstraints.lowCarb;
+    }
+    if (messageConstraints.kidFriendly !== undefined) {
+      merged.kidFriendly = messageConstraints.kidFriendly;
+    }
+    if (messageConstraints.vegetarian !== undefined) {
+      merged.vegetarian = messageConstraints.vegetarian;
+    }
+    if (messageConstraints.allergies && messageConstraints.allergies.length > 0) {
+      // Merge allergies from message with stored allergies
+      const existingAllergies = (merged.allergies as string[]) || [];
+      merged.allergies = [...new Set([...existingAllergies, ...messageConstraints.allergies])];
+    }
+  }
+
+  return Object.keys(merged).length > 0 ? merged : {};
+}
+
 async function handleGeneratePlan(
   intent: Extract<MealsIntent, { type: 'generatePlan' }>,
   context: AgentRunContext,
@@ -412,9 +566,23 @@ async function handleGeneratePlan(
 ): Promise<MealsAgentResult> {
   const weekStartDate = intent.weekStartDate || getWeekStart();
 
+  // Load preferences to merge with message constraints
+  const prefs = await loadMealsPreferences(toolExecutor);
+  const mergedConstraints = mergeConstraintsWithPreferences(intent.constraints, prefs);
+
+  context.logger.debug(
+    { prefs, mergedConstraints, requestId: context.requestId },
+    'MealsAgent loaded preferences and merged constraints'
+  );
+
   const toolInput = {
     weekStartDate,
-    constraints: intent.constraints,
+    constraints: Object.keys(mergedConstraints).length > 0 ? mergedConstraints : undefined,
+    preferences: {
+      defaultServings: prefs.defaultServings,
+      weekStartsMonday: prefs.weekStartsMonday,
+      preferredDinnerTime: prefs.preferredDinnerTime,
+    },
   };
 
   // Generate plan is read-only, no confirmation needed
@@ -735,7 +903,7 @@ export async function executeMealsConfirmedAction(
   const { toolCall } = pendingAction;
 
   // Consume the pending action
-  pendingActionStore.consume(token);
+  pendingActionStore.consume(token, context.userId, context.familyId);
 
   context.logger.info(
     {

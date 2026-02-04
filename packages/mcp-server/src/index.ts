@@ -26,6 +26,11 @@ import {
   shoppingGetPrimaryListTool,
   shoppingGetItemsTool,
   shoppingCheckItemsTool,
+  prefsGetTool,
+  prefsSetTool,
+  prefsDeleteTool,
+  prefsListTool,
+  prefsGetBulkTool,
 } from './tools/index.js';
 
 toolRegistry.register(tasksListTool);
@@ -43,3 +48,10 @@ toolRegistry.register(shoppingAddItemsTool);
 toolRegistry.register(shoppingGetPrimaryListTool);
 toolRegistry.register(shoppingGetItemsTool);
 toolRegistry.register(shoppingCheckItemsTool);
+
+// Register preference (memory) tools
+toolRegistry.register(prefsGetTool);
+toolRegistry.register(prefsSetTool);
+toolRegistry.register(prefsDeleteTool);
+toolRegistry.register(prefsListTool);
+toolRegistry.register(prefsGetBulkTool);

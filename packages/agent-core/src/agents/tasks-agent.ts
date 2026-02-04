@@ -39,9 +39,72 @@ export type ToolExecutor = (
   input: Record<string, unknown>
 ) => Promise<ToolResult>;
 
+/**
+ * Loaded preferences for the tasks agent.
+ */
+type TasksPreferences = {
+  defaultAssignee?: string;
+  defaultDueTime?: string; // HH:mm format
+  defaultReminderOffset?: number; // minutes
+  defaultPriority?: 'low' | 'medium' | 'high' | 'urgent';
+};
+
+// Preference keys for tasks domain
+const TASKS_PREF_KEYS = {
+  DEFAULT_ASSIGNEE: 'tasks.defaultAssignee',
+  DEFAULT_DUE_TIME: 'tasks.defaultDueTime',
+  DEFAULT_REMINDER_OFFSET: 'tasks.defaultReminderOffset',
+  DEFAULT_PRIORITY: 'tasks.defaultPriority',
+};
+
 // ----------------------------------------------------------------------
-// INTENT PARSING
+// HELPERS
 // ----------------------------------------------------------------------
+
+/**
+ * Load tasks-related preferences using the prefs.getBulk tool.
+ */
+async function loadTasksPreferences(
+  toolExecutor: ToolExecutor
+): Promise<TasksPreferences> {
+  const prefs: TasksPreferences = {};
+
+  try {
+    const result = await toolExecutor('prefs.getBulk', {
+      requests: [
+        { scope: 'family', key: TASKS_PREF_KEYS.DEFAULT_ASSIGNEE },
+        { scope: 'family', key: TASKS_PREF_KEYS.DEFAULT_DUE_TIME },
+        { scope: 'family', key: TASKS_PREF_KEYS.DEFAULT_REMINDER_OFFSET },
+        { scope: 'family', key: TASKS_PREF_KEYS.DEFAULT_PRIORITY },
+      ],
+    });
+
+    if (result.success && result.data) {
+      const data = result.data as { results: Record<string, unknown> };
+      const r = data.results;
+
+      if (typeof r[TASKS_PREF_KEYS.DEFAULT_ASSIGNEE] === 'string') {
+        prefs.defaultAssignee = r[TASKS_PREF_KEYS.DEFAULT_ASSIGNEE] as string;
+      }
+      if (typeof r[TASKS_PREF_KEYS.DEFAULT_DUE_TIME] === 'string') {
+        prefs.defaultDueTime = r[TASKS_PREF_KEYS.DEFAULT_DUE_TIME] as string;
+      }
+      if (typeof r[TASKS_PREF_KEYS.DEFAULT_REMINDER_OFFSET] === 'number') {
+        prefs.defaultReminderOffset = r[TASKS_PREF_KEYS.DEFAULT_REMINDER_OFFSET] as number;
+      }
+      if (typeof r[TASKS_PREF_KEYS.DEFAULT_PRIORITY] === 'string') {
+        const p = r[TASKS_PREF_KEYS.DEFAULT_PRIORITY] as string;
+        if (['low', 'medium', 'high', 'urgent'].includes(p)) {
+          prefs.defaultPriority = p as TasksPreferences['defaultPriority'];
+        }
+      }
+    }
+  } catch (err) {
+    // Preferences are optional, continue without them
+  }
+
+  return prefs;
+}
 
 /**
  * Parse user message into a structured task intent.
@@ -447,18 +510,40 @@ async function handleCreateIntent(
     };
   }
 
-  // Build the tool input
+  // Load preferences to apply defaults
+  const prefs = await loadTasksPreferences(toolExecutor);
+
+  context.logger.debug(
+    { prefs, requestId: context.requestId },
+    'TasksAgent loaded preferences'
+  );
+
+  // Build the tool input, applying preference defaults
+  const priority = intent.priority ?? prefs.defaultPriority ?? 'medium';
   const input: Record<string, unknown> = {
     title: intent.title,
-    priority: intent.priority ?? 'medium',
+    priority,
   };
 
+  // Apply due date with default time if needed
   if (intent.dueAt) {
-    input.dueAt = intent.dueAt;
+    let dueAt = intent.dueAt;
+    // If due date has no time component and we have a default time preference
+    if (prefs.defaultDueTime && !intent.dueAt.includes('T')) {
+      dueAt = `${intent.dueAt}T${prefs.defaultDueTime}:00`;
+    }
+    input.dueAt = dueAt;
   }
 
   if (intent.notes) {
     input.notes = intent.notes;
+  }
+
+  // Apply default assignee if not specified
+  if (intent.assignee) {
+    input.assignedTo = intent.assignee;
+  } else if (prefs.defaultAssignee) {
+    input.assignedTo = prefs.defaultAssignee;
   }
 
   // Check if confirmation is required
@@ -466,10 +551,10 @@ async function handleCreateIntent(
   const needsConfirmation = requiresConfirmation(toolName, intent.confidence, false);
 
   if (needsConfirmation) {
-    const dueStr = intent.dueAt
-      ? ` due ${new Date(intent.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
+    const dueStr = input.dueAt
+      ? ` due ${new Date(input.dueAt as string).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
       : '';
-    const description = `I'll create a task: "${intent.title}"${dueStr} with ${intent.priority ?? 'medium'} priority.`;
+    const description = `I'll create a task: "${intent.title}"${dueStr} with ${priority} priority.`;
 
     context.logger.info(
       { toolName, confidence: intent.confidence, title: intent.title },

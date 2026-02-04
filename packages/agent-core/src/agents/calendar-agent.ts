@@ -68,9 +68,84 @@ export type ToolExecutor = (
   input: Record<string, unknown>
 ) => Promise<ToolResult>;
 
+/**
+ * Loaded preferences for the calendar agent.
+ */
+type CalendarPreferences = {
+  defaultDuration?: number; // minutes
+  preferredTimezone?: string; // IANA timezone
+  namingConvention?: string; // template for event names
+  defaultReminder?: number; // minutes before event
+  workHoursStart?: string; // HH:mm format
+  workHoursEnd?: string; // HH:mm format
+};
+
+// Preference keys for calendar domain
+const CALENDAR_PREF_KEYS = {
+  DEFAULT_DURATION: 'calendar.defaultDuration',
+  PREFERRED_TIMEZONE: 'calendar.preferredTimezone',
+  NAMING_CONVENTION: 'calendar.namingConvention',
+  DEFAULT_REMINDER: 'calendar.defaultReminder',
+  WORK_HOURS_START: 'calendar.workHoursStart',
+  WORK_HOURS_END: 'calendar.workHoursEnd',
+};
+
+// Default values (used when preferences not set)
+const DEFAULT_EVENT_DURATION_MINUTES = 60;
+
 // ----------------------------------------------------------------------
-// INTENT PARSING
+// HELPERS
 // ----------------------------------------------------------------------
+
+/**
+ * Load calendar-related preferences using the prefs.getBulk tool.
+ */
+async function loadCalendarPreferences(
+  toolExecutor: ToolExecutor
+): Promise<CalendarPreferences> {
+  const prefs: CalendarPreferences = {};
+
+  try {
+    const result = await toolExecutor('prefs.getBulk', {
+      requests: [
+        { scope: 'family', key: CALENDAR_PREF_KEYS.DEFAULT_DURATION },
+        { scope: 'family', key: CALENDAR_PREF_KEYS.PREFERRED_TIMEZONE },
+        { scope: 'family', key: CALENDAR_PREF_KEYS.NAMING_CONVENTION },
+        { scope: 'family', key: CALENDAR_PREF_KEYS.DEFAULT_REMINDER },
+        { scope: 'family', key: CALENDAR_PREF_KEYS.WORK_HOURS_START },
+        { scope: 'family', key: CALENDAR_PREF_KEYS.WORK_HOURS_END },
+      ],
+    });
+
+    if (result.success && result.data) {
+      const data = result.data as { results: Record<string, unknown> };
+      const r = data.results;
+
+      if (typeof r[CALENDAR_PREF_KEYS.DEFAULT_DURATION] === 'number') {
+        prefs.defaultDuration = r[CALENDAR_PREF_KEYS.DEFAULT_DURATION] as number;
+      }
+      if (typeof r[CALENDAR_PREF_KEYS.PREFERRED_TIMEZONE] === 'string') {
+        prefs.preferredTimezone = r[CALENDAR_PREF_KEYS.PREFERRED_TIMEZONE] as string;
+      }
+      if (typeof r[CALENDAR_PREF_KEYS.NAMING_CONVENTION] === 'string') {
+        prefs.namingConvention = r[CALENDAR_PREF_KEYS.NAMING_CONVENTION] as string;
+      }
+      if (typeof r[CALENDAR_PREF_KEYS.DEFAULT_REMINDER] === 'number') {
+        prefs.defaultReminder = r[CALENDAR_PREF_KEYS.DEFAULT_REMINDER] as number;
+      }
+      if (typeof r[CALENDAR_PREF_KEYS.WORK_HOURS_START] === 'string') {
+        prefs.workHoursStart = r[CALENDAR_PREF_KEYS.WORK_HOURS_START] as string;
+      }
+      if (typeof r[CALENDAR_PREF_KEYS.WORK_HOURS_END] === 'string') {
+        prefs.workHoursEnd = r[CALENDAR_PREF_KEYS.WORK_HOURS_END] as string;
+      }
+    }
+  } catch (err) {
+    // Preferences are optional, continue without them
+  }
+
+  return prefs;
+}
 
 /**
  * Parse user message into a structured calendar intent.
@@ -541,11 +616,28 @@ async function handleCreateIntent(
     };
   }
 
+  // Load preferences for default duration
+  const prefs = await loadCalendarPreferences(toolExecutor);
+  const defaultDurationMinutes = prefs.defaultDuration ?? DEFAULT_EVENT_DURATION_MINUTES;
+
+  context.logger.debug(
+    { prefs, requestId: context.requestId },
+    'CalendarAgent loaded preferences'
+  );
+
+  // Calculate end time using preference-based duration if not already set
+  let endAt = intent.endAt;
+  if (!endAt && intent.startAt && !intent.allDay) {
+    const start = new Date(intent.startAt);
+    const end = new Date(start.getTime() + defaultDurationMinutes * 60 * 1000);
+    endAt = end.toISOString();
+  }
+
   // Build tool input
   const input: Record<string, unknown> = {
     title: intent.title,
     startAt: intent.startAt,
-    endAt: intent.endAt,
+    endAt: endAt,
     allDay: intent.allDay,
   };
 
@@ -567,7 +659,8 @@ async function handleCreateIntent(
   if (needsConfirmation) {
     const dateStr = formatEventDate(intent.startAt!, intent.allDay);
     const locationStr = intent.location ? ` at ${intent.location}` : '';
-    const description = `I'll schedule "${intent.title}" for ${dateStr}${locationStr}.`;
+    const durationStr = !intent.allDay ? ` (${defaultDurationMinutes} min)` : '';
+    const description = `I'll schedule "${intent.title}" for ${dateStr}${durationStr}${locationStr}.`;
 
     context.logger.info(
       { toolName, confidence: intent.confidence, title: intent.title },
