@@ -8,3 +8,20 @@ export {
   systemPingTool,
   systemListToolsTool,
 } from './registry.js';
+
+// Task tools
+export * from './tools/index.js';
+
+// Register task tools with the registry
+import { toolRegistry } from './registry.js';
+import {
+  tasksListTool,
+  tasksCreateTool,
+  tasksCompleteTool,
+  tasksAssignTool,
+} from './tools/index.js';
+
+toolRegistry.register(tasksListTool);
+toolRegistry.register(tasksCreateTool);
+toolRegistry.register(tasksCompleteTool);
+toolRegistry.register(tasksAssignTool);

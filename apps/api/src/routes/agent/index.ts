@@ -1,10 +1,15 @@
 import type { FastifyPluginAsync, FastifyBaseLogger } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import { orchestrate } from '@family/agent-core';
-import type { AgentRequest, AgentRunContext, AgentLogger } from '@family/agent-core';
-import { toolRegistry } from '@family/mcp-server';
+import {
+  orchestrate,
+  registerAgentExecutor,
+  executeTasksAgent,
+} from '@family/agent-core';
+import type { AgentRequest, AgentRunContext, AgentLogger, ToolResult } from '@family/agent-core';
+import { toolRegistry, registerTaskToolHandlers } from '@family/mcp-server';
 import type { ToolContext } from '@family/mcp-server';
 import authPlugin from '../../plugins/auth.js';
+import { createTaskToolHandlers } from '../../lib/agent/index.js';
 import {
   chatRequestSchema,
   mcpInvokeRequestSchema,
@@ -37,6 +42,41 @@ function createRequestLogger(
 const agentRoutes: FastifyPluginAsync = async (fastify) => {
   // Register auth plugin
   await fastify.register(authPlugin);
+
+  // --------------------------------------------------------------------------
+  // REGISTER TASK TOOL HANDLERS
+  // --------------------------------------------------------------------------
+  const taskHandlers = createTaskToolHandlers({ prisma: fastify.prisma });
+  registerTaskToolHandlers(taskHandlers);
+
+  fastify.log.info('Task tool handlers registered');
+
+  // --------------------------------------------------------------------------
+  // REGISTER TASKS AGENT EXECUTOR
+  // --------------------------------------------------------------------------
+  registerAgentExecutor('tasks', async (message, context) => {
+    // Create a tool executor that uses the MCP registry
+    const toolExecutor = async (
+      toolName: string,
+      input: Record<string, unknown>
+    ): Promise<ToolResult> => {
+      const toolContext: ToolContext = {
+        requestId: context.requestId,
+        userId: context.userId,
+        familyId: context.familyId,
+        familyMemberId: context.familyMemberId,
+        roles: ['member'], // TODO: Get actual roles
+        timezone: context.timezone,
+        logger: context.logger,
+      };
+
+      return toolRegistry.invoke(toolName, input, toolContext);
+    };
+
+    return executeTasksAgent(message, context, toolExecutor);
+  });
+
+  fastify.log.info('TasksAgent executor registered');
 
   // Helper to get user's family membership
   async function getUserFamilyMembership(userId: string) {

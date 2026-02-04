@@ -405,3 +405,28 @@ model UserListPreferences {
   @@id([userId, listId])
   @@map("user_list_preferences")
 }
+
+// ============================================================================
+// AGENT AUDIT LOG
+// ============================================================================
+
+// Audit log for agent tool invocations
+model AgentAuditLog {
+  id          String   @id @default(cuid())
+  requestId   String   @map("request_id")
+  userId      String   @map("user_id")
+  familyId    String   @map("family_id")
+  toolName    String   @map("tool_name")
+  input       Json     // Tool input (sensitive fields redacted)
+  output      Json?    // Tool output (optional, for debugging)
+  success     Boolean
+  errorMessage String? @map("error_message")
+  executionMs Int?     @map("execution_ms")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([familyId, createdAt])
+  @@index([toolName, createdAt])
+  @@index([requestId])
+  @@map("agent_audit_logs")
+}
