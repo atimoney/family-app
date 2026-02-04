@@ -296,31 +296,57 @@ jobs:
           ENV_VARS="NODE_ENV=production"
           ENV_VARS="${ENV_VARS} PORT=${{ env.CONTAINER_PORT }}"
           
-          # Add Supabase config if secrets are provided
-          if [[ -n "${{ secrets.SUPABASE_URL }}" ]]; then
-            ENV_VARS="${ENV_VARS} SUPABASE_URL=${{ secrets.SUPABASE_URL }}"
-          fi
-          
-          if [[ -n "${{ secrets.SUPABASE_ANON_KEY }}" ]]; then
-            ENV_VARS="${ENV_VARS} SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}"
-          fi
-          
-          if [[ -n "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" ]]; then
-            ENV_VARS="${ENV_VARS} SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
-          fi
-          
-          # Add Database URL if provided
+          # Database (REQUIRED)
           if [[ -n "${{ secrets.DATABASE_URL }}" ]]; then
             ENV_VARS="${ENV_VARS} DATABASE_URL=${{ secrets.DATABASE_URL }}"
           fi
           
-          # Add any additional app config secrets
-          if [[ -n "${{ secrets.JWT_SECRET }}" ]]; then
-            ENV_VARS="${ENV_VARS} JWT_SECRET=${{ secrets.JWT_SECRET }}"
+          # Supabase Auth (REQUIRED)
+          if [[ -n "${{ secrets.SUPABASE_JWKS_URL }}" ]]; then
+            ENV_VARS="${ENV_VARS} SUPABASE_JWKS_URL=${{ secrets.SUPABASE_JWKS_URL }}"
           fi
           
+          if [[ -n "${{ secrets.SUPABASE_JWT_ISSUER }}" ]]; then
+            ENV_VARS="${ENV_VARS} SUPABASE_JWT_ISSUER=${{ secrets.SUPABASE_JWT_ISSUER }}"
+          fi
+          
+          if [[ -n "${{ secrets.SUPABASE_JWT_AUDIENCE }}" ]]; then
+            ENV_VARS="${ENV_VARS} SUPABASE_JWT_AUDIENCE=${{ secrets.SUPABASE_JWT_AUDIENCE }}"
+          fi
+          
+          # Google OAuth (REQUIRED)
+          if [[ -n "${{ secrets.GOOGLE_CLIENT_ID }}" ]]; then
+            ENV_VARS="${ENV_VARS} GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}"
+          fi
+          
+          if [[ -n "${{ secrets.GOOGLE_CLIENT_SECRET }}" ]]; then
+            ENV_VARS="${ENV_VARS} GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}"
+          fi
+          
+          if [[ -n "${{ secrets.GOOGLE_REDIRECT_URL }}" ]]; then
+            ENV_VARS="${ENV_VARS} GOOGLE_REDIRECT_URL=${{ secrets.GOOGLE_REDIRECT_URL }}"
+          fi
+          
+          if [[ -n "${{ secrets.GOOGLE_SCOPES }}" ]]; then
+            ENV_VARS="${ENV_VARS} GOOGLE_SCOPES=${{ secrets.GOOGLE_SCOPES }}"
+          fi
+          
+          # Security secrets (REQUIRED)
+          if [[ -n "${{ secrets.OAUTH_STATE_SECRET }}" ]]; then
+            ENV_VARS="${ENV_VARS} OAUTH_STATE_SECRET=${{ secrets.OAUTH_STATE_SECRET }}"
+          fi
+          
+          if [[ -n "${{ secrets.TOKEN_ENCRYPTION_KEY }}" ]]; then
+            ENV_VARS="${ENV_VARS} TOKEN_ENCRYPTION_KEY=${{ secrets.TOKEN_ENCRYPTION_KEY }}"
+          fi
+          
+          # Optional config
           if [[ -n "${{ secrets.CORS_ORIGIN }}" ]]; then
             ENV_VARS="${ENV_VARS} CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}"
+          fi
+          
+          if [[ -n "${{ secrets.FRONTEND_URL }}" ]]; then
+            ENV_VARS="${ENV_VARS} FRONTEND_URL=${{ secrets.FRONTEND_URL }}"
           fi
           
           # Build version info
