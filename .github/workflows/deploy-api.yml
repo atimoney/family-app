@@ -80,10 +80,8 @@ concurrency:
 
 env:
   # Docker/Registry settings
-  DOCKER_BUILDKIT: 1
   IMAGE_NAME: family-api
   DOCKERFILE_PATH: apps/api/Dockerfile
-  DOCKER_CONTEXT: .
   
   # Container App settings
   CONTAINER_NAME: api  # Name of the container in the Container App
@@ -159,10 +157,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          install: true
-          driver-opts: |
-            image=moby/buildkit:latest
 
       # -----------------------------------------------------------------------
       # Azure OIDC Login (no secrets stored - uses federated credentials)
@@ -224,13 +218,14 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Build and push Docker image
         id: build-push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
-          context: ${{ env.DOCKER_CONTEXT }}
+          context: .
           file: ${{ env.DOCKERFILE_PATH }}
           push: true
           tags: ${{ steps.tags.outputs.tags }}
-          platforms: linux/amd64
+          # Disable provenance to avoid context/attestation issues
+          provenance: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # Build args - can be extended as needed
