@@ -126,4 +126,5 @@ This repository represents a **standalone Vite + TypeScript reference install**.
 
 > **Important:**  
 > When copying folders or features between projects, remember to also copy any required hidden files such as `.env` or `.env.example`.  
-> These often contain environment variables required for the app to run correctly.
+> These often contain environment variables required for the app to run correctly. 
+>TBD
