@@ -1,4 +1,4 @@
-// Deployment trigger: 2026-02-04
+// Deployment trigger: 2026-02-04 v2
 import { buildServer } from './server.js';
 
 const app = buildServer();
