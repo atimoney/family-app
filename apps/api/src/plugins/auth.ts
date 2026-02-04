@@ -18,8 +18,17 @@ declare module 'fastify' {
 }
 
 const authPlugin: FastifyPluginAsync = async (fastify) => {
-  // Create remote JWKS for ES256 verification
-  const JWKS = createRemoteJWKSet(new URL(fastify.config.SUPABASE_JWKS_URL));
+  // Create remote JWKS for ES256 verification with timeout
+  // The JWKS is cached by jose, but the initial fetch can hang if network is blocked
+  const jwksUrl = new URL(fastify.config.SUPABASE_JWKS_URL);
+  fastify.log.info({ jwksUrl: jwksUrl.toString() }, 'Initializing JWKS from Supabase');
+
+  const JWKS = createRemoteJWKSet(jwksUrl, {
+    // Timeout for fetching JWKS (in ms)
+    timeoutDuration: 10000,
+    // Cache the JWKS for 1 hour
+    cooldownDuration: 3600000,
+  });
 
   const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
     const authHeader = request.headers.authorization;
@@ -31,10 +40,12 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
     const token = authHeader.slice('Bearer '.length);
 
     try {
+      fastify.log.debug('Verifying JWT token...');
       const { payload } = await jwtVerify(token, JWKS, {
         issuer: fastify.config.SUPABASE_JWT_ISSUER,
         audience: fastify.config.SUPABASE_JWT_AUDIENCE,
       });
+      fastify.log.debug({ userId: payload.sub }, 'JWT verified successfully');
 
       const userId = payload.sub;
 

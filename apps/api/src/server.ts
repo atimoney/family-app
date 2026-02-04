@@ -7,7 +7,10 @@ import routes from './routes/index.js';
 
 export function buildServer() {
   const fastify = Fastify({
-    logger: process.env.NODE_ENV !== 'production',
+    // Enable logging in all environments for better debugging
+    logger: {
+      level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+    },
   });
 
   // Register plugins
