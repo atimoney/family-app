@@ -331,6 +331,19 @@ jobs:
           echo "📝 Environment variables prepared ($(echo ${ENV_VARS} | wc -w) vars)"
 
       # -----------------------------------------------------------------------
+      # Construct image URI
+      # -----------------------------------------------------------------------
+      # We construct this here to ensure it's always available, even if 
+      # re-running the workflow from a failed deploy step.
+      # -----------------------------------------------------------------------
+      - name: Construct image URI
+        id: image
+        run: |
+          IMAGE_URI="${{ secrets.ACR_NAME }}.azurecr.io/family-api:${{ needs.setup.outputs.image_tag }}"
+          echo "uri=${IMAGE_URI}" >> $GITHUB_OUTPUT
+          echo "📦 Image URI: ${IMAGE_URI}"
+
+      # -----------------------------------------------------------------------
       # Deploy to Container App
       # -----------------------------------------------------------------------
       - name: Deploy to Azure Container Apps
@@ -338,14 +351,14 @@ jobs:
         run: |
           echo "🚀 Deploying to Container App: ${{ secrets.CONTAINERAPP_NAME }}"
           echo "   Resource Group: ${{ secrets.RESOURCE_GROUP }}"
-          echo "   Image: ${{ needs.build.outputs.image_uri }}"
+          echo "   Image: ${{ steps.image.outputs.uri }}"
           
           # Update the container app with the new image and environment variables
           # If you have multiple containers, specify --container-name
           RESULT=$(az containerapp update \
             --name "${{ secrets.CONTAINERAPP_NAME }}" \
             --resource-group "${{ secrets.RESOURCE_GROUP }}" \
-            --image "${{ needs.build.outputs.image_uri }}" \
+            --image "${{ steps.image.outputs.uri }}" \
             --container-name "${{ env.CONTAINER_NAME }}" \
             --set-env-vars ${{ steps.prepare-env.outputs.env_vars }} \
             --output json)
@@ -473,7 +486,7 @@ jobs:
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Environment | \`${{ needs.setup.outputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Container App | \`${{ secrets.CONTAINERAPP_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | \`${{ needs.build.outputs.image_uri }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`${{ steps.image.outputs.uri }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Revision | \`${{ steps.deploy.outputs.revision_name }}\` |" >> $GITHUB_STEP_SUMMARY
           if [[ -n "${{ steps.get-fqdn.outputs.app_url }}" ]]; then
             echo "| URL | ${{ steps.get-fqdn.outputs.app_url }} |" >> $GITHUB_STEP_SUMMARY
