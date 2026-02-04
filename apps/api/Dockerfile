@@ -29,12 +29,13 @@ RUN pnpm build
 
 
 # ---------- Runtime stage ----------
-FROM node:20-bookworm-slim
+# Using Alpine for better compatibility with Azure Container Apps cgroups
+FROM node:20-alpine
 
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Enable pnpm
+# Enable pnpm (corepack is included in node:20-alpine)
 RUN corepack enable
 
 # Copy only what we need
