@@ -55,6 +55,28 @@ export type AgentRequest = {
   conversationId?: string;
   /** Optional hint to route to a specific domain */
   domainHint?: AgentDomain;
+  /** Confirmation token for a pending action */
+  confirmationToken?: string;
+  /** Explicit confirmation flag (must be true to execute) */
+  confirmed?: boolean;
+};
+
+/**
+ * Pending action awaiting confirmation.
+ */
+export type PendingActionInfo = {
+  /** Confirmation token to send back */
+  token: string;
+  /** Human-readable description of the action */
+  description: string;
+  /** The tool that will be called */
+  toolName: string;
+  /** Preview of the input (sanitized) */
+  inputPreview: Record<string, unknown>;
+  /** When the token expires */
+  expiresAt: string;
+  /** Whether this is a destructive action */
+  isDestructive: boolean;
 };
 
 /**
@@ -73,6 +95,10 @@ export type AgentResponse = {
   conversationId: string;
   /** Request ID for tracing */
   requestId: string;
+  /** Whether this response requires user confirmation before proceeding */
+  requiresConfirmation?: boolean;
+  /** Details about the pending action (if requiresConfirmation is true) */
+  pendingAction?: PendingActionInfo;
 };
 
 /**
@@ -115,6 +141,8 @@ export const agentRequestSchema = z.object({
   message: z.string().min(1, 'Message is required').max(4000),
   conversationId: z.string().optional(),
   domainHint: agentDomainSchema.optional(),
+  confirmationToken: z.string().regex(/^pa_[a-f0-9]{32}$/, 'Invalid confirmation token format').optional(),
+  confirmed: z.boolean().optional(),
 });
 
 export const toolCallSchema = z.object({
@@ -135,6 +163,15 @@ export const agentActionSchema = z.object({
   result: toolResultSchema,
 });
 
+export const pendingActionInfoSchema = z.object({
+  token: z.string(),
+  description: z.string(),
+  toolName: z.string(),
+  inputPreview: z.record(z.unknown()),
+  expiresAt: z.string(),
+  isDestructive: z.boolean(),
+});
+
 export const agentResponseSchema = z.object({
   text: z.string(),
   actions: z.array(agentActionSchema),
@@ -142,4 +179,6 @@ export const agentResponseSchema = z.object({
   domain: agentDomainSchema,
   conversationId: z.string(),
   requestId: z.string(),
+  requiresConfirmation: z.boolean().optional(),
+  pendingAction: pendingActionInfoSchema.optional(),
 });

@@ -4,6 +4,7 @@ import type {
   AgentRunContext,
   AgentDomain,
   AgentAction,
+  PendingActionInfo,
 } from './types.js';
 import { routeIntent } from './router.js';
 
@@ -12,16 +13,23 @@ import { routeIntent } from './router.js';
 // ----------------------------------------------------------------------
 
 /**
+ * Result from an agent executor.
+ */
+export type AgentExecutorResult = {
+  text: string;
+  actions: AgentAction[];
+  payload?: Record<string, unknown>;
+  requiresConfirmation?: boolean;
+  pendingAction?: PendingActionInfo;
+};
+
+/**
  * Executor function signature for specialist agents.
  */
 export type AgentExecutor = (
   message: string,
   context: AgentRunContext
-) => Promise<{
-  text: string;
-  actions: AgentAction[];
-  payload?: Record<string, unknown>;
-}>;
+) => Promise<AgentExecutorResult>;
 
 /**
  * Registry of specialist agent executors by domain.
@@ -121,7 +129,7 @@ export async function orchestrate(
   const executor = getAgentExecutor(route.domain) ?? getAgentExecutor('unknown')!;
 
   // Step 3: Execute the specialist agent
-  let result: Awaited<ReturnType<AgentExecutor>>;
+  let result: AgentExecutorResult;
   try {
     result = await executor(request.message, context);
   } catch (error) {
@@ -150,6 +158,7 @@ export async function orchestrate(
       domain: route.domain,
       durationMs,
       actionCount: result.actions.length,
+      requiresConfirmation: result.requiresConfirmation ?? false,
     },
     'Orchestrator: request completed'
   );
@@ -162,5 +171,7 @@ export async function orchestrate(
     domain: route.domain,
     conversationId: context.conversationId,
     requestId: context.requestId,
+    requiresConfirmation: result.requiresConfirmation,
+    pendingAction: result.pendingAction,
   };
 }

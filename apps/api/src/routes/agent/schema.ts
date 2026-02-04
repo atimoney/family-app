@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { agentRequestSchema } from '@family/agent-core';
+import { agentRequestSchema, pendingActionInfoSchema } from '@family/agent-core';
 import { toolInvokeRequestSchema } from '@family/mcp-server';
 
 // ----------------------------------------------------------------------
@@ -26,6 +26,8 @@ export const chatResponseSchema = z.object({
   domain: z.enum(['tasks', 'calendar', 'meals', 'lists', 'unknown']),
   conversationId: z.string(),
   requestId: z.string(),
+  requiresConfirmation: z.boolean().optional(),
+  pendingAction: pendingActionInfoSchema.optional(),
 });
 
 // ----------------------------------------------------------------------

@@ -7,7 +7,9 @@ function createMockContext(overrides?: Partial<AgentRunContext>): AgentRunContex
   return {
     userId: 'user-123',
     familyId: 'family-456',
+    familyMemberId: 'member-789',
     requestId: 'req-789',
+    conversationId: 'conv-123',
     logger: {
       debug: vi.fn(),
       info: vi.fn(),

@@ -4,6 +4,8 @@ import {
   orchestrate,
   registerAgentExecutor,
   executeTasksAgent,
+  executeConfirmedAction,
+  pendingActionStore,
 } from '@family/agent-core';
 import type { AgentRequest, AgentRunContext, AgentLogger, ToolResult } from '@family/agent-core';
 import { toolRegistry, registerTaskToolHandlers } from '@family/mcp-server';
@@ -97,7 +99,13 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /agent/chat - Main agent conversation endpoint
   // --------------------------------------------------------------------------
   fastify.post<{
-    Body: { message: string; conversationId?: string; domainHint?: string };
+    Body: {
+      message: string;
+      conversationId?: string;
+      domainHint?: string;
+      confirmationToken?: string;
+      confirmed?: boolean;
+    };
   }>('/chat', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const userId = request.user?.id;
     if (!userId) {
@@ -122,15 +130,6 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
     const conversationId = parsed.data.conversationId ?? randomUUID();
     const logger = createRequestLogger(fastify.log, requestId);
 
-    logger.info(
-      {
-        userId,
-        familyId: membership.familyId,
-        message: parsed.data.message.substring(0, 100),
-      },
-      'Agent chat request received'
-    );
-
     // Build agent run context
     const context: AgentRunContext = {
       requestId,
@@ -141,6 +140,67 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
       conversationId,
       logger,
     };
+
+    // --------------------------------------------------------------------------
+    // HANDLE CONFIRMATION FLOW
+    // --------------------------------------------------------------------------
+    if (parsed.data.confirmationToken && parsed.data.confirmed === true) {
+      logger.info(
+        {
+          userId,
+          familyId: membership.familyId,
+          token: parsed.data.confirmationToken,
+        },
+        'Processing confirmation request'
+      );
+
+      // Create a tool executor for the confirmed action
+      const toolExecutor = async (
+        toolName: string,
+        input: Record<string, unknown>
+      ): Promise<ToolResult> => {
+        const toolContext: ToolContext = {
+          requestId: context.requestId,
+          userId: context.userId,
+          familyId: context.familyId,
+          familyMemberId: context.familyMemberId,
+          roles: ['member'],
+          timezone: context.timezone,
+          logger: context.logger,
+        };
+        return toolRegistry.invoke(toolName, input, toolContext);
+      };
+
+      // Execute the confirmed action
+      const result = await executeConfirmedAction(
+        parsed.data.confirmationToken,
+        context,
+        toolExecutor
+      );
+
+      return {
+        text: result.text,
+        actions: result.actions,
+        payload: result.payload,
+        domain: 'tasks' as const, // Confirmed actions are domain-specific
+        conversationId,
+        requestId,
+        requiresConfirmation: result.requiresConfirmation,
+        pendingAction: result.pendingAction,
+      };
+    }
+
+    // --------------------------------------------------------------------------
+    // REGULAR CHAT FLOW
+    // --------------------------------------------------------------------------
+    logger.info(
+      {
+        userId,
+        familyId: membership.familyId,
+        message: parsed.data.message.substring(0, 100),
+      },
+      'Agent chat request received'
+    );
 
     // Build agent request
     const agentRequest: AgentRequest = {

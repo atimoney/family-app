@@ -1,5 +1,11 @@
-import type { AgentRunContext, AgentAction, ToolResult } from '../types.js';
+import type { AgentRunContext, AgentAction, ToolResult, ToolCall, PendingActionInfo } from '../types.js';
 import { extractDateTimeFromMessage } from '../utils/date-parser.js';
+import {
+  pendingActionStore,
+  isWriteTool,
+  isDestructiveTool,
+  CONFIDENCE_THRESHOLD,
+} from '../confirmation.js';
 
 // ----------------------------------------------------------------------
 // TYPES
@@ -9,17 +15,21 @@ export type TasksAgentResult = {
   text: string;
   actions: AgentAction[];
   payload?: Record<string, unknown>;
+  /** If true, response requires user confirmation */
+  requiresConfirmation?: boolean;
+  /** Details about pending action */
+  pendingAction?: PendingActionInfo;
 };
 
 /**
  * Parsed intent from user message.
  */
 type TaskIntent =
-  | { type: 'create'; title: string; dueAt: string | null; assignee: string | null; notes: string | null; priority: string | null; needsClarification: 'date' | null }
-  | { type: 'list'; status: 'open' | 'done' | null; assignee: string | null }
-  | { type: 'complete'; taskTitle: string | null; taskId: string | null }
-  | { type: 'assign'; taskTitle: string | null; taskId: string | null; assignee: string | null }
-  | { type: 'unclear' };
+  | { type: 'create'; title: string; dueAt: string | null; assignee: string | null; notes: string | null; priority: string | null; needsClarification: 'date' | null; confidence: number }
+  | { type: 'list'; status: 'open' | 'done' | null; assignee: string | null; confidence: number }
+  | { type: 'complete'; taskTitle: string | null; taskId: string | null; confidence: number }
+  | { type: 'assign'; taskTitle: string | null; taskId: string | null; assignee: string | null; confidence: number }
+  | { type: 'unclear'; confidence: number };
 
 /**
  * Tool executor function injected by the API layer.
@@ -40,19 +50,19 @@ export type ToolExecutor = (
 function parseTaskIntent(message: string, context: AgentRunContext): TaskIntent {
   const lower = message.toLowerCase();
 
-  // CREATE patterns
-  const createPatterns = [
-    /^(?:create|add|new|make)\s+(?:a\s+)?task[:\s]+(.+)$/i,
-    /^task[:\s]+(.+)$/i,
-    /^(?:remind|reminder)[:\s]+(.+)$/i,
-    /^(?:i need to|need to|gotta|have to)\s+(.+)$/i,
+  // CREATE patterns - ordered by specificity (more specific = higher confidence)
+  const createPatterns: Array<{ pattern: RegExp; confidence: number }> = [
+    { pattern: /^(?:create|add|new|make)\s+(?:a\s+)?task[:\s]+(.+)$/i, confidence: 0.95 },
+    { pattern: /^task[:\s]+(.+)$/i, confidence: 0.90 },
+    { pattern: /^(?:remind|reminder)[:\s]+(.+)$/i, confidence: 0.85 },
+    { pattern: /^(?:i need to|need to|gotta|have to)\s+(.+)$/i, confidence: 0.75 },
   ];
 
-  for (const pattern of createPatterns) {
+  for (const { pattern, confidence } of createPatterns) {
     const match = message.match(pattern);
     if (match) {
       const remainder = match[1].trim();
-      return parseCreateIntent(remainder, context);
+      return parseCreateIntent(remainder, context, confidence);
     }
   }
 
@@ -74,32 +84,33 @@ function parseTaskIntent(message: string, context: AgentRunContext): TaskIntent 
       assignee = 'me'; // Will be resolved to current user
     }
 
-    return { type: 'list', status, assignee };
+    // List is read-only, high confidence
+    return { type: 'list', status, assignee, confidence: 0.95 };
   }
 
   // COMPLETE patterns
-  const completePatterns = [
-    /^(?:complete|done|finish|mark\s+(?:as\s+)?done)[:\s]+(.+)$/i,
-    /^(?:i\s+)?(?:finished|completed|done\s+with)[:\s]+(.+)$/i,
+  const completePatterns: Array<{ pattern: RegExp; confidence: number }> = [
+    { pattern: /^(?:complete|done|finish|mark\s+(?:as\s+)?done)[:\s]+(.+)$/i, confidence: 0.90 },
+    { pattern: /^(?:i\s+)?(?:finished|completed|done\s+with)[:\s]+(.+)$/i, confidence: 0.85 },
   ];
 
-  for (const pattern of completePatterns) {
+  for (const { pattern, confidence } of completePatterns) {
     const match = message.match(pattern);
     if (match) {
-      return { type: 'complete', taskTitle: match[1].trim(), taskId: null };
+      return { type: 'complete', taskTitle: match[1].trim(), taskId: null, confidence };
     }
   }
 
   // ASSIGN patterns
-  const assignPatterns = [
-    /^assign\s+["']?(.+?)["']?\s+to\s+(\w+)$/i,
-    /^give\s+["']?(.+?)["']?\s+to\s+(\w+)$/i,
+  const assignPatterns: Array<{ pattern: RegExp; confidence: number }> = [
+    { pattern: /^assign\s+["']?(.+?)["']?\s+to\s+(\w+)$/i, confidence: 0.90 },
+    { pattern: /^give\s+["']?(.+?)["']?\s+to\s+(\w+)$/i, confidence: 0.80 },
   ];
 
-  for (const pattern of assignPatterns) {
+  for (const { pattern, confidence } of assignPatterns) {
     const match = message.match(pattern);
     if (match) {
-      return { type: 'assign', taskTitle: match[1].trim(), taskId: null, assignee: match[2] };
+      return { type: 'assign', taskTitle: match[1].trim(), taskId: null, assignee: match[2], confidence };
     }
   }
 
@@ -107,17 +118,18 @@ function parseTaskIntent(message: string, context: AgentRunContext): TaskIntent 
   if (/task|todo|remind/i.test(lower)) {
     // Default to create if it looks like a task description
     if (lower.length > 5 && !/\?$/.test(lower)) {
-      return parseCreateIntent(message, context);
+      // Lower confidence for implicit creates
+      return parseCreateIntent(message, context, 0.65);
     }
   }
 
-  return { type: 'unclear' };
+  return { type: 'unclear', confidence: 0.0 };
 }
 
 /**
  * Parse a create intent from the remainder of the message.
  */
-function parseCreateIntent(remainder: string, context: AgentRunContext): TaskIntent {
+function parseCreateIntent(remainder: string, context: AgentRunContext, baseConfidence: number): TaskIntent {
   // Extract due date
   const dateResult = extractDateTimeFromMessage(remainder, new Date());
 
@@ -154,6 +166,24 @@ function parseCreateIntent(remainder: string, context: AgentRunContext): TaskInt
     // Don't remove from title yet - might be part of the task description
   }
 
+  // Calculate final confidence
+  let confidence = baseConfidence;
+
+  // Reduce confidence if date parsing was uncertain
+  if (dateResult.extracted && !dateResult.confident) {
+    confidence *= 0.8;
+  }
+
+  // Reduce confidence if title is very short or generic
+  if (title.length < 5) {
+    confidence *= 0.7;
+  }
+
+  // Reduce confidence if title has question marks
+  if (title.includes('?')) {
+    confidence *= 0.5;
+  }
+
   // If date was found but not confident, ask for clarification
   const needsClarification = dateResult.extracted && !dateResult.confident ? 'date' as const : null;
 
@@ -165,6 +195,7 @@ function parseCreateIntent(remainder: string, context: AgentRunContext): TaskInt
     notes: null,
     priority,
     needsClarification,
+    confidence,
   };
 }
 
@@ -175,6 +206,104 @@ function escapeRegex(str: string): string {
 // ----------------------------------------------------------------------
 // TASKS AGENT EXECUTOR
 // ----------------------------------------------------------------------
+
+/**
+ * Execute a confirmed pending action.
+ * Called when user provides confirmationToken + confirmed: true.
+ */
+export async function executeConfirmedAction(
+  confirmationToken: string,
+  context: AgentRunContext,
+  toolExecutor: ToolExecutor
+): Promise<TasksAgentResult> {
+  // Consume (get and delete) the pending action
+  const result = pendingActionStore.consume(
+    confirmationToken,
+    context.userId,
+    context.familyId
+  );
+
+  if (!result.found) {
+    const errorMessages: Record<string, string> = {
+      not_found: 'This confirmation has already been used or does not exist.',
+      expired: 'This confirmation has expired. Please start again.',
+      user_mismatch: 'This confirmation belongs to a different user.',
+      family_mismatch: 'This confirmation is for a different family context.',
+    };
+
+    context.logger.warn(
+      { token: confirmationToken, reason: result.reason },
+      'TasksAgent: confirmation validation failed'
+    );
+
+    return {
+      text: `❌ ${errorMessages[result.reason] || 'Invalid confirmation.'}`,
+      actions: [],
+      payload: { error: result.reason },
+    };
+  }
+
+  const { action: pendingAction } = result;
+
+  context.logger.info(
+    {
+      token: confirmationToken,
+      toolName: pendingAction.toolCall.toolName,
+      originalRequestId: pendingAction.requestId,
+    },
+    'TasksAgent: executing confirmed action'
+  );
+
+  // Execute the tool
+  const toolResult = await toolExecutor(
+    pendingAction.toolCall.toolName,
+    pendingAction.toolCall.input
+  );
+
+  const agentAction: AgentAction = {
+    tool: pendingAction.toolCall.toolName,
+    input: pendingAction.toolCall.input,
+    result: toolResult,
+  };
+
+  if (toolResult.success) {
+    // Format success message based on tool
+    const toolName = pendingAction.toolCall.toolName;
+
+    if (toolName === 'tasks.create' && toolResult.data) {
+      const task = (toolResult.data as { task: { title: string; dueAt?: string | null } }).task;
+      const dueStr = task.dueAt
+        ? ` Due: ${new Date(task.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
+        : '';
+      return {
+        text: `✅ Created task: "${task.title}"${dueStr}`,
+        actions: [agentAction],
+        payload: { task },
+      };
+    }
+
+    if (toolName === 'tasks.complete') {
+      return {
+        text: `✅ Task marked as complete.`,
+        actions: [agentAction],
+        payload: { success: true },
+      };
+    }
+
+    // Generic success
+    return {
+      text: `✅ Action completed successfully.`,
+      actions: [agentAction],
+      payload: toolResult.data as Record<string, unknown> | undefined,
+    };
+  } else {
+    return {
+      text: `❌ Sorry, the action failed. ${toolResult.error || 'Please try again.'}`,
+      actions: [agentAction],
+      payload: { error: toolResult.error },
+    };
+  }
+}
 
 /**
  * Execute the TasksAgent.
@@ -223,6 +352,76 @@ export async function executeTasksAgent(
 // INTENT HANDLERS
 // ----------------------------------------------------------------------
 
+/**
+ * Check if confirmation is required for this action.
+ * Write operations require confirmation if:
+ * - Confidence is below threshold, OR
+ * - Action is destructive
+ */
+function requiresConfirmation(
+  toolName: string,
+  confidence: number,
+  isDestructive: boolean
+): boolean {
+  // Read operations never need confirmation
+  if (!isWriteTool(toolName)) {
+    return false;
+  }
+
+  // Destructive actions always need confirmation
+  if (isDestructive) {
+    return true;
+  }
+
+  // Low confidence needs confirmation
+  if (confidence < CONFIDENCE_THRESHOLD) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Create a pending action and return confirmation result.
+ */
+function createPendingConfirmation(
+  toolName: string,
+  input: Record<string, unknown>,
+  description: string,
+  context: AgentRunContext,
+  isDestructive: boolean
+): TasksAgentResult {
+  const toolCall: ToolCall = { toolName, input };
+  
+  const pendingAction = pendingActionStore.create({
+    userId: context.userId,
+    familyId: context.familyId,
+    requestId: context.requestId,
+    conversationId: context.conversationId,
+    toolCall,
+    description,
+    isDestructive,
+    ttlMs: 5 * 60 * 1000, // 5 minutes
+  });
+
+  const pendingActionInfo: PendingActionInfo = {
+    token: pendingAction.token,
+    description: pendingAction.description,
+    toolName: pendingAction.toolCall.toolName,
+    inputPreview: pendingAction.toolCall.input,
+    expiresAt: new Date(pendingAction.createdAt.getTime() + pendingAction.ttlMs).toISOString(),
+    isDestructive: pendingAction.isDestructive,
+  };
+
+  return {
+    text: description + '\n\nPlease confirm to proceed, or say "cancel" to abort.',
+    actions: [],
+    payload: { confirmationRequired: true },
+    requiresConfirmation: true,
+    pendingAction: pendingActionInfo,
+  };
+}
+
 async function handleCreateIntent(
   intent: Extract<TaskIntent, { type: 'create' }>,
   context: AgentRunContext,
@@ -248,7 +447,7 @@ async function handleCreateIntent(
     };
   }
 
-  // Execute the tool
+  // Build the tool input
   const input: Record<string, unknown> = {
     title: intent.title,
     priority: intent.priority ?? 'medium',
@@ -262,13 +461,29 @@ async function handleCreateIntent(
     input.notes = intent.notes;
   }
 
-  // Note: assignee resolution would need family member lookup
-  // For now, we don't resolve names to IDs in the agent
+  // Check if confirmation is required
+  const toolName = 'tasks.create';
+  const needsConfirmation = requiresConfirmation(toolName, intent.confidence, false);
 
-  const result = await toolExecutor('tasks.create', input);
+  if (needsConfirmation) {
+    const dueStr = intent.dueAt
+      ? ` due ${new Date(intent.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
+      : '';
+    const description = `I'll create a task: "${intent.title}"${dueStr} with ${intent.priority ?? 'medium'} priority.`;
+
+    context.logger.info(
+      { toolName, confidence: intent.confidence, title: intent.title },
+      'TasksAgent: requesting confirmation for create'
+    );
+
+    return createPendingConfirmation(toolName, input, description, context, false);
+  }
+
+  // Execute the tool directly (high confidence, non-destructive)
+  const result = await toolExecutor(toolName, input);
 
   const action: AgentAction = {
-    tool: 'tasks.create',
+    tool: toolName,
     input,
     result,
   };
@@ -393,13 +608,29 @@ async function handleCompleteIntent(
     };
   }
 
-  // Complete the task
+  // Found exactly one task - check if confirmation required
   const task = matchingTasks[0];
-  const result = await toolExecutor('tasks.complete', { taskId: task.id });
+  const toolName = 'tasks.complete';
+  const input = { taskId: task.id };
+  const needsConfirmation = requiresConfirmation(toolName, intent.confidence, false);
+
+  if (needsConfirmation) {
+    const description = `I'll mark "${task.title}" as complete.`;
+
+    context.logger.info(
+      { toolName, confidence: intent.confidence, taskTitle: task.title },
+      'TasksAgent: requesting confirmation for complete'
+    );
+
+    return createPendingConfirmation(toolName, input, description, context, false);
+  }
+
+  // Execute directly
+  const result = await toolExecutor(toolName, input);
 
   const action: AgentAction = {
-    tool: 'tasks.complete',
-    input: { taskId: task.id },
+    tool: toolName,
+    input,
     result,
   };
 

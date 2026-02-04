@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createTaskToolHandlers, type TaskToolHandlers } from './task-handlers.js';
+import { createTaskToolHandlers } from './task-handlers.js';
 import type { PrismaClient } from '@prisma/client';
 
 // Mock Prisma client factory with all needed methods
@@ -30,6 +30,7 @@ function createMockContext() {
     familyId: 'family-456',
     familyMemberId: 'member-123',
     requestId: 'req-789',
+    roles: ['member'],
     logger: {
       debug: vi.fn(),
       info: vi.fn(),
@@ -40,7 +41,7 @@ function createMockContext() {
 }
 
 describe('task-handlers', () => {
-  let handlers: TaskToolHandlers;
+  let handlers: ReturnType<typeof createTaskToolHandlers>;
   let mockPrisma: ReturnType<typeof createMockPrisma>;
 
   beforeEach(() => {
@@ -68,7 +69,8 @@ describe('task-handlers', () => {
         },
       ];
 
-      vi.mocked(mockPrisma.task.findMany).mockResolvedValue(mockTasks);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(mockPrisma.task.findMany).mockResolvedValue(mockTasks as any);
       vi.mocked(mockPrisma.task.count).mockResolvedValue(1);
 
       const context = createMockContext();
@@ -149,7 +151,8 @@ describe('task-handlers', () => {
         updatedAt: new Date('2025-02-04T10:00:00Z'),
       };
 
-      vi.mocked(mockPrisma.task.create).mockResolvedValue(mockCreatedTask);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(mockPrisma.task.create).mockResolvedValue(mockCreatedTask as any);
 
       const context = createMockContext();
       const result = await handlers.create(
@@ -219,7 +222,8 @@ describe('task-handlers', () => {
         updatedAt: new Date('2025-02-04T10:00:00Z'),
       };
 
-      vi.mocked(mockPrisma.task.create).mockResolvedValue(mockCreatedTask);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(mockPrisma.task.create).mockResolvedValue(mockCreatedTask as any);
 
       const context = createMockContext();
       const result = await handlers.create(
@@ -259,8 +263,10 @@ describe('task-handlers', () => {
         completedAt: new Date('2025-02-04T14:00:00Z'),
       };
 
-      vi.mocked(mockPrisma.task.findFirst).mockResolvedValue(mockTask);
-      vi.mocked(mockPrisma.task.update).mockResolvedValue(completedTask);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(mockPrisma.task.findFirst).mockResolvedValue(mockTask as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(mockPrisma.task.update).mockResolvedValue(completedTask as any);
 
       const context = createMockContext();
       const result = await handlers.complete({ taskId: 'task-1' }, context);
@@ -304,7 +310,8 @@ describe('task-handlers', () => {
         assignedToUserId: 'assignee-user',
       };
 
-      vi.mocked(mockPrisma.task.findFirst).mockResolvedValue(mockTask);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(mockPrisma.task.findFirst).mockResolvedValue(mockTask as any);
       vi.mocked(mockPrisma.familyMember.findFirst).mockResolvedValue({
         id: 'member-1',
         familyId: 'family-456',
@@ -313,7 +320,8 @@ describe('task-handlers', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as any);
-      vi.mocked(mockPrisma.task.update).mockResolvedValue(assignedTask);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(mockPrisma.task.update).mockResolvedValue(assignedTask as any);
 
       const context = createMockContext();
       const result = await handlers.assign(
@@ -342,7 +350,8 @@ describe('task-handlers', () => {
         updatedAt: new Date(),
       };
 
-      vi.mocked(mockPrisma.task.findFirst).mockResolvedValue(mockTask);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(mockPrisma.task.findFirst).mockResolvedValue(mockTask as any);
       vi.mocked(mockPrisma.familyMember.findFirst).mockResolvedValue(null);
 
       const context = createMockContext();
