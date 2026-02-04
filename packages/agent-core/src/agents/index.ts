@@ -10,3 +10,9 @@ export {
   executeConfirmedAction as executeCalendarConfirmedAction,
   type CalendarAgentResult,
 } from './calendar-agent.js';
+
+export {
+  executeMealsAgent,
+  executeMealsConfirmedAction,
+  type MealsAgentResult,
+} from './meals-agent.js';

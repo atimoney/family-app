@@ -7,13 +7,26 @@ import {
   executeTasksConfirmedAction,
   executeCalendarAgent,
   executeCalendarConfirmedAction,
+  executeMealsAgent,
+  executeMealsConfirmedAction,
   pendingActionStore,
 } from '@family/agent-core';
 import type { AgentRequest, AgentRunContext, AgentLogger, ToolResult } from '@family/agent-core';
-import { toolRegistry, registerTaskToolHandlers, registerCalendarToolHandlers } from '@family/mcp-server';
+import {
+  toolRegistry,
+  registerTaskToolHandlers,
+  registerCalendarToolHandlers,
+  registerMealToolHandlers,
+  registerShoppingToolHandlers,
+} from '@family/mcp-server';
 import type { ToolContext } from '@family/mcp-server';
 import authPlugin from '../../plugins/auth.js';
-import { createTaskToolHandlers, createCalendarToolHandlers } from '../../lib/agent/index.js';
+import {
+  createTaskToolHandlers,
+  createCalendarToolHandlers,
+  createMealToolHandlers,
+  createShoppingToolHandlers,
+} from '../../lib/agent/index.js';
 import {
   chatRequestSchema,
   mcpInvokeRequestSchema,
@@ -62,6 +75,22 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
   registerCalendarToolHandlers(calendarHandlers);
 
   fastify.log.info('Calendar tool handlers registered');
+
+  // --------------------------------------------------------------------------
+  // REGISTER MEAL TOOL HANDLERS
+  // --------------------------------------------------------------------------
+  const mealHandlers = createMealToolHandlers({ prisma: fastify.prisma });
+  registerMealToolHandlers(mealHandlers);
+
+  fastify.log.info('Meal tool handlers registered');
+
+  // --------------------------------------------------------------------------
+  // REGISTER SHOPPING TOOL HANDLERS
+  // --------------------------------------------------------------------------
+  const shoppingHandlers = createShoppingToolHandlers({ prisma: fastify.prisma });
+  registerShoppingToolHandlers(shoppingHandlers);
+
+  fastify.log.info('Shopping tool handlers registered');
 
   // --------------------------------------------------------------------------
   // REGISTER TASKS AGENT EXECUTOR
@@ -116,6 +145,33 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.log.info('CalendarAgent executor registered');
+
+  // --------------------------------------------------------------------------
+  // REGISTER MEALS AGENT EXECUTOR
+  // --------------------------------------------------------------------------
+  registerAgentExecutor('meals', async (message, context) => {
+    // Create a tool executor that uses the MCP registry
+    const toolExecutor = async (
+      toolName: string,
+      input: Record<string, unknown>
+    ): Promise<ToolResult> => {
+      const toolContext: ToolContext = {
+        requestId: context.requestId,
+        userId: context.userId,
+        familyId: context.familyId,
+        familyMemberId: context.familyMemberId,
+        roles: ['member'], // TODO: Get actual roles
+        timezone: context.timezone,
+        logger: context.logger,
+      };
+
+      return toolRegistry.invoke(toolName, input, toolContext);
+    };
+
+    return executeMealsAgent(message, context, toolExecutor);
+  });
+
+  fastify.log.info('MealsAgent executor registered');
 
   // Helper to get user's family membership
   async function getUserFamilyMembership(userId: string) {
@@ -216,7 +272,7 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
       );
 
       // Determine domain from pending action tool name
-      let domain: 'tasks' | 'calendar' = 'tasks';
+      let domain: 'tasks' | 'calendar' | 'meals' = 'tasks';
       let executeConfirmedFn = executeTasksConfirmedAction;
 
       if (pendingResult.found) {
@@ -224,6 +280,9 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
         if (toolName.startsWith('calendar.')) {
           domain = 'calendar';
           executeConfirmedFn = executeCalendarConfirmedAction;
+        } else if (toolName.startsWith('meals.') || toolName.startsWith('shopping.')) {
+          domain = 'meals';
+          executeConfirmedFn = executeMealsConfirmedAction;
         }
       }
 

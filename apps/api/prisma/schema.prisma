@@ -154,14 +154,17 @@ model Family {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   // Relations
-  creator         Profile         @relation("FamilyCreator", fields: [createdBy], references: [id])
-  members         FamilyMember[]
-  invites         FamilyInvite[]
-  eventCategories EventCategory[]
-  tasks           Task[]
-  taskTemplates   TaskTemplate[]
-  lists           List[]
-  familyEvents    FamilyEvent[]
+  creator          Profile                @relation("FamilyCreator", fields: [createdBy], references: [id])
+  members          FamilyMember[]
+  invites          FamilyInvite[]
+  eventCategories  EventCategory[]
+  tasks            Task[]
+  taskTemplates    TaskTemplate[]
+  lists            List[]
+  familyEvents     FamilyEvent[]
+  mealPlans        MealPlan[]
+  shoppingLists    ShoppingList[]
+  mealPreferences  FamilyMealPreferences?
 
   @@index([createdBy])
   @@map("families")
@@ -476,4 +479,130 @@ model FamilyEventAttendee {
   @@unique([eventId, userId])
   @@index([userId])
   @@map("family_event_attendees")
+}
+
+// ============================================================================
+// MEAL PLANNING (Agent-managed meal plans)
+// ============================================================================
+
+// A weekly meal plan for a family
+model MealPlan {
+  id              String         @id @default(cuid())
+  familyId        String         @map("family_id")
+  weekStart       DateTime       @map("week_start") // Monday of the week
+  status          String         @default("draft") // draft, confirmed, archived
+  notes           String?        // Overall plan notes
+  createdByUserId String         @map("created_by_user_id")
+  confirmedAt     DateTime?      @map("confirmed_at")
+  deletedAt       DateTime?      @map("deleted_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  family Family         @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  items  MealPlanItem[]
+
+  @@unique([familyId, weekStart])
+  @@index([familyId, status])
+  @@index([createdByUserId])
+  @@map("meal_plans")
+}
+
+// Individual meal within a meal plan
+model MealPlanItem {
+  id          String    @id @default(cuid())
+  mealPlanId  String    @map("meal_plan_id")
+  date        DateTime  // The specific date for this meal
+  mealType    String    @map("meal_type") // breakfast, lunch, dinner, snack
+  title       String    // Meal name/title
+  description String?   // Recipe notes, instructions, etc.
+  servings    Int       @default(4) // Number of servings
+  prepTime    Int?      @map("prep_time") // Minutes
+  cookTime    Int?      @map("cook_time") // Minutes
+  tags        String[]  // kid-friendly, quick, vegetarian, etc.
+  recipeUrl   String?   @map("recipe_url") // Link to recipe
+  notes       String?   // Additional notes
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  mealPlan MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+
+  @@index([mealPlanId, date])
+  @@index([mealPlanId, mealType])
+  @@map("meal_plan_items")
+}
+
+// ============================================================================
+// SHOPPING LISTS (Agent-managed shopping)
+// ============================================================================
+
+// A shopping list for a family (may be linked to a meal plan)
+model ShoppingList {
+  id              String    @id @default(cuid())
+  familyId        String    @map("family_id")
+  name            String    @default("Shopping List")
+  mealPlanId      String?   @map("meal_plan_id") // Optional link to meal plan
+  status          String    @default("active") // active, completed, archived
+  createdByUserId String    @map("created_by_user_id")
+  completedAt     DateTime? @map("completed_at")
+  deletedAt       DateTime? @map("deleted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  family Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  items  ShoppingListItem[]
+
+  @@index([familyId, status])
+  @@index([mealPlanId])
+  @@index([createdByUserId])
+  @@map("shopping_lists")
+}
+
+// An item in a shopping list
+model ShoppingListItem {
+  id             String    @id @default(cuid())
+  shoppingListId String    @map("shopping_list_id")
+  name           String
+  quantity       String?   // "2 lbs", "1 dozen", etc.
+  unit           String?   // Optional structured unit
+  category       String?   // produce, dairy, meat, pantry, etc.
+  purchased      Boolean   @default(false)
+  purchasedAt    DateTime? @map("purchased_at")
+  purchasedBy    String?   @map("purchased_by") // User who purchased
+  notes          String?   // Additional notes
+  sortOrder      Int       @default(0) @map("sort_order")
+  source         String?   // "meal_plan", "manual", "recurring"
+  sourceItemId   String?   @map("source_item_id") // MealPlanItem ID if from meal plan
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  shoppingList ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+
+  @@index([shoppingListId, purchased])
+  @@index([shoppingListId, category])
+  @@map("shopping_list_items")
+}
+
+// Family preferences for meal planning (dietary restrictions, favorites, etc.)
+model FamilyMealPreferences {
+  id                 String   @id @default(cuid())
+  familyId           String   @unique @map("family_id")
+  dietaryRestrictions String[] @map("dietary_restrictions") // vegetarian, gluten-free, nut-allergy, etc.
+  dislikedIngredients String[] @map("disliked_ingredients") // Foods to avoid
+  favoriteRecipes    String[] @map("favorite_recipes") // URLs or titles
+  defaultServings    Int      @default(4) @map("default_servings")
+  preferQuickMeals   Boolean  @default(false) @map("prefer_quick_meals") // Prefer meals under 30 min
+  budgetLevel        String   @default("moderate") @map("budget_level") // budget, moderate, premium
+  notes              String?  // Additional preferences
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@map("family_meal_preferences")
 }

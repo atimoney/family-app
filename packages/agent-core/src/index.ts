@@ -22,6 +22,9 @@ export {
   executeCalendarAgent,
   executeCalendarConfirmedAction,
   type CalendarAgentResult,
+  executeMealsAgent,
+  executeMealsConfirmedAction,
+  type MealsAgentResult,
 } from './agents/index.js';
 
 // Utils
