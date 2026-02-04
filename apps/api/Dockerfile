@@ -51,4 +51,5 @@ ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 
 EXPOSE 3000
 
+# Use exec form for proper signal handling
 CMD ["node", "dist/index.js"]

@@ -315,20 +315,48 @@ jobs:
           echo "   Resource Group: ${{ secrets.RESOURCE_GROUP }}"
           echo "   Image: ${{ steps.image.outputs.uri }}"
           
-          # Build the env vars arguments carefully with proper quoting
+          # =====================================================================
+          # STEP 1: Set secrets in Container App (Azure handles special chars)
+          # This is the recommended way to pass sensitive values with special chars
+          # =====================================================================
+          echo "🔐 Setting Container App secrets..."
+          
+          # Build secrets JSON - Azure CLI handles escaping properly with --secrets
+          az containerapp secret set \
+            --name "${{ secrets.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ secrets.RESOURCE_GROUP }}" \
+            --secrets \
+              "database-url=$SECRET_DATABASE_URL" \
+              "supabase-jwks-url=$SECRET_SUPABASE_JWKS_URL" \
+              "google-client-id=$SECRET_GOOGLE_CLIENT_ID" \
+              "google-client-secret=$SECRET_GOOGLE_CLIENT_SECRET" \
+              "google-redirect-url=$SECRET_GOOGLE_REDIRECT_URL" \
+              "oauth-state-secret=$SECRET_OAUTH_STATE_SECRET" \
+              "token-encryption-key=$SECRET_TOKEN_ENCRYPTION_KEY" \
+            || echo "⚠️ Some secrets may already exist, continuing..."
+          
+          # =====================================================================
+          # STEP 2: Update container with image and env vars referencing secrets
+          # =====================================================================
+          echo "📝 Updating container with environment variables..."
+          
+          # Build env vars - reference secrets with secretref: prefix
           ENV_ARGS=()
           ENV_ARGS+=("NODE_ENV=production")
           ENV_ARGS+=("PORT=${{ env.CONTAINER_PORT }}")
           
-          [[ -n "$SECRET_DATABASE_URL" ]] && ENV_ARGS+=("DATABASE_URL=$SECRET_DATABASE_URL")
-          [[ -n "$SECRET_SUPABASE_JWKS_URL" ]] && ENV_ARGS+=("SUPABASE_JWKS_URL=$SECRET_SUPABASE_JWKS_URL")
+          # Required vars - reference as secrets for proper special char handling
+          ENV_ARGS+=("DATABASE_URL=secretref:database-url")
+          ENV_ARGS+=("SUPABASE_JWKS_URL=secretref:supabase-jwks-url")
+          ENV_ARGS+=("GOOGLE_CLIENT_ID=secretref:google-client-id")
+          ENV_ARGS+=("GOOGLE_CLIENT_SECRET=secretref:google-client-secret")
+          ENV_ARGS+=("GOOGLE_REDIRECT_URL=secretref:google-redirect-url")
+          ENV_ARGS+=("OAUTH_STATE_SECRET=secretref:oauth-state-secret")
+          ENV_ARGS+=("TOKEN_ENCRYPTION_KEY=secretref:token-encryption-key")
+          
+          # Optional vars - only add if set (these typically don't have special chars)
           [[ -n "$SECRET_SUPABASE_JWT_ISSUER" ]] && ENV_ARGS+=("SUPABASE_JWT_ISSUER=$SECRET_SUPABASE_JWT_ISSUER")
-          [[ -n "$SECRET_GOOGLE_CLIENT_ID" ]] && ENV_ARGS+=("GOOGLE_CLIENT_ID=$SECRET_GOOGLE_CLIENT_ID")
-          [[ -n "$SECRET_GOOGLE_CLIENT_SECRET" ]] && ENV_ARGS+=("GOOGLE_CLIENT_SECRET=$SECRET_GOOGLE_CLIENT_SECRET")
-          [[ -n "$SECRET_GOOGLE_REDIRECT_URL" ]] && ENV_ARGS+=("GOOGLE_REDIRECT_URL=$SECRET_GOOGLE_REDIRECT_URL")
           [[ -n "$SECRET_GOOGLE_SCOPES" ]] && ENV_ARGS+=("GOOGLE_SCOPES=$SECRET_GOOGLE_SCOPES")
-          [[ -n "$SECRET_OAUTH_STATE_SECRET" ]] && ENV_ARGS+=("OAUTH_STATE_SECRET=$SECRET_OAUTH_STATE_SECRET")
-          [[ -n "$SECRET_TOKEN_ENCRYPTION_KEY" ]] && ENV_ARGS+=("TOKEN_ENCRYPTION_KEY=$SECRET_TOKEN_ENCRYPTION_KEY")
           [[ -n "$SECRET_CORS_ORIGIN" ]] && ENV_ARGS+=("CORS_ORIGIN=$SECRET_CORS_ORIGIN")
           [[ -n "$SECRET_FRONTEND_URL" ]] && ENV_ARGS+=("FRONTEND_URL=$SECRET_FRONTEND_URL")
           
@@ -375,13 +403,29 @@ jobs:
             elif [[ "${REVISION_STATUS}" == "Failed" || "${REVISION_STATUS}" == "Degraded" ]]; then
               echo "❌ Revision failed to start: ${REVISION_STATUS}"
               
-              # Get logs for debugging
-              echo "📋 Fetching revision logs..."
+              # Get console logs for debugging
+              echo "📋 Fetching console logs (stdout/stderr)..."
               az containerapp logs show \
                 --name "${{ secrets.CONTAINERAPP_NAME }}" \
                 --resource-group "${{ secrets.RESOURCE_GROUP }}" \
                 --type console \
+                --tail 100 || true
+              
+              # Get system logs for debugging
+              echo "📋 Fetching system logs..."
+              az containerapp logs show \
+                --name "${{ secrets.CONTAINERAPP_NAME }}" \
+                --resource-group "${{ secrets.RESOURCE_GROUP }}" \
+                --type system \
                 --tail 50 || true
+              
+              # Get replica status
+              echo "📋 Checking replica status..."
+              az containerapp replica list \
+                --name "${{ secrets.CONTAINERAPP_NAME }}" \
+                --resource-group "${{ secrets.RESOURCE_GROUP }}" \
+                --query "[].{name:name, createdTime:properties.createdTime, runningState:properties.runningState}" \
+                -o table || true
               
               exit 1
             fi
