@@ -1,0 +1,516 @@
+# =============================================================================
+# Deploy API to Azure Container Apps
+# =============================================================================
+# This workflow builds and deploys the Fastify API to Azure Container Apps.
+#
+# Triggers:
+#   - Push to main branch → deploys to STAGING
+#   - Manual workflow_dispatch → deploys to selected environment
+#
+# Prerequisites:
+#   1. Azure Container Registry (ACR) created
+#   2. Azure Container App created with ingress enabled
+#   3. GitHub OIDC federated credentials configured in Azure AD
+#   4. GitHub Environment secrets configured (see README)
+#
+# =============================================================================
+# AZURE FEDERATED CREDENTIALS SETUP (OIDC - No long-lived secrets!)
+# =============================================================================
+# For each environment (staging, prod), create a federated credential in Azure:
+#
+# 1. Create an App Registration in Azure AD (or use existing)
+# 2. Go to: App Registration → Certificates & secrets → Federated credentials
+# 3. Add credential with:
+#    - Federated credential scenario: "GitHub Actions deploying Azure resources"
+#    - Organization: atimoney
+#    - Repository: family-app
+#    - Entity type: Environment
+#    - Environment name: staging (or prod)
+#    - Name: github-actions-staging (or github-actions-prod)
+#
+# Federated credential values:
+#   - Issuer: https://token.actions.githubusercontent.com
+#   - Subject (staging): repo:atimoney/family-app:environment:staging
+#   - Subject (prod): repo:atimoney/family-app:environment:prod
+#   - Audience: api://AzureADTokenExchange
+#
+# 4. Assign RBAC roles to the App Registration's Service Principal:
+#    - "AcrPush" on the Azure Container Registry
+#    - "Contributor" on the Container App (or Resource Group)
+#
+# =============================================================================
+
+name: Deploy API to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      # Only trigger on changes to API or shared packages
+      - 'apps/api/**'
+      - 'packages/shared/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-api.yml'
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - prod
+      image_tag:
+        description: 'Custom image tag (optional, defaults to git SHA)'
+        required: false
+        type: string
+      skip_health_check:
+        description: 'Skip health check after deployment'
+        required: false
+        default: false
+        type: boolean
+
+# Ensure only one deployment runs at a time per environment
+concurrency:
+  group: deploy-api-${{ github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+env:
+  # Docker/Registry settings
+  DOCKER_BUILDKIT: 1
+  IMAGE_NAME: family-api
+  DOCKERFILE_PATH: apps/api/Dockerfile
+  DOCKER_CONTEXT: .
+  
+  # Container App settings
+  CONTAINER_NAME: api  # Name of the container in the Container App
+  CONTAINER_PORT: 3000
+  HEALTH_ENDPOINT: /healthz
+  HEALTH_CHECK_TIMEOUT: 120  # seconds to wait for healthy deployment
+  
+  # Azure region
+  AZURE_REGION: australiasoutheast
+
+jobs:
+  # ===========================================================================
+  # Determine deployment environment
+  # ===========================================================================
+  setup:
+    name: Setup Deployment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      image_tag: ${{ steps.set-env.outputs.image_tag }}
+      sha_short: ${{ steps.set-env.outputs.sha_short }}
+    steps:
+      - name: Determine environment and tags
+        id: set-env
+        run: |
+          # Determine environment
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENVIRONMENT="${{ github.event.inputs.environment }}"
+          else
+            # Push to main always goes to staging
+            ENVIRONMENT="staging"
+          fi
+          echo "environment=${ENVIRONMENT}" >> $GITHUB_OUTPUT
+          
+          # Get short SHA for tagging
+          SHA_SHORT="${GITHUB_SHA::7}"
+          echo "sha_short=${SHA_SHORT}" >> $GITHUB_OUTPUT
+          
+          # Determine image tag
+          if [[ -n "${{ github.event.inputs.image_tag }}" ]]; then
+            IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+          else
+            IMAGE_TAG="${SHA_SHORT}"
+          fi
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          
+          echo "📦 Deployment Configuration:"
+          echo "   Environment: ${ENVIRONMENT}"
+          echo "   Image Tag: ${IMAGE_TAG}"
+          echo "   Git SHA: ${SHA_SHORT}"
+
+  # ===========================================================================
+  # Build and Push Docker Image
+  # ===========================================================================
+  build:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    needs: setup
+    environment: ${{ needs.setup.outputs.environment }}
+    
+    # Required for OIDC token
+    permissions:
+      id-token: write
+      contents: read
+    
+    outputs:
+      image_digest: ${{ steps.build-push.outputs.digest }}
+      image_uri: ${{ steps.tags.outputs.primary_image }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+          driver-opts: |
+            image=moby/buildkit:latest
+
+      # -----------------------------------------------------------------------
+      # Azure OIDC Login (no secrets stored - uses federated credentials)
+      # -----------------------------------------------------------------------
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to Azure Container Registry
+        run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+          echo "✅ Logged into ACR: ${{ secrets.ACR_NAME }}"
+
+      # -----------------------------------------------------------------------
+      # Prepare image tags
+      # -----------------------------------------------------------------------
+      - name: Prepare image tags
+        id: tags
+        run: |
+          ACR_LOGIN_SERVER="${{ secrets.ACR_NAME }}.azurecr.io"
+          IMAGE_BASE="${ACR_LOGIN_SERVER}/${{ env.IMAGE_NAME }}"
+          
+          # Primary tag (SHA or custom)
+          PRIMARY_TAG="${{ needs.setup.outputs.image_tag }}"
+          PRIMARY_IMAGE="${IMAGE_BASE}:${PRIMARY_TAG}"
+          echo "primary_image=${PRIMARY_IMAGE}" >> $GITHUB_OUTPUT
+          
+          # Build tags list
+          TAGS="${PRIMARY_IMAGE}"
+          
+          # Add :latest only for staging
+          if [[ "${{ needs.setup.outputs.environment }}" == "staging" ]]; then
+            TAGS="${TAGS},${IMAGE_BASE}:latest"
+            echo "📌 Adding :latest tag for staging"
+          fi
+          
+          # Add custom tag if provided via workflow_dispatch
+          CUSTOM_TAG="${{ github.event.inputs.image_tag }}"
+          if [[ -n "${CUSTOM_TAG}" && "${CUSTOM_TAG}" != "${{ needs.setup.outputs.sha_short }}" ]]; then
+            TAGS="${TAGS},${IMAGE_BASE}:${CUSTOM_TAG}"
+            echo "📌 Adding custom tag: ${CUSTOM_TAG}"
+          fi
+          
+          # Add git SHA tag (always)
+          SHA_TAG="${IMAGE_BASE}:sha-${{ needs.setup.outputs.sha_short }}"
+          TAGS="${TAGS},${SHA_TAG}"
+          
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          echo "acr_login_server=${ACR_LOGIN_SERVER}" >> $GITHUB_OUTPUT
+          
+          echo "🏷️ Image tags to push:"
+          echo "${TAGS}" | tr ',' '\n' | sed 's/^/   - /'
+
+      # -----------------------------------------------------------------------
+      # Build and push Docker image
+      # -----------------------------------------------------------------------
+      - name: Build and push Docker image
+        id: build-push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.DOCKER_CONTEXT }}
+          file: ${{ env.DOCKERFILE_PATH }}
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Build args - can be extended as needed
+          build-args: |
+            NODE_ENV=production
+            BUILD_SHA=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+
+      - name: Output build summary
+        run: |
+          echo "## 🐳 Docker Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`${{ steps.tags.outputs.primary_image }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Digest | \`${{ steps.build-push.outputs.digest }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ needs.setup.outputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Deploy to Azure Container Apps
+  # ===========================================================================
+  deploy:
+    name: Deploy to ${{ needs.setup.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    environment:
+      name: ${{ needs.setup.outputs.environment }}
+      url: ${{ steps.get-fqdn.outputs.app_url }}
+    
+    # Required for OIDC token
+    permissions:
+      id-token: write
+      contents: read
+    
+    outputs:
+      app_fqdn: ${{ steps.get-fqdn.outputs.fqdn }}
+      app_url: ${{ steps.get-fqdn.outputs.app_url }}
+      revision_name: ${{ steps.deploy.outputs.revision_name }}
+    
+    steps:
+      # -----------------------------------------------------------------------
+      # Azure OIDC Login
+      # -----------------------------------------------------------------------
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # -----------------------------------------------------------------------
+      # Prepare environment variables for Container App
+      # -----------------------------------------------------------------------
+      # These secrets should be configured in each GitHub Environment.
+      # The step builds a string of --set-env-vars flags for az containerapp update.
+      # Add or remove variables as needed for your application.
+      # -----------------------------------------------------------------------
+      - name: Prepare environment variables
+        id: prepare-env
+        run: |
+          ENV_VARS=""
+          
+          # Core application environment
+          ENV_VARS="NODE_ENV=production"
+          ENV_VARS="${ENV_VARS} PORT=${{ env.CONTAINER_PORT }}"
+          
+          # Add Supabase config if secrets are provided
+          if [[ -n "${{ secrets.SUPABASE_URL }}" ]]; then
+            ENV_VARS="${ENV_VARS} SUPABASE_URL=${{ secrets.SUPABASE_URL }}"
+          fi
+          
+          if [[ -n "${{ secrets.SUPABASE_ANON_KEY }}" ]]; then
+            ENV_VARS="${ENV_VARS} SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}"
+          fi
+          
+          if [[ -n "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" ]]; then
+            ENV_VARS="${ENV_VARS} SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
+          fi
+          
+          # Add Database URL if provided
+          if [[ -n "${{ secrets.DATABASE_URL }}" ]]; then
+            ENV_VARS="${ENV_VARS} DATABASE_URL=${{ secrets.DATABASE_URL }}"
+          fi
+          
+          # Add any additional app config secrets
+          if [[ -n "${{ secrets.JWT_SECRET }}" ]]; then
+            ENV_VARS="${ENV_VARS} JWT_SECRET=${{ secrets.JWT_SECRET }}"
+          fi
+          
+          if [[ -n "${{ secrets.CORS_ORIGIN }}" ]]; then
+            ENV_VARS="${ENV_VARS} CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}"
+          fi
+          
+          # Build version info
+          ENV_VARS="${ENV_VARS} BUILD_SHA=${{ github.sha }}"
+          ENV_VARS="${ENV_VARS} BUILD_VERSION=${{ needs.setup.outputs.image_tag }}"
+          
+          echo "env_vars=${ENV_VARS}" >> $GITHUB_OUTPUT
+          echo "📝 Environment variables prepared ($(echo ${ENV_VARS} | wc -w) vars)"
+
+      # -----------------------------------------------------------------------
+      # Deploy to Container App
+      # -----------------------------------------------------------------------
+      - name: Deploy to Azure Container Apps
+        id: deploy
+        run: |
+          echo "🚀 Deploying to Container App: ${{ secrets.CONTAINERAPP_NAME }}"
+          echo "   Resource Group: ${{ secrets.RESOURCE_GROUP }}"
+          echo "   Image: ${{ needs.build.outputs.image_uri }}"
+          
+          # Update the container app with the new image and environment variables
+          # If you have multiple containers, specify --container-name
+          RESULT=$(az containerapp update \
+            --name "${{ secrets.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ secrets.RESOURCE_GROUP }}" \
+            --image "${{ needs.build.outputs.image_uri }}" \
+            --container-name "${{ env.CONTAINER_NAME }}" \
+            --set-env-vars ${{ steps.prepare-env.outputs.env_vars }} \
+            --output json)
+          
+          # Extract the new revision name
+          REVISION_NAME=$(echo $RESULT | jq -r '.properties.latestRevisionName')
+          echo "revision_name=${REVISION_NAME}" >> $GITHUB_OUTPUT
+          echo "✅ Created revision: ${REVISION_NAME}"
+
+      # -----------------------------------------------------------------------
+      # Wait for revision to be ready
+      # -----------------------------------------------------------------------
+      - name: Wait for revision rollout
+        id: wait-rollout
+        run: |
+          echo "⏳ Waiting for revision to become active..."
+          REVISION_NAME="${{ steps.deploy.outputs.revision_name }}"
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+          
+          while [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; do
+            REVISION_STATUS=$(az containerapp revision show \
+              --name "${{ secrets.CONTAINERAPP_NAME }}" \
+              --resource-group "${{ secrets.RESOURCE_GROUP }}" \
+              --revision "${REVISION_NAME}" \
+              --query "properties.runningState" \
+              --output tsv 2>/dev/null || echo "Unknown")
+            
+            echo "   Attempt $((ATTEMPT+1))/${MAX_ATTEMPTS}: Revision status = ${REVISION_STATUS}"
+            
+            if [[ "${REVISION_STATUS}" == "Running" ]]; then
+              echo "✅ Revision is running!"
+              break
+            elif [[ "${REVISION_STATUS}" == "Failed" || "${REVISION_STATUS}" == "Degraded" ]]; then
+              echo "❌ Revision failed to start: ${REVISION_STATUS}"
+              
+              # Get logs for debugging
+              echo "📋 Fetching revision logs..."
+              az containerapp logs show \
+                --name "${{ secrets.CONTAINERAPP_NAME }}" \
+                --resource-group "${{ secrets.RESOURCE_GROUP }}" \
+                --type console \
+                --tail 50 || true
+              
+              exit 1
+            fi
+            
+            ATTEMPT=$((ATTEMPT+1))
+            sleep 10
+          done
+          
+          if [[ $ATTEMPT -ge $MAX_ATTEMPTS ]]; then
+            echo "❌ Timeout waiting for revision to become active"
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # Get Container App FQDN
+      # -----------------------------------------------------------------------
+      - name: Get Container App FQDN
+        id: get-fqdn
+        run: |
+          # Get the FQDN from ingress configuration
+          FQDN=$(az containerapp show \
+            --name "${{ secrets.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ secrets.RESOURCE_GROUP }}" \
+            --query "properties.configuration.ingress.fqdn" \
+            --output tsv)
+          
+          if [[ -z "${FQDN}" || "${FQDN}" == "null" ]]; then
+            echo "⚠️ No FQDN found - ingress may not be enabled"
+            echo "fqdn=" >> $GITHUB_OUTPUT
+            echo "app_url=" >> $GITHUB_OUTPUT
+          else
+            APP_URL="https://${FQDN}"
+            echo "fqdn=${FQDN}" >> $GITHUB_OUTPUT
+            echo "app_url=${APP_URL}" >> $GITHUB_OUTPUT
+            echo "🌐 App URL: ${APP_URL}"
+          fi
+
+      # -----------------------------------------------------------------------
+      # Health Check
+      # -----------------------------------------------------------------------
+      - name: Health check
+        if: ${{ steps.get-fqdn.outputs.fqdn != '' && github.event.inputs.skip_health_check != 'true' }}
+        run: |
+          HEALTH_URL="https://${{ steps.get-fqdn.outputs.fqdn }}${{ env.HEALTH_ENDPOINT }}"
+          echo "🏥 Running health check: ${HEALTH_URL}"
+          
+          MAX_ATTEMPTS=12
+          ATTEMPT=0
+          
+          while [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 10 \
+              --retry 0 \
+              "${HEALTH_URL}" || echo "000")
+            
+            echo "   Attempt $((ATTEMPT+1))/${MAX_ATTEMPTS}: HTTP ${HTTP_STATUS}"
+            
+            if [[ "${HTTP_STATUS}" == "200" ]]; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            
+            ATTEMPT=$((ATTEMPT+1))
+            sleep 10
+          done
+          
+          echo "❌ Health check failed after ${MAX_ATTEMPTS} attempts"
+          echo ""
+          echo "Last response details:"
+          curl -v --max-time 10 "${HEALTH_URL}" || true
+          exit 1
+
+      # -----------------------------------------------------------------------
+      # Deployment Summary
+      # -----------------------------------------------------------------------
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${{ needs.setup.outputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container App | \`${{ secrets.CONTAINERAPP_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`${{ needs.build.outputs.image_uri }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Revision | \`${{ steps.deploy.outputs.revision_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          if [[ -n "${{ steps.get-fqdn.outputs.app_url }}" ]]; then
+            echo "| URL | ${{ steps.get-fqdn.outputs.app_url }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Health | ${{ steps.get-fqdn.outputs.app_url }}${{ env.HEALTH_ENDPOINT }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Triggered by: @${{ github.actor }} via ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Notify on failure (optional - uncomment if using Slack/Teams)
+  # ===========================================================================
+  # notify-failure:
+  #   name: Notify on Failure
+  #   runs-on: ubuntu-latest
+  #   needs: [setup, build, deploy]
+  #   if: failure()
+  #   steps:
+  #     - name: Send Slack notification
+  #       uses: slackapi/slack-github-action@v1
+  #       with:
+  #         payload: |
+  #           {
+  #             "text": "❌ API deployment to ${{ needs.setup.outputs.environment }} failed",
+  #             "blocks": [
+  #               {
+  #                 "type": "section",
+  #                 "text": {
+  #                   "type": "mrkdwn",
+  #                   "text": "❌ *API Deployment Failed*\n*Environment:* ${{ needs.setup.outputs.environment }}\n*Commit:* ${{ github.sha }}\n*Actor:* ${{ github.actor }}"
+  #                 }
+  #               }
+  #             ]
+  #           }
+  #       env:
+  #         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
