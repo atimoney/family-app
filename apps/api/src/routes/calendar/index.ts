@@ -211,7 +211,7 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Redirect to frontend settings page after successful OAuth
-    const frontendUrl = fastify.config.FRONTEND_URL ?? 'http://localhost:8081';
+    const frontendUrl = (fastify.config.FRONTEND_URL ?? 'http://localhost:8081').replace(/\/+$/, '');
     return reply.redirect(`${frontendUrl}/settings?google=connected`);
   });
 
