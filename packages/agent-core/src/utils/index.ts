@@ -1,1 +1,1 @@
-export { parseDateTime, extractDateTimeFromMessage } from './date-parser.js';
+export { parseDateTime, extractDateTimeFromMessage, parseDateRange } from './date-parser.js';

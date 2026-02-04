@@ -4,14 +4,16 @@ import {
   orchestrate,
   registerAgentExecutor,
   executeTasksAgent,
-  executeConfirmedAction,
+  executeTasksConfirmedAction,
+  executeCalendarAgent,
+  executeCalendarConfirmedAction,
   pendingActionStore,
 } from '@family/agent-core';
 import type { AgentRequest, AgentRunContext, AgentLogger, ToolResult } from '@family/agent-core';
-import { toolRegistry, registerTaskToolHandlers } from '@family/mcp-server';
+import { toolRegistry, registerTaskToolHandlers, registerCalendarToolHandlers } from '@family/mcp-server';
 import type { ToolContext } from '@family/mcp-server';
 import authPlugin from '../../plugins/auth.js';
-import { createTaskToolHandlers } from '../../lib/agent/index.js';
+import { createTaskToolHandlers, createCalendarToolHandlers } from '../../lib/agent/index.js';
 import {
   chatRequestSchema,
   mcpInvokeRequestSchema,
@@ -54,6 +56,14 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.log.info('Task tool handlers registered');
 
   // --------------------------------------------------------------------------
+  // REGISTER CALENDAR TOOL HANDLERS
+  // --------------------------------------------------------------------------
+  const calendarHandlers = createCalendarToolHandlers({ prisma: fastify.prisma });
+  registerCalendarToolHandlers(calendarHandlers);
+
+  fastify.log.info('Calendar tool handlers registered');
+
+  // --------------------------------------------------------------------------
   // REGISTER TASKS AGENT EXECUTOR
   // --------------------------------------------------------------------------
   registerAgentExecutor('tasks', async (message, context) => {
@@ -79,6 +89,33 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.log.info('TasksAgent executor registered');
+
+  // --------------------------------------------------------------------------
+  // REGISTER CALENDAR AGENT EXECUTOR
+  // --------------------------------------------------------------------------
+  registerAgentExecutor('calendar', async (message, context) => {
+    // Create a tool executor that uses the MCP registry
+    const toolExecutor = async (
+      toolName: string,
+      input: Record<string, unknown>
+    ): Promise<ToolResult> => {
+      const toolContext: ToolContext = {
+        requestId: context.requestId,
+        userId: context.userId,
+        familyId: context.familyId,
+        familyMemberId: context.familyMemberId,
+        roles: ['member'], // TODO: Get actual roles
+        timezone: context.timezone,
+        logger: context.logger,
+      };
+
+      return toolRegistry.invoke(toolName, input, toolContext);
+    };
+
+    return executeCalendarAgent(message, context, toolExecutor);
+  });
+
+  fastify.log.info('CalendarAgent executor registered');
 
   // Helper to get user's family membership
   async function getUserFamilyMembership(userId: string) {
@@ -171,8 +208,27 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
         return toolRegistry.invoke(toolName, input, toolContext);
       };
 
-      // Execute the confirmed action
-      const result = await executeConfirmedAction(
+      // Peek at the pending action to determine which agent's confirmed handler to use
+      const pendingResult = pendingActionStore.get(
+        parsed.data.confirmationToken,
+        context.userId,
+        context.familyId
+      );
+
+      // Determine domain from pending action tool name
+      let domain: 'tasks' | 'calendar' = 'tasks';
+      let executeConfirmedFn = executeTasksConfirmedAction;
+
+      if (pendingResult.found) {
+        const toolName = pendingResult.action.toolCall.toolName;
+        if (toolName.startsWith('calendar.')) {
+          domain = 'calendar';
+          executeConfirmedFn = executeCalendarConfirmedAction;
+        }
+      }
+
+      // Execute the confirmed action using the appropriate agent
+      const result = await executeConfirmedFn(
         parsed.data.confirmationToken,
         context,
         toolExecutor
@@ -182,7 +238,7 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
         text: result.text,
         actions: result.actions,
         payload: result.payload,
-        domain: 'tasks' as const, // Confirmed actions are domain-specific
+        domain,
         conversationId,
         requestId,
         requiresConfirmation: result.requiresConfirmation,

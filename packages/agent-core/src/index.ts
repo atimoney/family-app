@@ -2,7 +2,7 @@
 export * from './types.js';
 
 // Router
-export { routeIntent } from './router.js';
+export { routeIntent, detectMultiIntent, type MultiIntentResult } from './router.js';
 
 // Orchestrator
 export {
@@ -16,13 +16,16 @@ export {
 // Agents
 export {
   executeTasksAgent,
-  executeConfirmedAction,
+  executeTasksConfirmedAction,
   type TasksAgentResult,
   type ToolExecutor,
+  executeCalendarAgent,
+  executeCalendarConfirmedAction,
+  type CalendarAgentResult,
 } from './agents/index.js';
 
 // Utils
-export { parseDateTime, extractDateTimeFromMessage } from './utils/index.js';
+export { parseDateTime, extractDateTimeFromMessage, parseDateRange } from './utils/index.js';
 
 // Confirmation
 export {

@@ -20,7 +20,8 @@ const DOMAIN_PATTERNS: Record<Exclude<AgentDomain, 'unknown'>, RegExp[]> = {
     /\b(meeting|meetings)\b/i,
     /\b(when is|what's on|what time)\b/i,
     /\b(free time|available|availability|busy)\b/i,
-    /\b(today|tomorrow|this week|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+    /\b(book|booking|reschedule|move|shift)\b.*\b(to|for)\b/i,
+    /\b(training|practice|lesson|class)\b/i,
   ],
   meals: [
     /\b(meal|meals|dinner|lunch|breakfast)\b/i,
@@ -36,6 +37,77 @@ const DOMAIN_PATTERNS: Record<Exclude<AgentDomain, 'unknown'>, RegExp[]> = {
     /\b(check list|checklist)\b/i,
   ],
 };
+
+// Patterns that indicate multiple intents in a single message
+const MULTI_INTENT_INDICATORS = [
+  /\b(and also|and then|also|plus|as well as)\b/i,
+  /\b(after that|then|next)\b/i,
+  /[,;]\s*(also|and)\s+/i,
+];
+
+// ----------------------------------------------------------------------
+// MULTI-INTENT DETECTION
+// ----------------------------------------------------------------------
+
+/**
+ * Result of multi-intent detection.
+ */
+export type MultiIntentResult = {
+  isMultiIntent: boolean;
+  domains: AgentDomain[];
+  reasons: string[];
+};
+
+/**
+ * Detect if a message contains multiple intents across different domains.
+ */
+export function detectMultiIntent(
+  message: string,
+  options?: { logger?: AgentLogger }
+): MultiIntentResult {
+  const { logger } = options ?? {};
+
+  // Check for multi-intent indicators
+  const hasIndicator = MULTI_INTENT_INDICATORS.some((pattern) => pattern.test(message));
+
+  // Score each domain
+  const domainScores: Map<AgentDomain, number> = new Map();
+  const reasons: string[] = [];
+
+  for (const [domain, patterns] of Object.entries(DOMAIN_PATTERNS)) {
+    let score = 0;
+    for (const pattern of patterns) {
+      if (pattern.test(message)) {
+        score += 1;
+      }
+    }
+    if (score > 0) {
+      domainScores.set(domain as AgentDomain, score);
+      reasons.push(`${domain}: ${score} pattern matches`);
+    }
+  }
+
+  // If multiple domains have significant scores and there's an indicator, it's multi-intent
+  const significantDomains = Array.from(domainScores.entries())
+    .filter(([_, score]) => score >= 1)
+    .sort((a, b) => b[1] - a[1])
+    .map(([domain]) => domain);
+
+  const isMultiIntent = significantDomains.length >= 2 && hasIndicator;
+
+  if (isMultiIntent) {
+    logger?.debug(
+      { domains: significantDomains, reasons },
+      'Multi-intent detected'
+    );
+  }
+
+  return {
+    isMultiIntent,
+    domains: significantDomains,
+    reasons,
+  };
+}
 
 // ----------------------------------------------------------------------
 // ROUTER

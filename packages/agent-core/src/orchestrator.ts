@@ -6,7 +6,7 @@ import type {
   AgentAction,
   PendingActionInfo,
 } from './types.js';
-import { routeIntent } from './router.js';
+import { routeIntent, detectMultiIntent } from './router.js';
 
 // ----------------------------------------------------------------------
 // SPECIALIST AGENT EXECUTORS
@@ -82,6 +82,84 @@ registerAgentExecutor('meals', createPlaceholderExecutor('meals'));
 registerAgentExecutor('lists', createPlaceholderExecutor('lists'));
 
 // ----------------------------------------------------------------------
+// MULTI-INTENT HANDLER
+// ----------------------------------------------------------------------
+
+/**
+ * Handle multi-intent messages by executing multiple agents and merging results.
+ */
+async function handleMultiIntent(
+  domains: AgentDomain[],
+  request: AgentRequest,
+  context: AgentRunContext
+): Promise<AgentExecutorResult> {
+  context.logger.info(
+    { domains, requestId: context.requestId },
+    'Orchestrator: handling multi-intent request'
+  );
+
+  const results: AgentExecutorResult[] = [];
+  const allActions: AgentAction[] = [];
+
+  // Execute each domain's specialist agent
+  for (const domain of domains) {
+    const executor = getAgentExecutor(domain);
+    if (executor) {
+      try {
+        const result = await executor(request.message, context);
+        results.push(result);
+        allActions.push(...result.actions);
+
+        // If any result requires confirmation, prioritize it
+        if (result.requiresConfirmation) {
+          return {
+            text: result.text,
+            actions: result.actions,
+            payload: { ...result.payload, multiIntent: true, domains },
+            requiresConfirmation: true,
+            pendingAction: result.pendingAction,
+          };
+        }
+      } catch (error) {
+        context.logger.error(
+          { domain, error: error instanceof Error ? error.message : 'Unknown error' },
+          'Multi-intent: executor failed for domain'
+        );
+      }
+    }
+  }
+
+  // Merge successful results
+  if (results.length === 0) {
+    return {
+      text: 'Sorry, I had trouble processing your request. Please try again.',
+      actions: [],
+      payload: { error: true },
+    };
+  }
+
+  // Combine text responses
+  const combinedText = results.map((r) => r.text).join('\n\n---\n\n');
+
+  // Merge payloads
+  const combinedPayload: Record<string, unknown> = {
+    multiIntent: true,
+    domains,
+  };
+  for (const result of results) {
+    if (result.payload) {
+      Object.assign(combinedPayload, result.payload);
+    }
+  }
+
+  return {
+    text: combinedText,
+    actions: allActions,
+    payload: combinedPayload,
+  };
+}
+
+// ----------------------------------------------------------------------
 // ORCHESTRATOR
 // ----------------------------------------------------------------------
 
@@ -89,9 +167,10 @@ registerAgentExecutor('lists', createPlaceholderExecutor('lists'));
  * Main orchestrator that routes requests and coordinates agent execution.
  *
  * Flow:
- * 1. Route the intent to a domain
- * 2. Get the specialist executor for that domain
- * 3. Execute and return the response
+ * 1. Check for multi-intent messages
+ * 2. Route the intent to a domain (or multiple domains)
+ * 3. Get the specialist executor(s) for those domains
+ * 4. Execute and return the response
  */
 export async function orchestrate(
   request: AgentRequest,
@@ -109,7 +188,43 @@ export async function orchestrate(
     'Orchestrator: starting request'
   );
 
-  // Step 1: Route the intent
+  // Step 1: Check for multi-intent (unless domain hint is provided)
+  if (!request.domainHint) {
+    const multiIntent = detectMultiIntent(request.message, { logger: context.logger });
+
+    if (multiIntent.isMultiIntent && multiIntent.domains.length > 1) {
+      context.logger.info(
+        { domains: multiIntent.domains, reasons: multiIntent.reasons },
+        'Orchestrator: detected multi-intent'
+      );
+
+      const result = await handleMultiIntent(multiIntent.domains, request, context);
+
+      const durationMs = Date.now() - startTime;
+      context.logger.info(
+        {
+          requestId: context.requestId,
+          domains: multiIntent.domains,
+          durationMs,
+          actionCount: result.actions.length,
+        },
+        'Orchestrator: multi-intent request completed'
+      );
+
+      return {
+        text: result.text,
+        actions: result.actions,
+        payload: result.payload,
+        domain: multiIntent.domains[0], // Primary domain
+        conversationId: context.conversationId,
+        requestId: context.requestId,
+        requiresConfirmation: result.requiresConfirmation,
+        pendingAction: result.pendingAction,
+      };
+    }
+  }
+
+  // Step 2: Route the intent (single domain)
   const route = routeIntent(request.message, {
     domainHint: request.domainHint,
     logger: context.logger,
@@ -125,10 +240,10 @@ export async function orchestrate(
     'Orchestrator: intent routed'
   );
 
-  // Step 2: Get the specialist executor
+  // Step 3: Get the specialist executor
   const executor = getAgentExecutor(route.domain) ?? getAgentExecutor('unknown')!;
 
-  // Step 3: Execute the specialist agent
+  // Step 4: Execute the specialist agent
   let result: AgentExecutorResult;
   try {
     result = await executor(request.message, context);
@@ -163,7 +278,7 @@ export async function orchestrate(
     'Orchestrator: request completed'
   );
 
-  // Step 4: Build and return the response
+  // Step 5: Build and return the response
   return {
     text: result.text,
     actions: result.actions,

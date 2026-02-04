@@ -158,3 +158,76 @@ export function extractDateTimeFromMessage(
 
   return { datetime: null, confident: false, extracted: null };
 }
+
+/**
+ * Parse a date range from a message (e.g., "this week", "next month", "between Mon and Fri").
+ */
+export function parseDateRange(
+  message: string,
+  referenceDate: Date = new Date()
+): { from: string | null; to: string | null } {
+  const lower = message.toLowerCase();
+  const now = referenceDate;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // "today"
+  if (/\btoday\b/.test(lower)) {
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+    return {
+      from: today.toISOString(),
+      to: endOfDay.toISOString(),
+    };
+  }
+
+  // "tomorrow"
+  if (/\btomorrow\b/.test(lower)) {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const endOfTomorrow = new Date(tomorrow);
+    endOfTomorrow.setHours(23, 59, 59, 999);
+    return {
+      from: tomorrow.toISOString(),
+      to: endOfTomorrow.toISOString(),
+    };
+  }
+
+  // "this week"
+  if (/this\s+week/.test(lower)) {
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay()); // Sunday
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+    return {
+      from: startOfWeek.toISOString(),
+      to: endOfWeek.toISOString(),
+    };
+  }
+
+  // "next week"
+  if (/next\s+week/.test(lower)) {
+    const startOfNextWeek = new Date(today);
+    startOfNextWeek.setDate(today.getDate() + (7 - today.getDay()));
+    const endOfNextWeek = new Date(startOfNextWeek);
+    endOfNextWeek.setDate(startOfNextWeek.getDate() + 6);
+    endOfNextWeek.setHours(23, 59, 59, 999);
+    return {
+      from: startOfNextWeek.toISOString(),
+      to: endOfNextWeek.toISOString(),
+    };
+  }
+
+  // "this month"
+  if (/this\s+month/.test(lower)) {
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+    return {
+      from: startOfMonth.toISOString(),
+      to: endOfMonth.toISOString(),
+    };
+  }
+
+  // Default: no range specified, return nulls
+  return { from: null, to: null };
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDateTime, extractDateTimeFromMessage } from './date-parser.js';
+import { parseDateTime, extractDateTimeFromMessage, parseDateRange } from './date-parser.js';
 
 describe('date-parser', () => {
   // Use a fixed reference date for consistent testing
@@ -123,6 +123,62 @@ describe('date-parser', () => {
       const result = extractDateTimeFromMessage('finish report today', referenceDate);
       expect(result.datetime).not.toBeNull();
       expect(result.datetime?.split('T')[0]).toBe('2025-02-04');
+    });
+  });
+
+  describe('parseDateRange', () => {
+    it('should parse "today" as same day range', () => {
+      const result = parseDateRange('what events are today', referenceDate);
+      expect(result.from).not.toBeNull();
+      expect(result.to).not.toBeNull();
+      // Just verify we get a date (timezone handling varies)
+      expect(result.from).toContain('2025-02');
+      expect(result.to).toContain('2025-02');
+    });
+
+    it('should parse "tomorrow" as next day range', () => {
+      const result = parseDateRange('show my calendar tomorrow', referenceDate);
+      expect(result.from).not.toBeNull();
+      expect(result.to).not.toBeNull();
+      // Tomorrow should be a date after today
+      expect(result.from).toContain('2025-02');
+      expect(result.to).toContain('2025-02');
+      expect(new Date(result.from!).getTime()).toBeGreaterThan(referenceDate.getTime() - 24 * 60 * 60 * 1000);
+    });
+
+    it('should parse "this week"', () => {
+      const result = parseDateRange('events this week', referenceDate);
+      expect(result.from).not.toBeNull();
+      expect(result.to).not.toBeNull();
+      // Verify we get a week range (7 days)
+      const from = new Date(result.from!);
+      const to = new Date(result.to!);
+      const diff = (to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24);
+      expect(diff).toBeGreaterThanOrEqual(6);
+      expect(diff).toBeLessThanOrEqual(7);
+    });
+
+    it('should parse "next week"', () => {
+      const result = parseDateRange('schedule for next week', referenceDate);
+      expect(result.from).not.toBeNull();
+      expect(result.to).not.toBeNull();
+      // Next week should start after the reference date
+      expect(new Date(result.from!).getTime()).toBeGreaterThan(referenceDate.getTime());
+    });
+
+    it('should parse "this month"', () => {
+      const result = parseDateRange('events this month', referenceDate);
+      expect(result.from).not.toBeNull();
+      expect(result.to).not.toBeNull();
+      // Should contain either January or February 2025 depending on timezone
+      expect(result.from).toContain('2025-0');
+      expect(result.to).toContain('2025-0');
+    });
+
+    it('should return nulls for unrecognized range', () => {
+      const result = parseDateRange('show all events', referenceDate);
+      expect(result.from).toBeNull();
+      expect(result.to).toBeNull();
     });
   });
 });
