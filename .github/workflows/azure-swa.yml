@@ -18,6 +18,16 @@ jobs:
     runs-on: ubuntu-latest
     name: Build and Deploy
 
+    # Use GitHub Environment to inject environment-specific variables
+    # Set VITE_API_BASE_URL as an Environment Variable in:
+    # - "production" environment: https://your-api-prod.azurecontainerapps.io
+    # - "staging" environment: https://your-api-staging.azurecontainerapps.io
+    #
+    # NOTE: Vite environment variables are baked at build time.
+    # Changing VITE_API_BASE_URL requires a new deployment.
+    environment:
+      name: ${{ github.event_name == 'push' && 'production' || 'staging' }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,14 +45,31 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Build only the web app (adjust if your filter name differs)
+      # Build only the web app
+      # Environment variables are injected from GitHub Environment settings
+      # VITE_* variables are baked into the JS bundle at build time
       - name: Build web
         run: pnpm --filter web build
         env:
+          # Secrets (stored in repository secrets)
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Environment variables (stored in GitHub Environment configuration)
+          # IMPORTANT: VITE_API_BASE_URL must be set in the GitHub Environment
+          # for each deployment target (production, staging)
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_AUTH_REDIRECT_PATH: ${{ vars.VITE_AUTH_REDIRECT_PATH }}
+
+      # Verify VITE_API_BASE_URL was set (helps catch configuration issues)
+      - name: Verify API Base URL configuration
+        run: |
+          if [ -z "${{ vars.VITE_API_BASE_URL }}" ]; then
+            echo "::warning::VITE_API_BASE_URL is not set in the GitHub Environment!"
+            echo "Please configure VITE_API_BASE_URL in your GitHub Environment settings."
+            echo "Environment: ${{ github.event_name == 'push' && 'production' || 'staging' }}"
+          else
+            echo "✓ VITE_API_BASE_URL is configured: ${{ vars.VITE_API_BASE_URL }}"
+          fi
 
       # Deploy the already-built output to Azure SWA
       - name: Deploy to Azure Static Web Apps
@@ -69,3 +96,4 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: "close"
+          app_location: "apps/web/dist"

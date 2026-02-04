@@ -2,12 +2,19 @@ import type { AxiosRequestConfig } from 'axios';
 
 import axios from 'axios';
 
-import { CONFIG } from 'src/global-config';
-
 // ----------------------------------------------------------------------
 
+/**
+ * API base URL from environment variable.
+ * Used by the Minimals template's axios instance for mock data endpoints.
+ *
+ * NOTE: For family-app API calls, prefer using `apiClient` from './api-client.ts'
+ * which has proper error handling and validation.
+ */
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+
 const axiosInstance = axios.create({
-  baseURL: CONFIG.serverUrl,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
