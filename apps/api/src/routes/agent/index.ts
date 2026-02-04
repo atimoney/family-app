@@ -1,0 +1,195 @@
+import type { FastifyPluginAsync, FastifyBaseLogger } from 'fastify';
+import { randomUUID } from 'node:crypto';
+import { orchestrate } from '@family/agent-core';
+import type { AgentRequest, AgentRunContext, AgentLogger } from '@family/agent-core';
+import { toolRegistry } from '@family/mcp-server';
+import type { ToolContext } from '@family/mcp-server';
+import authPlugin from '../../plugins/auth.js';
+import {
+  chatRequestSchema,
+  mcpInvokeRequestSchema,
+} from './schema.js';
+
+// ----------------------------------------------------------------------
+// HELPERS
+// ----------------------------------------------------------------------
+
+/**
+ * Create a child logger with requestId context.
+ */
+function createRequestLogger(
+  baseLogger: FastifyBaseLogger,
+  requestId: string
+): AgentLogger {
+  // Use the Fastify logger with added context
+  return {
+    info: (obj, msg) => baseLogger.info({ ...obj, requestId }, msg),
+    warn: (obj, msg) => baseLogger.warn({ ...obj, requestId }, msg),
+    error: (obj, msg) => baseLogger.error({ ...obj, requestId }, msg),
+    debug: (obj, msg) => baseLogger.debug({ ...obj, requestId }, msg),
+  };
+}
+
+// ----------------------------------------------------------------------
+// ROUTES
+// ----------------------------------------------------------------------
+
+const agentRoutes: FastifyPluginAsync = async (fastify) => {
+  // Register auth plugin
+  await fastify.register(authPlugin);
+
+  // Helper to get user's family membership
+  async function getUserFamilyMembership(userId: string) {
+    const membership = await fastify.prisma.familyMember.findFirst({
+      where: {
+        profileId: userId,
+        removedAt: null,
+      },
+      include: {
+        family: true,
+        profile: true,
+      },
+    });
+    return membership;
+  }
+
+  // --------------------------------------------------------------------------
+  // POST /agent/chat - Main agent conversation endpoint
+  // --------------------------------------------------------------------------
+  fastify.post<{
+    Body: { message: string; conversationId?: string; domainHint?: string };
+  }>('/chat', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user?.id;
+    if (!userId) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+
+    // Validate request body
+    const parsed = chatRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'Validation failed',
+        details: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    const membership = await getUserFamilyMembership(userId);
+    if (!membership) {
+      return reply.status(404).send({ error: 'No family found. Please join or create a family first.' });
+    }
+
+    const requestId = randomUUID();
+    const conversationId = parsed.data.conversationId ?? randomUUID();
+    const logger = createRequestLogger(fastify.log, requestId);
+
+    logger.info(
+      {
+        userId,
+        familyId: membership.familyId,
+        message: parsed.data.message.substring(0, 100),
+      },
+      'Agent chat request received'
+    );
+
+    // Build agent run context
+    const context: AgentRunContext = {
+      requestId,
+      userId,
+      familyId: membership.familyId,
+      familyMemberId: membership.id,
+      timezone: membership.profile.timezone ?? undefined,
+      conversationId,
+      logger,
+    };
+
+    // Build agent request
+    const agentRequest: AgentRequest = {
+      message: parsed.data.message,
+      conversationId,
+      domainHint: parsed.data.domainHint as AgentRequest['domainHint'],
+    };
+
+    // Orchestrate the request
+    const response = await orchestrate(agentRequest, context);
+
+    return response;
+  });
+
+  // --------------------------------------------------------------------------
+  // POST /mcp/invoke - Direct tool invocation endpoint
+  // --------------------------------------------------------------------------
+  fastify.post<{
+    Body: { toolName: string; input: Record<string, unknown> };
+  }>('/mcp/invoke', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user?.id;
+    if (!userId) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+
+    // Validate request body
+    const parsed = mcpInvokeRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'Validation failed',
+        details: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    const membership = await getUserFamilyMembership(userId);
+    if (!membership) {
+      return reply.status(404).send({ error: 'No family found. Please join or create a family first.' });
+    }
+
+    const requestId = randomUUID();
+    const logger = createRequestLogger(fastify.log, requestId);
+
+    logger.info(
+      {
+        userId,
+        familyId: membership.familyId,
+        toolName: parsed.data.toolName,
+      },
+      'MCP tool invocation request received'
+    );
+
+    // Build tool context
+    const toolContext: ToolContext = {
+      requestId,
+      userId,
+      familyId: membership.familyId,
+      familyMemberId: membership.id,
+      roles: [membership.role],
+      timezone: membership.profile.timezone ?? undefined,
+      logger,
+    };
+
+    // Invoke the tool
+    const result = await toolRegistry.invoke(
+      parsed.data.toolName,
+      parsed.data.input,
+      toolContext
+    );
+
+    return {
+      toolName: parsed.data.toolName,
+      requestId,
+      result,
+    };
+  });
+
+  // --------------------------------------------------------------------------
+  // GET /mcp/tools - List available tools
+  // --------------------------------------------------------------------------
+  fastify.get('/mcp/tools', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user?.id;
+    if (!userId) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+
+    const tools = toolRegistry.getAllTools();
+
+    return { tools };
+  });
+};
+
+export default agentRoutes;

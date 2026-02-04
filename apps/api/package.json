@@ -9,6 +9,8 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@family/agent-core": "workspace:*",
+    "@family/mcp-server": "workspace:*",
     "@family/shared": "workspace:*",
     "@fastify/cors": "^10.0.0",
     "@fastify/env": "^5.0.0",

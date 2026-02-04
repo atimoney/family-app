@@ -12,6 +12,7 @@ import inviteRoutes from './invites/index.js';
 import categoriesRoutes from './family/categories.js';
 import listsRoutes from './lists/index.js';
 import listItemsRoutes from './lists/items.js';
+import agentRoutes from './agent/index.js';
 
 const routes: FastifyPluginAsync = async (fastify) => {
   // Health check at root level
@@ -40,6 +41,9 @@ const routes: FastifyPluginAsync = async (fastify) => {
   fastify.register(tasksRoutes, { prefix: '/v1/tasks' });
   fastify.register(taskTemplatesRoutes, { prefix: '/v1/task-templates' });
   fastify.register(shoppingRoutes, { prefix: '/v1/shopping' });
+
+  // Agent & MCP routes
+  fastify.register(agentRoutes, { prefix: '/agent' });
 };
 
 export default routes;
