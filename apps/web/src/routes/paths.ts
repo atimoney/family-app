@@ -34,6 +34,8 @@ export const paths = {
     root: '/lists',
     view: (id: string) => `/lists/${id}`,
   },
+  // ASSISTANT
+  assistant: '/assistant',
   // SETTINGS
   settings: '/settings',
 };

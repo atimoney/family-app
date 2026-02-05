@@ -18,6 +18,7 @@ const ICONS = {
   kanban: icon('ic-kanban'),
   calendar: icon('ic-calendar'),
   dashboard: icon('ic-dashboard'),
+  assistant: <Iconify icon="solar:chat-round-dots-bold" width={24} />,
   settings: <Iconify icon="solar:settings-bold-duotone" width={24} />,
 };
 
@@ -34,6 +35,7 @@ export const familyNavData: NavSectionProps['data'] = [
       { title: 'Calendar', path: paths.family.calendar, icon: ICONS.calendar },
       { title: 'Tasks', path: paths.family.tasks, icon: ICONS.kanban },
       { title: 'Shopping', path: paths.family.shopping, icon: ICONS.order },
+      { title: 'Assistant', path: paths.assistant, icon: ICONS.assistant },
     ],
   },
 ];

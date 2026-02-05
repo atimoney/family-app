@@ -10,6 +10,7 @@ import { listsRoutes } from './lists';
 import { familyRoutes } from './family';
 import { inviteRoutes } from './invite';
 import { settingsRoutes } from './settings';
+import { assistantRoutes } from './assistant';
 
 // ----------------------------------------------------------------------
 
@@ -78,6 +79,9 @@ export const routesSection: RouteObject[] = [
 
   // Lists
   ...listsRoutes,
+
+  // Assistant (AI Agent Chat)
+  ...assistantRoutes,
 
   // Invite (public)
   ...inviteRoutes,
