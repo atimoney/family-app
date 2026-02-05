@@ -59,6 +59,8 @@ export type AgentRequest = {
   confirmationToken?: string;
   /** Explicit confirmation flag (must be true to execute) */
   confirmed?: boolean;
+  /** User's timezone (e.g., 'America/New_York') */
+  timezone?: string;
 };
 
 /**
@@ -143,6 +145,7 @@ export const agentRequestSchema = z.object({
   domainHint: agentDomainSchema.optional(),
   confirmationToken: z.string().regex(/^pa_[a-f0-9]{32}$/, 'Invalid confirmation token format').optional(),
   confirmed: z.boolean().optional(),
+  timezone: z.string().min(1).optional(),
 });
 
 export const toolCallSchema = z.object({

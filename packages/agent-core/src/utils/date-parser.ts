@@ -13,8 +13,39 @@ export function parseDateTime(
 ): { datetime: string | null; confident: boolean; parsed: string | null } {
   const lower = text.toLowerCase().trim();
 
-  // Get current date parts in user's timezone (simplified, assumes UTC offset)
-  const now = referenceDate;
+  // Get current date parts in user's timezone
+  let now = referenceDate;
+  let offsetMs = 0;
+
+  if (timezone) {
+    try {
+      // Calculate offset between server (UTC-ish) and user timezone
+      // parsing using Intl to get the wall-clock time in the user's timezone
+      const userParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
+      }).formatToParts(now);
+
+      const p: any = {};
+      userParts.forEach(({ type, value }) => { p[type] = value; });
+      
+      // Construct a Date object that looks like the User's wall clock time
+      // We use this for relative calculations (e.g. "tomorrow" adds 24h to THIS date)
+      const userWallTime = new Date(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
+      
+      // Calculate the difference to allow shifting back
+      // If server is UTC, and user is +9, userWallTime is 9 hours AHEAD of now (conceptually)
+      // offsetMs = userWallTime.getTime() - now.getTime(); 
+      // But actually we just want to work in "Wall Time" and then subtract the timezone offset at the end.
+      // Simpler: Just resolve relative text against 'userWallTime', then interpret that result as being in 'timezone'.
+
+      now = userWallTime;
+    } catch (e) {
+      // Invalid timezone, fallback to server time
+    }
+  }
+
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   // Patterns for relative dates
@@ -133,7 +164,8 @@ export function parseDateTime(
  */
 export function extractDateTimeFromMessage(
   message: string,
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
+  timezone?: string
 ): { datetime: string | null; confident: boolean; extracted: string | null } {
   // Common patterns to look for in the message
   const datePatterns = [
@@ -149,7 +181,7 @@ export function extractDateTimeFromMessage(
     if (match) {
       // Extract the date portion and parse it
       const extracted = match[0].replace(/^(?:due|by|on|at|for)\s+/i, '');
-      const result = parseDateTime(extracted, referenceDate);
+      const result = parseDateTime(extracted, referenceDate, timezone);
       if (result.datetime) {
         return { ...result, extracted };
       }

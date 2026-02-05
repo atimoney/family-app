@@ -194,7 +194,7 @@ function parseTaskIntent(message: string, context: AgentRunContext): TaskIntent 
  */
 function parseCreateIntent(remainder: string, context: AgentRunContext, baseConfidence: number): TaskIntent {
   // Extract due date
-  const dateResult = extractDateTimeFromMessage(remainder, new Date());
+  const dateResult = extractDateTimeFromMessage(remainder, new Date(), context.timezone);
 
   // Extract title (remove date portion)
   let title = remainder;

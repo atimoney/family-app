@@ -190,7 +190,7 @@ export async function orchestrate(
 
   // Step 1: Check for multi-intent (unless domain hint is provided)
   if (!request.domainHint) {
-    const multiIntent = detectMultiIntent(request.message, { logger: context.logger });
+    const multiIntent = await detectMultiIntent(request.message, { logger: context.logger, timezone: context.timezone });
 
     if (multiIntent.isMultiIntent && multiIntent.domains.length > 1) {
       context.logger.info(
@@ -225,9 +225,10 @@ export async function orchestrate(
   }
 
   // Step 2: Route the intent (single domain)
-  const route = routeIntent(request.message, {
+  const route = await routeIntent(request.message, {
     domainHint: request.domainHint,
     logger: context.logger,
+    timezone: context.timezone,
   });
 
   context.logger.info(
