@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 // ----------------------------------------------------------------------
 
 /**
@@ -75,9 +77,17 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   // new URL() handles trailing slashes and leading slashes correctly
   const url = API_BASE_URL ? new URL(endpoint, API_BASE_URL).toString() : endpoint;
 
+  // Get auth token from Supabase session
+  const { data: { session } } = await supabase.auth.getSession();
+  const authHeaders: Record<string, string> = {};
+  if (session?.access_token) {
+    authHeaders.Authorization = `Bearer ${session.access_token}`;
+  }
+
   const config: RequestInit = {
     ...rest,
     headers: {
+      ...authHeaders,
       ...headers,
     },
   };
@@ -171,11 +181,11 @@ export const endpoints = {
   },
   // Lists
   lists: {
-    root: '/api/lists',
-    byId: (id: string) => `/api/lists/${id}`,
-    items: (listId: string) => `/api/lists/${listId}/items`,
-    itemById: (listId: string, itemId: string) => `/api/lists/${listId}/items/${itemId}`,
-    preferences: (listId: string) => `/api/lists/${listId}/preferences`,
-    generate: (listId: string) => `/api/lists/${listId}/generate`,
+    root: '/v1/lists',
+    byId: (id: string) => `/v1/lists/${id}`,
+    items: (listId: string) => `/v1/lists/${listId}/items`,
+    itemById: (listId: string, itemId: string) => `/v1/lists/${listId}/items/${itemId}`,
+    preferences: (listId: string) => `/v1/lists/${listId}/preferences`,
+    generate: (listId: string) => `/v1/lists/${listId}/generate`,
   },
 };
