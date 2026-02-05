@@ -8,12 +8,18 @@ import type {
   CalendarUpdateInput,
   CalendarUpdateOutput,
   CalendarEventOutput,
+  CalendarBatchUpdateInput,
+  CalendarBatchUpdateOutput,
 } from '@family/mcp-server';
-import { google } from 'googleapis';
+import { google, type calendar_v3 } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
-import { createEvent as createGoogleEvent, listEvents as listGoogleEvents } from '../google/calendar.js';
+import { createEvent as createGoogleEvent, listEvents as listGoogleEvents, updateEvent as updateGoogleEvent } from '../google/calendar.js';
 import { getOAuthClient, getAuthorizedClient } from '../google/oauth.js';
 import { decryptSecret } from '../crypto.js';
+
+// ----------------------------------------------------------------------
+// TYPES
+// ----------------------------------------------------------------------
 
 // ----------------------------------------------------------------------
 // TYPES
@@ -563,9 +569,174 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
     }
   }
 
+  // --------------------------------------------------------------------------
+  // calendar.batchUpdate - Update multiple events at once
+  // --------------------------------------------------------------------------
+  async function batchUpdate(
+    input: CalendarBatchUpdateInput,
+    context: ToolContext
+  ): Promise<ToolResult<CalendarBatchUpdateOutput>> {
+    const startTime = Date.now();
+
+    try {
+      // Get Google OAuth client for the user
+      const authClient = await getGoogleCalendarAuth(context.userId);
+      if (!authClient) {
+        return {
+          success: false,
+          error: 'Google Calendar not connected. Please connect your Google account in Settings.',
+        };
+      }
+
+      // Determine which calendar to use
+      let calendarId: string = 'primary';
+
+      const family = await prisma.family.findUnique({
+        where: { id: context.familyId },
+        select: { sharedCalendarId: true },
+      });
+
+      if (family?.sharedCalendarId) {
+        calendarId = family.sharedCalendarId;
+      } else {
+        const selectedCalendar = await prisma.selectedCalendar.findFirst({
+          where: { userId: context.userId, isVisible: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (selectedCalendar) {
+          calendarId = selectedCalendar.calendarId;
+        }
+      }
+
+      const calendar = google.calendar({ version: 'v3', auth: authClient });
+      let updated = 0;
+      const failed: string[] = [];
+      const updatedEvents: Array<{ id: string; title: string }> = [];
+
+      for (const eventId of input.eventIds) {
+        try {
+          // Get current event to build the update
+          const currentEvent = await calendar.events.get({
+            calendarId,
+            eventId,
+          });
+
+          if (!currentEvent.data) {
+            failed.push(eventId);
+            continue;
+          }
+
+          const current = currentEvent.data;
+          const eventUpdate: calendar_v3.Schema$Event = {};
+
+          // Handle allDay conversion
+          if (input.patch.allDay !== undefined) {
+            if (input.patch.allDay) {
+              // Convert to all-day: use date instead of dateTime
+              const startDate = current.start?.dateTime
+                ? new Date(current.start.dateTime).toISOString().split('T')[0]
+                : current.start?.date;
+              
+              // For end date, Google Calendar uses exclusive end date for all-day events
+              // So a single day event on Feb 5 needs end date of Feb 6
+              let endDate: string;
+              if (current.end?.dateTime) {
+                const endDateTime = new Date(current.end.dateTime);
+                // If end is same day as start, make it next day
+                const startDateTime = current.start?.dateTime ? new Date(current.start.dateTime) : new Date();
+                if (endDateTime.toDateString() === startDateTime.toDateString()) {
+                  endDateTime.setDate(endDateTime.getDate() + 1);
+                }
+                endDate = endDateTime.toISOString().split('T')[0];
+              } else {
+                endDate = current.end?.date ?? startDate!;
+              }
+
+              eventUpdate.start = { date: startDate };
+              eventUpdate.end = { date: endDate };
+            } else {
+              // Convert from all-day to timed (default to 9am-10am)
+              const startDate = current.start?.date ?? new Date().toISOString().split('T')[0];
+              const tz = context.timezone ?? 'UTC';
+              eventUpdate.start = { dateTime: `${startDate}T09:00:00`, timeZone: tz };
+              eventUpdate.end = { dateTime: `${startDate}T10:00:00`, timeZone: tz };
+            }
+          }
+
+          // Handle title update
+          if (input.patch.title) {
+            eventUpdate.summary = input.patch.title;
+          }
+
+          // Handle location update
+          if (input.patch.location) {
+            eventUpdate.location = input.patch.location;
+          }
+
+          // Only update if there are changes
+          if (Object.keys(eventUpdate).length === 0) {
+            context.logger.debug({ eventId }, 'No changes to apply, skipping');
+            continue;
+          }
+
+          // Perform the update
+          await updateGoogleEvent({
+            auth: authClient,
+            calendarId,
+            eventId,
+            event: eventUpdate,
+          });
+
+          updated++;
+          updatedEvents.push({
+            id: eventId,
+            title: current.summary ?? 'Untitled',
+          });
+
+          context.logger.info(
+            { eventId, title: current.summary, changes: Object.keys(eventUpdate) },
+            'Batch updated calendar event'
+          );
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+          context.logger.error({ err, eventId }, `Failed to update event in batch: ${errorMessage}`);
+          failed.push(eventId);
+        }
+      }
+
+      const result: ToolResult<CalendarBatchUpdateOutput> = {
+        success: true,
+        data: {
+          updated,
+          failed,
+          updatedEvents,
+        },
+      };
+
+      const executionMs = Date.now() - startTime;
+      await writeAuditLog(prisma, context, 'calendar.batchUpdate', input as unknown as Record<string, unknown>, result, executionMs);
+
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      context.logger.error({ err, input }, 'calendar.batchUpdate failed');
+
+      const result: ToolResult<CalendarBatchUpdateOutput> = {
+        success: false,
+        error: `Failed to batch update events: ${errorMessage}`,
+      };
+
+      const executionMs = Date.now() - startTime;
+      await writeAuditLog(prisma, context, 'calendar.batchUpdate', input as unknown as Record<string, unknown>, result, executionMs);
+
+      return result;
+    }
+  }
+
   return {
     search,
     create,
     update,
+    batchUpdate,
   };
 }

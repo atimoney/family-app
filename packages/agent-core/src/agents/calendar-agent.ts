@@ -57,12 +57,28 @@ type CalendarIntent =
         endAt?: string;
         location?: string;
         notes?: string;
+        allDay?: boolean;
       };
       confidence: number;
     }
   | {
       type: 'analyze';
       question: string;
+      from: string | null;
+      to: string | null;
+      keywords: string[];
+      pattern: string | null;
+      confidence: number;
+    }
+  | {
+      type: 'analyzeAndUpdate';
+      question: string;
+      action: {
+        type: 'setAllDay' | 'reschedule' | 'delete' | 'updateTitle' | 'updateLocation';
+        value: boolean | string | null;
+        newDate: string | null;
+        newTime: string | null;
+      };
       from: string | null;
       to: string | null;
       keywords: string[];
@@ -112,7 +128,7 @@ const DEFAULT_EVENT_DURATION_MINUTES = 60;
  * Schema for LLM-parsed calendar intent.
  */
 const llmCalendarIntentSchema = z.object({
-  type: z.enum(['create', 'search', 'update', 'delete', 'analyze', 'unclear']),
+  type: z.enum(['create', 'search', 'update', 'delete', 'analyze', 'analyzeAndUpdate', 'unclear']),
   confidence: z.number().min(0).max(1),
   reasoning: z.string(),
 
@@ -147,6 +163,7 @@ const llmCalendarIntentSchema = z.object({
       newTime: z.string().nullable(),
       newTitle: z.string().nullable(),
       newLocation: z.string().nullable(),
+      allDay: z.boolean().nullable().describe('Convert to all-day event'),
     }),
   }).optional(),
 
@@ -168,6 +185,25 @@ const llmCalendarIntentSchema = z.object({
       pattern: z.string().nullable().describe('Pattern to look for in event titles'),
     }).optional(),
   }).optional(),
+
+  // For ANALYZE_AND_UPDATE intent - find events then modify them in batch
+  analyzeAndUpdate: z.object({
+    question: z.string().describe('What events to find'),
+    action: z.object({
+      type: z.enum(['setAllDay', 'reschedule', 'delete', 'updateTitle', 'updateLocation']),
+      value: z.union([z.boolean(), z.string()]).nullable().describe('New value for the change'),
+      newDate: z.string().nullable().describe('New date if rescheduling'),
+      newTime: z.string().nullable().describe('New time if rescheduling'),
+    }),
+    dateRange: z.object({
+      from: z.string().describe('Start of date range'),
+      to: z.string().nullable().describe('End of date range'),
+    }).nullable().describe('Date range to search, or null for all upcoming events'),
+    filters: z.object({
+      keywords: z.array(z.string()).describe('Keywords to filter events by'),
+      pattern: z.string().nullable().describe('Pattern to look for'),
+    }).optional(),
+  }).optional(),
 });
 
 type LLMCalendarIntent = z.infer<typeof llmCalendarIntentSchema>;
@@ -187,7 +223,8 @@ INTENT TYPES:
 - create: User wants to ADD a new event (e.g., "schedule dinner Friday 7pm", "add kids basketball Saturday 10am")
 - update: User wants to CHANGE an existing event (e.g., "move meeting to 3pm", "reschedule dentist to Thursday")
 - delete: User wants to REMOVE an event (e.g., "cancel tomorrow's appointment")
-- analyze: User asks a COMPLEX QUESTION requiring reasoning about events (e.g., "which events look like meal placeholders?", "what patterns do I see in my calendar?", "are there any conflicts?")
+- analyze: User asks a COMPLEX QUESTION requiring reasoning about events WITHOUT wanting to change them (e.g., "which events look like meal placeholders?", "are there any conflicts?")
+- analyzeAndUpdate: User wants to FIND events matching criteria AND then MODIFY them (e.g., "find meal placeholders and make them all-day", "change all morning events to afternoon")
 - unclear: Cannot determine intent or missing critical information
 
 DATE INTERPRETATION RULES:
@@ -210,25 +247,30 @@ RESPONSE FORMAT - You MUST use this EXACT JSON structure:
 For SEARCH intent (simple queries):
 {"type":"search","confidence":0.9,"reasoning":"User wants to see weekend events","search":{"query":null,"dateRange":{"from":"this weekend","to":null},"attendee":null}}
 
-For ANALYZE intent (complex reasoning questions):
+For ANALYZE intent (complex reasoning questions, read-only):
 {"type":"analyze","confidence":0.85,"reasoning":"User wants to find events that look like meal placeholders","analyze":{"question":"Find events that look like meal plan placeholders","dateRange":null,"filters":{"keywords":["dinner","lunch","pizza","meal"],"pattern":"meal-like names"}}}
+
+For ANALYZE_AND_UPDATE intent (find events then modify them):
+{"type":"analyzeAndUpdate","confidence":0.9,"reasoning":"User wants to find meal placeholders and convert to all-day events","analyzeAndUpdate":{"question":"Find events that look like meal plan placeholders","action":{"type":"setAllDay","value":true,"newDate":null,"newTime":null},"dateRange":null,"filters":{"keywords":["pizza","dinner","lunch","meal","breakfast"],"pattern":"meal-like names"}}}
 
 For CREATE intent:
 {"type":"create","confidence":0.9,"reasoning":"User wants to add an event","create":{"title":"Team meeting","startDate":"tomorrow","startTime":"3pm","endTime":null,"durationMinutes":60,"location":null,"attendees":[],"allDay":false,"needsClarification":null}}
 
-For UPDATE intent:
-{"type":"update","confidence":0.85,"reasoning":"User wants to reschedule","update":{"targetEvent":"dentist appointment","changes":{"newDate":"Thursday","newTime":"2pm","newTitle":null,"newLocation":null}}}
+For UPDATE intent (single event):
+{"type":"update","confidence":0.85,"reasoning":"User wants to reschedule","update":{"targetEvent":"dentist appointment","changes":{"newDate":"Thursday","newTime":"2pm","newTitle":null,"newLocation":null,"allDay":null}}}
 
 For UNCLEAR intent:
 {"type":"unclear","confidence":0.3,"reasoning":"Cannot determine what the user wants"}
 
 IMPORTANT RULES:
-1. The "type" field MUST be one of: "search", "create", "update", "delete", "analyze", "unclear"
+1. The "type" field MUST be one of: "search", "create", "update", "delete", "analyze", "analyzeAndUpdate", "unclear"
 2. Always include "reasoning" explaining your interpretation
 3. Include the appropriate nested object based on type
 4. For dates, use relative terms like "tomorrow", "this weekend", "next Monday" - I will parse them
-5. Use "analyze" for questions that require REASONING about events (patterns, conflicts, suggestions, categorization)
-6. Use "search" for simple queries that just need to fetch and display events
+5. Use "analyze" for questions that ONLY need to identify/report on events (no changes)
+6. Use "analyzeAndUpdate" when user wants to FIND events AND MODIFY them (e.g., "find X and change them to Y")
+7. Use "search" for simple queries that just need to fetch and display events
+8. action.type can be: "setAllDay", "reschedule", "delete", "updateTitle", "updateLocation"
 
 Respond ONLY with valid JSON. No markdown, no explanations.`;
 }
@@ -540,6 +582,43 @@ function convertLLMResultToCalendarIntent(
         to,
         keywords: analyze.filters?.keywords ?? [],
         pattern: analyze.filters?.pattern ?? null,
+        confidence: llmResult.confidence,
+      };
+    }
+
+    case 'analyzeAndUpdate': {
+      if (!llmResult.analyzeAndUpdate) {
+        return { type: 'unclear', confidence: llmResult.confidence };
+      }
+      const analyzeAndUpdate = llmResult.analyzeAndUpdate;
+
+      // Handle date range
+      let from: string | null = null;
+      let to: string | null = null;
+
+      if (analyzeAndUpdate.dateRange) {
+        const dateRange = parseRelativeDateRange(
+          analyzeAndUpdate.dateRange.from,
+          analyzeAndUpdate.dateRange.to,
+          timezone
+        );
+        from = dateRange.from;
+        to = dateRange.to;
+      }
+
+      return {
+        type: 'analyzeAndUpdate',
+        question: analyzeAndUpdate.question,
+        action: {
+          type: analyzeAndUpdate.action.type,
+          value: analyzeAndUpdate.action.value,
+          newDate: analyzeAndUpdate.action.newDate,
+          newTime: analyzeAndUpdate.action.newTime,
+        },
+        from,
+        to,
+        keywords: analyzeAndUpdate.filters?.keywords ?? [],
+        pattern: analyzeAndUpdate.filters?.pattern ?? null,
         confidence: llmResult.confidence,
       };
     }
@@ -1182,6 +1261,8 @@ export async function executeCalendarAgent(
       return handleUpdateIntent(intent, context, toolExecutor);
     case 'analyze':
       return handleAnalyzeIntent(intent, message, context, toolExecutor);
+    case 'analyzeAndUpdate':
+      return handleAnalyzeAndUpdateIntent(intent, message, context, toolExecutor);
     case 'unclear':
     default:
       return {
@@ -1189,7 +1270,8 @@ export async function executeCalendarAgent(
           '- Create an event: "Schedule team meeting tomorrow at 3pm"\n' +
           '- View events: "What\'s on my calendar this week?"\n' +
           '- Reschedule: "Move Hamish training to Thursday 6pm"\n' +
-          '- Analyze events: "Which events look like meal placeholders?"\n\n' +
+          '- Analyze events: "Which events look like meal placeholders?"\n' +
+          '- Batch update: "Find meal placeholders and make them all-day events"\n\n' +
           'What would you like to do?',
         actions: [],
         payload: { needsInput: true },
@@ -1498,6 +1580,235 @@ Format your response in a clear, readable way with bullet points if listing mult
       payload: { events: data.events, total: data.total, error: 'Analysis failed' },
     };
   }
+}
+
+/**
+ * Calendar event type used in analyze and update operations.
+ */
+type CalendarEvent = {
+  id: string;
+  title: string;
+  startAt: string;
+  endAt: string;
+  location?: string | null;
+  notes?: string | null;
+  allDay?: boolean;
+};
+
+/**
+ * Use LLM to identify events matching a natural language criteria.
+ * Returns array of events that match.
+ */
+async function identifyMatchingEventsWithLLM(
+  events: CalendarEvent[],
+  question: string,
+  filters: { keywords: string[]; pattern: string | null } | undefined,
+  context: AgentRunContext
+): Promise<CalendarEvent[]> {
+  const { llmProvider } = getRouterConfig();
+  const tz = context.timezone ?? 'UTC';
+
+  const eventsForMatching = events.map((e, i) => ({
+    index: i,
+    title: e.title,
+    date: formatDateShort(e.startAt, tz),
+    time: e.allDay ? 'All day' : formatTimeShort(e.startAt, tz),
+    isAllDay: e.allDay ?? false,
+  }));
+
+  const prompt = `Analyze these calendar events and identify which ones match the user's criteria.
+
+USER'S CRITERIA: "${question}"
+${filters?.keywords?.length ? `KEYWORDS TO LOOK FOR: ${filters.keywords.join(', ')}` : ''}
+${filters?.pattern ? `PATTERN TO IDENTIFY: ${filters.pattern}` : ''}
+
+EVENTS:
+${JSON.stringify(eventsForMatching, null, 2)}
+
+Return a JSON array of indices (numbers only) for events that match the criteria.
+Example: [0, 3, 5]
+If no events match, return an empty array: []
+
+Return ONLY the JSON array, no explanation.`;
+
+  try {
+    const response = await llmProvider.complete(
+      [
+        { role: 'system', content: 'You identify calendar events matching criteria. Return only a JSON array of indices. No explanations.' },
+        { role: 'user', content: prompt },
+      ],
+      { temperature: 0.1 }
+    );
+
+    // Parse the response as JSON array
+    const cleanedResponse = response.trim().replace(/```json?\n?|\n?```/g, '');
+    const indices = JSON.parse(cleanedResponse) as number[];
+    
+    if (!Array.isArray(indices)) {
+      throw new Error('Response is not an array');
+    }
+
+    return indices
+      .filter((i) => typeof i === 'number' && i >= 0 && i < events.length)
+      .map((i) => events[i]);
+  } catch (err) {
+    context.logger.warn({ err }, 'CalendarAgent: LLM event matching failed, falling back to keyword matching');
+    
+    // Fallback: keyword matching
+    if (!filters?.keywords?.length) {
+      return [];
+    }
+    
+    return events.filter((e) =>
+      filters.keywords.some((k) => e.title.toLowerCase().includes(k.toLowerCase()))
+    );
+  }
+}
+
+/**
+ * Handle analyze and update intent - find events matching criteria then propose batch updates.
+ */
+async function handleAnalyzeAndUpdateIntent(
+  intent: Extract<CalendarIntent, { type: 'analyzeAndUpdate' }>,
+  originalMessage: string,
+  context: AgentRunContext,
+  toolExecutor: ToolExecutor
+): Promise<CalendarAgentResult> {
+  // Step 1: Fetch events from calendar
+  const searchInput: Record<string, unknown> = {};
+  
+  if (intent.from) {
+    searchInput.from = intent.from;
+  }
+  if (intent.to) {
+    searchInput.to = intent.to;
+  }
+  // Get more events for batch operations
+  searchInput.limit = 50;
+
+  const searchResult = await toolExecutor('calendar.search', searchInput);
+
+  const searchAction: AgentAction = {
+    tool: 'calendar.search',
+    input: searchInput,
+    result: searchResult,
+  };
+
+  if (!searchResult.success) {
+    return {
+      text: `❌ Sorry, I couldn't fetch your calendar events. ${searchResult.error || ''}`,
+      actions: [searchAction],
+      payload: { error: searchResult.error },
+    };
+  }
+
+  const data = searchResult.data as { 
+    events: CalendarEvent[]; 
+    total: number 
+  };
+
+  if (data.events.length === 0) {
+    return {
+      text: "📅 I don't see any events in your calendar to analyze. Try creating some events first!",
+      actions: [searchAction],
+      payload: { events: [], total: 0 },
+    };
+  }
+
+  // Step 2: Use LLM to identify matching events
+  const matchingEvents = await identifyMatchingEventsWithLLM(
+    data.events,
+    intent.question,
+    { keywords: intent.keywords, pattern: intent.pattern },
+    context
+  );
+
+  if (matchingEvents.length === 0) {
+    return {
+      text: `🔍 I looked through ${data.events.length} events but couldn't find any that match your criteria: "${intent.question}".\n\nWould you like me to search with different criteria?`,
+      actions: [searchAction],
+      payload: { events: data.events, total: data.total, matchingCount: 0 },
+    };
+  }
+
+  // Step 3: Build the batch update proposal
+  const tz = context.timezone ?? 'UTC';
+  
+  // Describe what action we'll take
+  let actionDescription = '';
+  switch (intent.action.type) {
+    case 'setAllDay':
+      actionDescription = intent.action.value 
+        ? 'convert to all-day events (they\'ll appear at the top of the calendar)'
+        : 'convert from all-day to timed events';
+      break;
+    case 'reschedule':
+      actionDescription = `reschedule to ${intent.action.newDate || 'new date'}${intent.action.newTime ? ` at ${intent.action.newTime}` : ''}`;
+      break;
+    case 'delete':
+      actionDescription = 'delete these events';
+      break;
+    case 'updateTitle':
+      actionDescription = `update title to "${intent.action.value}"`;
+      break;
+    case 'updateLocation':
+      actionDescription = `update location to "${intent.action.value}"`;
+      break;
+    default:
+      actionDescription = 'update these events';
+  }
+
+  // Build event list for display
+  const eventList = matchingEvents
+    .slice(0, 10)
+    .map((e) => {
+      const timeStr = e.allDay ? 'All day' : `${formatTimeShort(e.startAt, tz)}-${formatTimeShort(e.endAt, tz)}`;
+      return `• **${e.title}** – ${formatDateShort(e.startAt, tz)} (${timeStr})`;
+    })
+    .join('\n');
+
+  const moreText = matchingEvents.length > 10 
+    ? `\n\n_(and ${matchingEvents.length - 10} more events)_` 
+    : '';
+
+  // Step 4: Create pending action for confirmation
+  const batchInput = {
+    eventIds: matchingEvents.map((e) => e.id),
+    patch: {} as Record<string, unknown>,
+  };
+
+  // Set up the patch based on action type
+  switch (intent.action.type) {
+    case 'setAllDay':
+      batchInput.patch.allDay = intent.action.value;
+      break;
+    case 'updateTitle':
+      batchInput.patch.title = intent.action.value;
+      break;
+    case 'updateLocation':
+      batchInput.patch.location = intent.action.value;
+      break;
+    // Note: reschedule and delete would need additional handling
+  }
+
+  const toolName = 'calendar.batchUpdate';
+  const description = `${actionDescription} for ${matchingEvents.length} event${matchingEvents.length > 1 ? 's' : ''}`;
+
+  // Always require confirmation for batch operations
+  const pendingResult = createPendingConfirmation(toolName, batchInput, description, context, false);
+
+  return {
+    text: `📅 I found **${matchingEvents.length} events** that look like meal placeholders:\n\n${eventList}${moreText}\n\n**Proposed action:** ${actionDescription}\n\nWould you like me to ${actionDescription}?`,
+    actions: [searchAction],
+    payload: {
+      events: matchingEvents,
+      matchingCount: matchingEvents.length,
+      totalSearched: data.total,
+      proposedAction: intent.action,
+    },
+    requiresConfirmation: true,
+    pendingAction: pendingResult.pendingAction,
+  };
 }
 
 async function handleSearchIntent(

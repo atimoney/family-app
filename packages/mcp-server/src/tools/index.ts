@@ -20,6 +20,7 @@ export {
   calendarSearchTool,
   calendarCreateTool,
   calendarUpdateTool,
+  calendarBatchUpdateTool,
   registerCalendarToolHandlers,
   calendarToolHandlers,
   type CalendarToolHandler,

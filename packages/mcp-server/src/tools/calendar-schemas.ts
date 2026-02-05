@@ -116,6 +116,44 @@ export const calendarUpdateOutputSchema = z.object({
 export type CalendarUpdateOutput = z.infer<typeof calendarUpdateOutputSchema>;
 
 // ----------------------------------------------------------------------
+// CALENDAR.BATCH_UPDATE
+// ----------------------------------------------------------------------
+
+export const calendarBatchUpdatePatchSchema = z.object({
+  /** Convert to/from all-day event */
+  allDay: z.boolean().optional(),
+  /** New title for all events */
+  title: z.string().min(1).max(500).optional(),
+  /** New location for all events */
+  location: z.string().max(500).nullable().optional(),
+});
+
+export type CalendarBatchUpdatePatch = z.infer<typeof calendarBatchUpdatePatchSchema>;
+
+export const calendarBatchUpdateInputSchema = z.object({
+  /** Event IDs to update */
+  eventIds: z.array(z.string()).min(1).max(50),
+  /** Fields to update on all events */
+  patch: calendarBatchUpdatePatchSchema,
+});
+
+export type CalendarBatchUpdateInput = z.infer<typeof calendarBatchUpdateInputSchema>;
+
+export const calendarBatchUpdateOutputSchema = z.object({
+  /** Number of events successfully updated */
+  updated: z.number(),
+  /** Event IDs that failed to update */
+  failed: z.array(z.string()),
+  /** Details of updated events */
+  updatedEvents: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+  })).optional(),
+});
+
+export type CalendarBatchUpdateOutput = z.infer<typeof calendarBatchUpdateOutputSchema>;
+
+// ----------------------------------------------------------------------
 // VALIDATION HELPERS
 // ----------------------------------------------------------------------
 

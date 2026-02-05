@@ -7,12 +7,16 @@ import {
   calendarCreateOutputSchema,
   calendarUpdateInputSchema,
   calendarUpdateOutputSchema,
+  calendarBatchUpdateInputSchema,
+  calendarBatchUpdateOutputSchema,
   type CalendarSearchInput,
   type CalendarSearchOutput,
   type CalendarCreateInput,
   type CalendarCreateOutput,
   type CalendarUpdateInput,
   type CalendarUpdateOutput,
+  type CalendarBatchUpdateInput,
+  type CalendarBatchUpdateOutput,
 } from './calendar-schemas.js';
 
 // ----------------------------------------------------------------------
@@ -36,6 +40,7 @@ export const calendarToolHandlers: {
   search?: CalendarToolHandler<CalendarSearchInput, CalendarSearchOutput>;
   create?: CalendarToolHandler<CalendarCreateInput, CalendarCreateOutput>;
   update?: CalendarToolHandler<CalendarUpdateInput, CalendarUpdateOutput>;
+  batchUpdate?: CalendarToolHandler<CalendarBatchUpdateInput, CalendarBatchUpdateOutput>;
 } = {};
 
 /**
@@ -45,10 +50,12 @@ export function registerCalendarToolHandlers(handlers: {
   search: CalendarToolHandler<CalendarSearchInput, CalendarSearchOutput>;
   create: CalendarToolHandler<CalendarCreateInput, CalendarCreateOutput>;
   update: CalendarToolHandler<CalendarUpdateInput, CalendarUpdateOutput>;
+  batchUpdate: CalendarToolHandler<CalendarBatchUpdateInput, CalendarBatchUpdateOutput>;
 }): void {
   calendarToolHandlers.search = handlers.search;
   calendarToolHandlers.create = handlers.create;
   calendarToolHandlers.update = handlers.update;
+  calendarToolHandlers.batchUpdate = handlers.batchUpdate;
 }
 
 // ----------------------------------------------------------------------
@@ -110,5 +117,21 @@ export const calendarUpdateTool = defineTool({
       return { success: false, error: 'Calendar update handler not registered' };
     }
     return calendarToolHandlers.update(input, context);
+  },
+});
+
+/**
+ * calendar.batchUpdate - Update multiple calendar events at once
+ */
+export const calendarBatchUpdateTool = defineTool({
+  name: 'calendar.batchUpdate',
+  description: 'Update multiple calendar events at once (convert to all-day, change title, etc.)',
+  inputSchema: calendarBatchUpdateInputSchema,
+  outputSchema: calendarBatchUpdateOutputSchema,
+  execute: async (input, context) => {
+    if (!calendarToolHandlers.batchUpdate) {
+      return { success: false, error: 'Calendar batchUpdate handler not registered' };
+    }
+    return calendarToolHandlers.batchUpdate(input, context);
   },
 });
