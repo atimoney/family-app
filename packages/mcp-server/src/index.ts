@@ -19,6 +19,9 @@ import {
   tasksCreateTool,
   tasksCompleteTool,
   tasksAssignTool,
+  calendarSearchTool,
+  calendarCreateTool,
+  calendarUpdateTool,
   mealsGeneratePlanTool,
   mealsSavePlanTool,
   mealsGetPlanTool,
@@ -37,6 +40,11 @@ toolRegistry.register(tasksListTool);
 toolRegistry.register(tasksCreateTool);
 toolRegistry.register(tasksCompleteTool);
 toolRegistry.register(tasksAssignTool);
+
+// Register calendar tools
+toolRegistry.register(calendarSearchTool);
+toolRegistry.register(calendarCreateTool);
+toolRegistry.register(calendarUpdateTool);
 
 // Register meal tools
 toolRegistry.register(mealsGeneratePlanTool);

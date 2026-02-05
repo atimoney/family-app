@@ -422,7 +422,8 @@ function parseCreateIntent(
 
   // First, try to extract a meaningful title from common patterns
   // Pattern: "I have to go [EVENT] on/at [DATE]" -> extract EVENT
-  const goToMatch = eventText.match(/(?:go\s+(?:to\s+)?|attend\s+|have\s+)([a-zA-Z][a-zA-Z\s']+?)(?:\s+(?:on|at|for|,)\s+|\s+(?:next|this|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday))/i);
+  // Also handle: "I have to go to [EVENT]" and "I need to attend [EVENT]"
+  const goToMatch = eventText.match(/(?:(?:have\s+to|need\s+to|want\s+to|going\s+to)\s+)?(?:go\s+(?:to\s+)?|attend\s+)([a-zA-Z][a-zA-Z\s']+?)(?:\s+(?:on|at|for|,)\s+|\s+(?:next|this|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday))/i);
   if (goToMatch && goToMatch[1]) {
     title = goToMatch[1].trim();
   } else {
