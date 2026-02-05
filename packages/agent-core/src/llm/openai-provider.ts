@@ -69,6 +69,8 @@ export class OpenAIProvider implements LLMProvider {
         )
       : [{ role: 'system', content: jsonInstruction }, ...messages];
 
+    console.log('[OpenAI] completeJson messages:', JSON.stringify(messagesWithJsonHint, null, 2));
+
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages: messagesWithJsonHint.map((m) => ({
@@ -81,6 +83,7 @@ export class OpenAIProvider implements LLMProvider {
     });
 
     const content = response.choices[0]?.message?.content;
+    console.log('[OpenAI] completeJson response:', content);
     if (!content) {
       throw new Error('OpenAI returned empty response');
     }

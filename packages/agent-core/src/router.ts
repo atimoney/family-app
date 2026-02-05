@@ -152,13 +152,19 @@ export async function routeIntent(
 
   const systemPrompt = `You are an AI router for a family assistant app. 
 Classify the user's intent into ONE primary domain:
-- tasks: To-do items, reminders, chores
+- tasks: To-do items, reminders, chores, things to do
 - calendar: Events, appointments, schedules
 - meals: Recipes, meal plans, cooking
 - lists: Shopping lists, groceries
 - unknown: General chit-chat or unrelated topics
 
-Current User Timezone: ${timezone || 'UTC'}`;
+IMPORTANT: If the user mentions "task", "todo", "remind", or wants to add/create something to do, classify as "tasks".
+
+Current User Timezone: ${timezone || 'UTC'}
+
+Respond with JSON containing: domain, confidence (0-1), reasons (array), isMultiIntent (boolean), multiDomains (optional array).`;
+
+  logger?.debug({ message, systemPrompt: systemPrompt.substring(0, 100) }, 'Router: calling LLM');
 
   try {
     const result = await llmProvider.completeJson(
@@ -170,6 +176,8 @@ Current User Timezone: ${timezone || 'UTC'}`;
       { description: 'Intent Routing' } as any
     );
 
+    logger?.info({ result }, 'Router: LLM classification result');
+
     return {
       domain: result.domain,
       confidence: result.confidence,
@@ -177,7 +185,7 @@ Current User Timezone: ${timezone || 'UTC'}`;
     };
 
   } catch (err) {
-    logger?.error({ err }, 'LLM Router failed, returning unknown');
+    logger?.error({ err, message }, 'LLM Router failed, returning unknown');
     
     return {
       domain: 'unknown',
