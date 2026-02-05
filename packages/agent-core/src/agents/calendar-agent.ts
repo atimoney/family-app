@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { AgentRunContext, AgentAction, ToolResult, ToolCall, PendingActionInfo } from '../types.js';
 import { extractDateTimeFromMessage, parseDateRange } from '../utils/date-parser.js';
 import {
@@ -6,6 +7,7 @@ import {
   isDestructiveTool,
   CONFIDENCE_THRESHOLD,
 } from '../confirmation.js';
+import { getRouterConfig } from '../router.js';
 
 // ----------------------------------------------------------------------
 // TYPES
@@ -94,6 +96,431 @@ const CALENDAR_PREF_KEYS = {
 const DEFAULT_EVENT_DURATION_MINUTES = 60;
 
 // ----------------------------------------------------------------------
+// LLM INTENT PARSING
+// ----------------------------------------------------------------------
+
+/**
+ * Schema for LLM-parsed calendar intent.
+ */
+const llmCalendarIntentSchema = z.object({
+  type: z.enum(['create', 'search', 'update', 'delete', 'unclear']),
+  confidence: z.number().min(0).max(1),
+  reasoning: z.string(),
+
+  // For CREATE intent
+  create: z.object({
+    title: z.string(),
+    startDate: z.string().nullable().describe('Relative date like "tomorrow", "next Saturday", or ISO date'),
+    startTime: z.string().nullable().describe('Time like "10am", "14:00", or null for all-day'),
+    endTime: z.string().nullable(),
+    durationMinutes: z.number().nullable().describe('Duration in minutes if no end time specified'),
+    location: z.string().nullable(),
+    attendees: z.array(z.string()),
+    allDay: z.boolean(),
+    needsClarification: z.enum(['date', 'time', 'title']).nullable(),
+  }).optional(),
+
+  // For SEARCH intent
+  search: z.object({
+    query: z.string().nullable().describe('Search term for event title, or null for all events'),
+    dateRange: z.object({
+      from: z.string().describe('Relative date like "today", "this weekend", "next week", or ISO date'),
+      to: z.string().nullable().describe('End of range, or null if same as from'),
+    }),
+    attendee: z.string().nullable(),
+  }).optional(),
+
+  // For UPDATE intent
+  update: z.object({
+    targetEvent: z.string().describe('Title or description of event to update'),
+    changes: z.object({
+      newDate: z.string().nullable(),
+      newTime: z.string().nullable(),
+      newTitle: z.string().nullable(),
+      newLocation: z.string().nullable(),
+    }),
+  }).optional(),
+
+  // For DELETE intent
+  delete: z.object({
+    targetEvent: z.string().describe('Title or description of event to delete'),
+    date: z.string().nullable().describe('Specific date if mentioned'),
+  }).optional(),
+});
+
+type LLMCalendarIntent = z.infer<typeof llmCalendarIntentSchema>;
+
+/**
+ * Build the system prompt for calendar intent parsing.
+ */
+function getCalendarIntentSystemPrompt(timezone: string, currentDate: string): string {
+  return `You are an intent parser for a family calendar assistant.
+Your job is to analyze user messages and extract structured calendar intents.
+
+Current date/time: ${currentDate}
+User timezone: ${timezone}
+
+INTENT TYPES:
+- search: User wants to VIEW or QUERY events (e.g., "what's on this weekend?", "am I free tomorrow?", "what do we have on Saturday?")
+- create: User wants to ADD a new event (e.g., "schedule dinner Friday 7pm", "add kids basketball Saturday 10am")
+- update: User wants to CHANGE an existing event (e.g., "move meeting to 3pm", "reschedule dentist to Thursday")
+- delete: User wants to REMOVE an event (e.g., "cancel tomorrow's appointment")
+- unclear: Cannot determine intent or missing critical information
+
+DATE INTERPRETATION RULES:
+- "this weekend" = the upcoming Saturday and Sunday (or current if today is weekend)
+- "next weekend" = Saturday and Sunday of next week
+- "tomorrow" = the day after current date
+- "next Monday" = the upcoming Monday
+- "this week" = from today until end of this week (Sunday)
+- "next week" = Monday through Sunday of next week
+- Always interpret relative to ${currentDate}
+
+CONFIDENCE SCORING:
+- 0.9-1.0: Clear intent with all required information
+- 0.7-0.89: Clear intent but some details assumed or inferred
+- 0.5-0.69: Ambiguous, may need clarification
+- Below 0.5: Unclear intent
+
+For SEARCH intents:
+- Questions about "what's on", "what do we have", "am I free", "any events" are SEARCH
+- Always populate dateRange.from with the interpreted date
+- If asking about a specific day, set both from and to to that day
+- If asking about a range (weekend, week), set appropriate from/to
+
+For CREATE intents:
+- Extract title, date, time, location, attendees
+- Set needsClarification if date or time is missing but intent is clear
+- Default to 60 minutes duration if not specified
+
+Respond ONLY with valid JSON matching the schema. No markdown, no explanations, just the JSON object.`;
+}
+
+/**
+ * Parse relative date string to ISO date range.
+ * Returns start and end of the date range.
+ */
+function parseRelativeDateRange(
+  fromStr: string,
+  toStr: string | null,
+  timezone: string
+): { from: string; to: string } {
+  const now = new Date();
+  const lower = fromStr.toLowerCase().trim();
+
+  // Helper to get start of day in local time
+  const startOfDay = (date: Date): Date => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  // Helper to get end of day in local time
+  const endOfDay = (date: Date): Date => {
+    const d = new Date(date);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  };
+
+  // Helper to add days
+  const addDays = (date: Date, days: number): Date => {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
+  };
+
+  // Helper to get next occurrence of a day of week (0=Sunday, 6=Saturday)
+  const getNextDayOfWeek = (dayOfWeek: number): Date => {
+    const d = new Date(now);
+    const currentDay = d.getDay();
+    let daysToAdd = dayOfWeek - currentDay;
+    if (daysToAdd <= 0) daysToAdd += 7;
+    d.setDate(d.getDate() + daysToAdd);
+    return startOfDay(d);
+  };
+
+  // Parse common relative date patterns
+  if (lower === 'today') {
+    return { from: startOfDay(now).toISOString(), to: endOfDay(now).toISOString() };
+  }
+
+  if (lower === 'tomorrow') {
+    const tomorrow = addDays(now, 1);
+    return { from: startOfDay(tomorrow).toISOString(), to: endOfDay(tomorrow).toISOString() };
+  }
+
+  if (lower === 'this weekend' || lower === 'weekend') {
+    // Get this Saturday
+    const saturday = getNextDayOfWeek(6);
+    // If today is Saturday or Sunday, use today as start
+    if (now.getDay() === 6) {
+      return { from: startOfDay(now).toISOString(), to: endOfDay(addDays(now, 1)).toISOString() };
+    }
+    if (now.getDay() === 0) {
+      return { from: startOfDay(now).toISOString(), to: endOfDay(now).toISOString() };
+    }
+    const sunday = addDays(saturday, 1);
+    return { from: startOfDay(saturday).toISOString(), to: endOfDay(sunday).toISOString() };
+  }
+
+  if (lower === 'next weekend') {
+    // Get Saturday of next week
+    const daysUntilNextSat = (6 - now.getDay() + 7) % 7 + 7;
+    const saturday = addDays(now, daysUntilNextSat === 7 ? 14 : daysUntilNextSat);
+    const sunday = addDays(saturday, 1);
+    return { from: startOfDay(saturday).toISOString(), to: endOfDay(sunday).toISOString() };
+  }
+
+  if (lower === 'this week') {
+    // From today until Sunday
+    const daysUntilSunday = 7 - now.getDay();
+    const sunday = daysUntilSunday === 7 ? now : addDays(now, daysUntilSunday);
+    return { from: startOfDay(now).toISOString(), to: endOfDay(sunday).toISOString() };
+  }
+
+  if (lower === 'next week') {
+    // Next Monday through Sunday
+    const daysUntilMonday = (1 - now.getDay() + 7) % 7 || 7;
+    const monday = addDays(now, daysUntilMonday);
+    const sunday = addDays(monday, 6);
+    return { from: startOfDay(monday).toISOString(), to: endOfDay(sunday).toISOString() };
+  }
+
+  // Day names: "saturday", "next monday", etc.
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayMatch = lower.match(/(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
+  if (dayMatch) {
+    const isNext = lower.startsWith('next');
+    const targetDay = dayNames.indexOf(dayMatch[1].toLowerCase());
+    let date = getNextDayOfWeek(targetDay);
+    if (isNext && date.getTime() - now.getTime() < 7 * 24 * 60 * 60 * 1000) {
+      date = addDays(date, 7);
+    }
+    return { from: startOfDay(date).toISOString(), to: endOfDay(date).toISOString() };
+  }
+
+  // Try to parse as ISO date or use date-parser
+  const dateResult = extractDateTimeFromMessage(fromStr, now, timezone);
+  if (dateResult.datetime) {
+    const date = new Date(dateResult.datetime);
+    return { from: startOfDay(date).toISOString(), to: endOfDay(date).toISOString() };
+  }
+
+  // Fallback: today
+  return { from: startOfDay(now).toISOString(), to: endOfDay(now).toISOString() };
+}
+
+/**
+ * Parse time string to hours and minutes.
+ */
+function parseTimeString(timeStr: string): { hours: number; minutes: number } | null {
+  // Match patterns like "10am", "3:30pm", "14:00", "9"
+  const match = timeStr.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!match) return null;
+
+  let hours = parseInt(match[1], 10);
+  const minutes = match[2] ? parseInt(match[2], 10) : 0;
+  const ampm = match[3]?.toLowerCase();
+
+  if (ampm === 'pm' && hours < 12) hours += 12;
+  if (ampm === 'am' && hours === 12) hours = 0;
+  // If no am/pm and hours 1-7, assume PM
+  if (!ampm && hours >= 1 && hours <= 7) hours += 12;
+
+  return { hours, minutes };
+}
+
+/**
+ * Convert LLM result to existing CalendarIntent format.
+ */
+function convertLLMResultToCalendarIntent(
+  llmResult: LLMCalendarIntent,
+  context: AgentRunContext
+): CalendarIntent {
+  const timezone = context.timezone ?? 'UTC';
+
+  switch (llmResult.type) {
+    case 'search': {
+      if (!llmResult.search) {
+        return { type: 'unclear', confidence: llmResult.confidence };
+      }
+      const search = llmResult.search;
+      const dateRange = parseRelativeDateRange(
+        search.dateRange.from,
+        search.dateRange.to,
+        timezone
+      );
+
+      return {
+        type: 'search',
+        query: search.query,
+        from: dateRange.from,
+        to: dateRange.to,
+        attendee: search.attendee,
+        confidence: llmResult.confidence,
+      };
+    }
+
+    case 'create': {
+      if (!llmResult.create) {
+        return { type: 'unclear', confidence: llmResult.confidence };
+      }
+      const create = llmResult.create;
+
+      // Parse start date
+      let startAt: string | null = null;
+      let endAt: string | null = null;
+      let allDay = create.allDay;
+
+      if (create.startDate) {
+        const dateRange = parseRelativeDateRange(create.startDate, null, timezone);
+        const startDate = new Date(dateRange.from);
+
+        if (create.startTime) {
+          const time = parseTimeString(create.startTime);
+          if (time) {
+            startDate.setHours(time.hours, time.minutes, 0, 0);
+            allDay = false;
+          }
+        }
+
+        startAt = startDate.toISOString();
+
+        // Calculate end time
+        if (create.endTime) {
+          const endTime = parseTimeString(create.endTime);
+          if (endTime) {
+            const endDate = new Date(startDate);
+            endDate.setHours(endTime.hours, endTime.minutes, 0, 0);
+            endAt = endDate.toISOString();
+          }
+        } else if (!allDay) {
+          // Default duration
+          const duration = create.durationMinutes ?? DEFAULT_EVENT_DURATION_MINUTES;
+          endAt = new Date(startDate.getTime() + duration * 60 * 1000).toISOString();
+        } else {
+          // All day event
+          const endDate = new Date(startDate);
+          endDate.setHours(23, 59, 59, 999);
+          endAt = endDate.toISOString();
+        }
+      }
+
+      return {
+        type: 'create',
+        title: create.title,
+        startAt,
+        endAt,
+        location: create.location,
+        notes: null,
+        allDay,
+        attendees: create.attendees,
+        needsClarification: create.needsClarification as 'date' | 'time' | null,
+        confidence: llmResult.confidence,
+      };
+    }
+
+    case 'update': {
+      if (!llmResult.update) {
+        return { type: 'unclear', confidence: llmResult.confidence };
+      }
+      const update = llmResult.update;
+
+      const patch: {
+        title?: string;
+        startAt?: string;
+        endAt?: string;
+        location?: string;
+        notes?: string;
+      } = {};
+
+      if (update.changes.newDate || update.changes.newTime) {
+        const dateStr = update.changes.newDate ?? 'today';
+        const dateRange = parseRelativeDateRange(dateStr, null, timezone);
+        const newDate = new Date(dateRange.from);
+
+        if (update.changes.newTime) {
+          const time = parseTimeString(update.changes.newTime);
+          if (time) {
+            newDate.setHours(time.hours, time.minutes, 0, 0);
+          }
+        }
+
+        patch.startAt = newDate.toISOString();
+        patch.endAt = new Date(newDate.getTime() + DEFAULT_EVENT_DURATION_MINUTES * 60 * 1000).toISOString();
+      }
+
+      if (update.changes.newTitle) {
+        patch.title = update.changes.newTitle;
+      }
+
+      if (update.changes.newLocation) {
+        patch.location = update.changes.newLocation;
+      }
+
+      return {
+        type: 'update',
+        eventTitle: update.targetEvent,
+        eventId: null,
+        patch,
+        confidence: llmResult.confidence,
+      };
+    }
+
+    case 'delete':
+    case 'unclear':
+    default:
+      return { type: 'unclear', confidence: llmResult.confidence };
+  }
+}
+
+/**
+ * Parse calendar intent using LLM.
+ * Falls back to regex-based parsing on error.
+ */
+async function parseCalendarIntentWithLLM(
+  message: string,
+  context: AgentRunContext
+): Promise<CalendarIntent> {
+  const { llmProvider } = getRouterConfig();
+  const currentDate = new Date().toISOString();
+  const timezone = context.timezone ?? 'UTC';
+
+  const systemPrompt = getCalendarIntentSystemPrompt(timezone, currentDate);
+
+  try {
+    context.logger.debug(
+      { message },
+      'CalendarAgent: parsing intent with LLM'
+    );
+
+    const llmResult = await llmProvider.completeJson<LLMCalendarIntent>(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: message },
+      ],
+      llmCalendarIntentSchema,
+      { temperature: 0.3 }
+    );
+
+    context.logger.debug(
+      { llmResult, message },
+      'CalendarAgent: LLM intent parsing result'
+    );
+
+    // Convert LLM result to existing CalendarIntent format
+    return convertLLMResultToCalendarIntent(llmResult, context);
+  } catch (error) {
+    context.logger.warn(
+      { error, message },
+      'CalendarAgent: LLM intent parsing failed, falling back to regex'
+    );
+    // Fallback to existing regex-based parsing
+    return parseCalendarIntentRegex(message, context);
+  }
+}
+
+// ----------------------------------------------------------------------
 // HELPERS
 // ----------------------------------------------------------------------
 
@@ -148,10 +575,10 @@ async function loadCalendarPreferences(
 }
 
 /**
- * Parse user message into a structured calendar intent.
- * If there's pending context (previous message asked for clarification), merge it with the new message.
+ * Parse user message into a structured calendar intent using regex patterns.
+ * This is the fallback when LLM parsing fails or for follow-up messages.
  */
-function parseCalendarIntent(message: string, context: AgentRunContext): CalendarIntent {
+function parseCalendarIntentRegex(message: string, context: AgentRunContext): CalendarIntent {
   const lower = message.toLowerCase();
   const previousContext = context.previousContext;
 
@@ -343,6 +770,28 @@ function parseCalendarIntent(message: string, context: AgentRunContext): Calenda
   }
 
   return { type: 'unclear', confidence: 0.0 };
+}
+
+/**
+ * Parse user message into a structured calendar intent.
+ * Uses LLM for natural language understanding with regex fallback.
+ * 
+ * For follow-up messages with pending context, uses regex directly.
+ */
+async function parseCalendarIntent(message: string, context: AgentRunContext): Promise<CalendarIntent> {
+  const previousContext = context.previousContext;
+
+  // Handle follow-up messages with pending context using regex (faster, deterministic)
+  if (previousContext?.awaitingInput && previousContext.pendingEvent) {
+    context.logger.debug(
+      { awaitingInput: previousContext.awaitingInput, pendingEvent: previousContext.pendingEvent },
+      'CalendarAgent: processing follow-up with regex (has pending context)'
+    );
+    return parseCalendarIntentRegex(message, context);
+  }
+
+  // Use LLM for initial intent parsing
+  return parseCalendarIntentWithLLM(message, context);
 }
 
 /**
@@ -643,7 +1092,7 @@ export async function executeCalendarAgent(
   context: AgentRunContext,
   toolExecutor: ToolExecutor
 ): Promise<CalendarAgentResult> {
-  const intent = parseCalendarIntent(message, context);
+  const intent = await parseCalendarIntent(message, context);
 
   context.logger.debug({ intent, message }, 'CalendarAgent: parsed intent');
 
