@@ -28,40 +28,21 @@ export function parseDateTime(
   const lower = text.toLowerCase().trim();
   const resolvedTimezone = timezone ?? 'UTC';
 
-  // Get current date parts in user's timezone
-  let now = referenceDate;
-  let offsetMs = 0;
+  // Always work in UTC to avoid server timezone issues
+  // Get current UTC date parts
+  const now = referenceDate;
+  const nowUtcYear = now.getUTCFullYear();
+  const nowUtcMonth = now.getUTCMonth();
+  const nowUtcDay = now.getUTCDate();
+  const nowUtcDayOfWeek = now.getUTCDay();
 
-  if (timezone) {
-    try {
-      // Calculate offset between server (UTC-ish) and user timezone
-      // parsing using Intl to get the wall-clock time in the user's timezone
-      const userParts = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        year: 'numeric', month: 'numeric', day: 'numeric',
-        hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false
-      }).formatToParts(now);
+  // Create "today at midnight UTC"
+  const todayUtc = new Date(Date.UTC(nowUtcYear, nowUtcMonth, nowUtcDay, 0, 0, 0, 0));
 
-      const p: any = {};
-      userParts.forEach(({ type, value }) => { p[type] = value; });
-      
-      // Construct a Date object that looks like the User's wall clock time
-      // We use this for relative calculations (e.g. "tomorrow" adds 24h to THIS date)
-      const userWallTime = new Date(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
-      
-      // Calculate the difference to allow shifting back
-      // If server is UTC, and user is +9, userWallTime is 9 hours AHEAD of now (conceptually)
-      // offsetMs = userWallTime.getTime() - now.getTime(); 
-      // But actually we just want to work in "Wall Time" and then subtract the timezone offset at the end.
-      // Simpler: Just resolve relative text against 'userWallTime', then interpret that result as being in 'timezone'.
-
-      now = userWallTime;
-    } catch (e) {
-      // Invalid timezone, fallback to server time
-    }
-  }
-
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Helper to create a UTC date
+  const createUtcDate = (year: number, month: number, day: number, hours = 0, minutes = 0): Date => {
+    return new Date(Date.UTC(year, month, day, hours, minutes, 0, 0));
+  };
 
   // Patterns for relative dates
   const patterns: Array<{
@@ -72,37 +53,38 @@ export function parseDateTime(
     {
       pattern: /^today(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$/i,
       handler: (match) => {
-        const date = new Date(today);
         if (match[1]) {
           let hours = parseInt(match[1], 10);
           const minutes = match[2] ? parseInt(match[2], 10) : 0;
           const ampm = match[3]?.toLowerCase();
           if (ampm === 'pm' && hours < 12) hours += 12;
           if (ampm === 'am' && hours === 12) hours = 0;
-          date.setHours(hours, minutes, 0, 0);
+          const date = createUtcDate(nowUtcYear, nowUtcMonth, nowUtcDay, hours, minutes);
+          return { date, confident: true };
         } else {
-          date.setHours(23, 59, 0, 0); // End of day
+          // End of day
+          const date = createUtcDate(nowUtcYear, nowUtcMonth, nowUtcDay, 23, 59);
+          return { date, confident: true };
         }
-        return { date, confident: true };
       },
     },
     // "tomorrow" with optional time
     {
       pattern: /^tomorrow(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$/i,
       handler: (match) => {
-        const date = new Date(today);
-        date.setDate(date.getDate() + 1);
+        const tomorrowDate = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
         if (match[1]) {
           let hours = parseInt(match[1], 10);
           const minutes = match[2] ? parseInt(match[2], 10) : 0;
           const ampm = match[3]?.toLowerCase();
           if (ampm === 'pm' && hours < 12) hours += 12;
           if (ampm === 'am' && hours === 12) hours = 0;
-          date.setHours(hours, minutes, 0, 0);
+          const date = createUtcDate(tomorrowDate.getUTCFullYear(), tomorrowDate.getUTCMonth(), tomorrowDate.getUTCDate(), hours, minutes);
+          return { date, confident: true };
         } else {
-          date.setHours(23, 59, 0, 0);
+          const date = createUtcDate(tomorrowDate.getUTCFullYear(), tomorrowDate.getUTCMonth(), tomorrowDate.getUTCDate(), 23, 59);
+          return { date, confident: true };
         }
-        return { date, confident: true };
       },
     },
     // "in X days/hours/minutes"
@@ -111,14 +93,14 @@ export function parseDateTime(
       handler: (match) => {
         const amount = parseInt(match[1], 10);
         const unit = match[2].toLowerCase();
-        const date = new Date(now);
+        let date: Date;
         if (unit.startsWith('day')) {
-          date.setDate(date.getDate() + amount);
-          date.setHours(23, 59, 0, 0);
+          const futureDate = new Date(todayUtc.getTime() + amount * 24 * 60 * 60 * 1000);
+          date = createUtcDate(futureDate.getUTCFullYear(), futureDate.getUTCMonth(), futureDate.getUTCDate(), 23, 59);
         } else if (unit.startsWith('hour')) {
-          date.setTime(date.getTime() + amount * 60 * 60 * 1000);
-        } else if (unit.startsWith('minute')) {
-          date.setTime(date.getTime() + amount * 60 * 1000);
+          date = new Date(now.getTime() + amount * 60 * 60 * 1000);
+        } else {
+          date = new Date(now.getTime() + amount * 60 * 1000);
         }
         return { date, confident: true };
       },
@@ -129,11 +111,10 @@ export function parseDateTime(
       handler: (match) => {
         const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         const targetDay = dayNames.indexOf(match[1].toLowerCase());
-        const date = new Date(today);
-        const currentDay = date.getDay();
-        let daysToAdd = targetDay - currentDay;
+        let daysToAdd = targetDay - nowUtcDayOfWeek;
         if (daysToAdd <= 0) daysToAdd += 7; // Next week if today or past
-        date.setDate(date.getDate() + daysToAdd);
+        
+        const targetDate = new Date(todayUtc.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
         
         // Handle time if provided
         if (match[2]) {
@@ -144,11 +125,11 @@ export function parseDateTime(
           if (ampm === 'am' && hours === 12) hours = 0;
           // If no am/pm specified and hour is 1-7, assume pm for reasonable defaults
           if (!ampm && hours >= 1 && hours <= 7) hours += 12;
-          date.setHours(hours, minutes, 0, 0);
+          const date = createUtcDate(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate(), hours, minutes);
           return { date, confident: true };
         }
         
-        date.setHours(23, 59, 0, 0);
+        const date = createUtcDate(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate(), 23, 59);
         return { date, confident: true };
       },
     },
@@ -156,8 +137,7 @@ export function parseDateTime(
     {
       pattern: /^next\s+week$/i,
       handler: () => {
-        const date = new Date(today);
-        date.setDate(date.getDate() + 7);
+        const date = new Date(todayUtc.getTime() + 7 * 24 * 60 * 60 * 1000);
         return { date, confident: false }; // Ambiguous - which day?
       },
     },

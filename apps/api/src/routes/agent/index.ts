@@ -320,18 +320,21 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
     // --------------------------------------------------------------------------
     // REGULAR CHAT FLOW
     // --------------------------------------------------------------------------
+    // At this point, message should be defined (validated by schema refine)
+    const message = parsed.data.message ?? '';
+    
     logger.info(
       {
         userId,
         familyId: membership.familyId,
-        message: parsed.data.message.substring(0, 100),
+        message: message.substring(0, 100),
       },
       'Agent chat request received'
     );
 
     // Build agent request
     const agentRequest: AgentRequest = {
-      message: parsed.data.message,
+      message,
       conversationId,
       domainHint: parsed.data.domainHint as AgentRequest['domainHint'],
     };

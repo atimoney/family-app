@@ -91,7 +91,7 @@ registerAgentExecutor('lists', createPlaceholderExecutor('lists'));
  */
 async function handleMultiIntent(
   domains: AgentDomain[],
-  request: AgentRequest,
+  message: string,
   context: AgentRunContext
 ): Promise<AgentExecutorResult> {
   context.logger.info(
@@ -107,7 +107,7 @@ async function handleMultiIntent(
     const executor = getAgentExecutor(domain);
     if (executor) {
       try {
-        const result = await executor(request.message, context);
+        const result = await executor(message, context);
         results.push(result);
         allActions.push(...result.actions);
 
@@ -181,6 +181,10 @@ export async function orchestrate(
 ): Promise<AgentResponse> {
   const startTime = Date.now();
 
+  // Message should always be present when orchestrate is called
+  // (confirmation flow is handled separately in the API layer)
+  const message = request.message ?? '';
+
   // Step 0: Load previous conversation context
   const previousContext = conversationContextStore.get(
     context.conversationId,
@@ -194,7 +198,7 @@ export async function orchestrate(
   context.logger.info(
     {
       requestId: context.requestId,
-      message: request.message.substring(0, 100),
+      message: message.substring(0, 100),
       conversationId: context.conversationId,
       domainHint: request.domainHint,
       hasPreviousContext: !!previousContext,
@@ -215,7 +219,7 @@ export async function orchestrate(
 
   // Step 1: Check for multi-intent (unless domain hint is provided)
   if (!effectiveDomainHint) {
-    const multiIntent = await detectMultiIntent(request.message, { logger: context.logger, timezone: context.timezone });
+    const multiIntent = await detectMultiIntent(message, { logger: context.logger, timezone: context.timezone });
 
     if (multiIntent.isMultiIntent && multiIntent.domains.length > 1) {
       context.logger.info(
@@ -223,7 +227,7 @@ export async function orchestrate(
         'Orchestrator: detected multi-intent'
       );
 
-      const result = await handleMultiIntent(multiIntent.domains, request, context);
+      const result = await handleMultiIntent(multiIntent.domains, message, context);
 
       const durationMs = Date.now() - startTime;
       context.logger.info(
@@ -250,7 +254,7 @@ export async function orchestrate(
   }
 
   // Step 2: Route the intent (single domain)
-  const route = await routeIntent(request.message, {
+  const route = await routeIntent(message, {
     domainHint: effectiveDomainHint,
     logger: context.logger,
     timezone: context.timezone,
@@ -272,7 +276,7 @@ export async function orchestrate(
   // Step 4: Execute the specialist agent
   let result: AgentExecutorResult;
   try {
-    result = await executor(request.message, context);
+    result = await executor(message, context);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     context.logger.error(

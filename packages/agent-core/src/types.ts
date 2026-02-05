@@ -50,8 +50,8 @@ export type AgentAction = {
  * Incoming request to the agent system.
  */
 export type AgentRequest = {
-  /** The user's natural language message */
-  message: string;
+  /** The user's natural language message (optional for confirmation requests) */
+  message?: string;
   /** Optional conversation ID for context continuity */
   conversationId?: string;
   /** Optional hint to route to a specific domain */
@@ -145,13 +145,22 @@ export type AgentLogger = {
 export const agentDomainSchema = z.enum(['tasks', 'calendar', 'meals', 'lists', 'unknown']);
 
 export const agentRequestSchema = z.object({
-  message: z.string().min(1, 'Message is required').max(4000),
+  message: z.string().max(4000).optional(),
   conversationId: z.string().optional(),
   domainHint: agentDomainSchema.optional(),
   confirmationToken: z.string().regex(/^pa_[a-f0-9]{32}$/, 'Invalid confirmation token format').optional(),
   confirmed: z.boolean().optional(),
   timezone: z.string().min(1).optional(),
-});
+}).refine(
+  (data) => {
+    // Message is required unless this is a confirmation request
+    if (data.confirmationToken && data.confirmed) {
+      return true; // Confirmation requests don't need a message
+    }
+    return data.message && data.message.length >= 1;
+  },
+  { message: 'Message is required', path: ['message'] }
+);
 
 export const toolCallSchema = z.object({
   toolName: z.string(),

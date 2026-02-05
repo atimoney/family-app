@@ -417,16 +417,34 @@ function parseCreateIntent(
     }
   }
 
-  // Extract title (remove date/time portions)
+  // Extract title - be smarter about finding the actual event name
   let title = eventText;
-  if (dateResult.extracted) {
-    title = title.replace(new RegExp(`(?:on|at|for)?\\s*${escapeRegex(dateResult.extracted)}`, 'gi'), '').trim();
+
+  // First, try to extract a meaningful title from common patterns
+  // Pattern: "I have to go [EVENT] on/at [DATE]" -> extract EVENT
+  const goToMatch = eventText.match(/(?:go\s+(?:to\s+)?|attend\s+|have\s+)([a-zA-Z][a-zA-Z\s']+?)(?:\s+(?:on|at|for|,)\s+|\s+(?:next|this|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday))/i);
+  if (goToMatch && goToMatch[1]) {
+    title = goToMatch[1].trim();
+  } else {
+    // Remove date/time portions from the text
+    if (dateResult.extracted) {
+      title = title.replace(new RegExp(`(?:on|at|for)?\\s*${escapeRegex(dateResult.extracted)}`, 'gi'), '').trim();
+    }
+    // Clean up common filler phrases
+    title = title
+      .replace(/^(?:I\s+)?(?:have\s+to|need\s+to|want\s+to|going\s+to)\s+(?:go\s+(?:to\s+)?)?/i, '')
+      .replace(/,?\s*(?:need\s+(?:it\s+)?in\s+(?:the\s+)?(?:diary|calendar)|put\s+(?:it\s+)?in\s+(?:the\s+)?(?:diary|calendar)|add\s+(?:it\s+)?to\s+(?:the\s+)?(?:diary|calendar))\.?$/i, '')
+      .replace(/\s+(?:on|at|for)\s*$/i, '')
+      .replace(/^\s*(?:on|at|for)\s+/i, '')
+      .replace(/,\s*$/, '')
+      .replace(/^\s*,\s*/, '')
+      .trim();
   }
-  // Clean up remaining prepositions and whitespace
-  title = title
-    .replace(/\s+(?:on|at|for)\s*$/i, '')
-    .replace(/^\s*(?:on|at|for)\s+/i, '')
-    .trim();
+
+  // Capitalize first letter if it looks like an event name
+  if (title && title.length > 0 && /^[a-z]/.test(title)) {
+    title = title.charAt(0).toUpperCase() + title.slice(1);
+  }
 
   // Extract location
   let location: string | null = null;
