@@ -222,7 +222,9 @@ export function useAgentChat(): UseAgentChatReturn {
       setError(null);
 
       try {
-        const response = await confirmAgentAction(conversation.id, token);
+        // Include timezone for correct date/time formatting in response
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const response = await confirmAgentAction(conversation.id, token, timezone);
 
         // Find the message with this pending action and mark it as confirmed
         // Then add the new response

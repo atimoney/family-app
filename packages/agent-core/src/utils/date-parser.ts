@@ -161,9 +161,14 @@ export function parseDateTime(
   const lower = text.toLowerCase().trim();
   const resolvedTimezone = timezone ?? 'UTC';
 
+  // DEBUG: Log the timezone being used
+  console.log('[DATE PARSER DEBUG] parseDateTime called:', { text, timezone, resolvedTimezone });
+
   // Get today's date in the user's timezone
   const today = getTodayInTimezone(referenceDate, resolvedTimezone);
   const { year: todayYear, month: todayMonth, day: todayDay, dayOfWeek: todayDayOfWeek } = today;
+
+  console.log('[DATE PARSER DEBUG] today in timezone:', today);
 
   // Helper to add days to a date in the user's timezone
   const addDays = (baseYear: number, baseMonth: number, baseDay: number, daysToAdd: number): { year: number; month: number; day: number } => {
@@ -256,7 +261,9 @@ export function parseDateTime(
           if (ampm === 'am' && hours === 12) hours = 0;
           // If no am/pm specified and hour is 1-7, assume pm for reasonable defaults
           if (!ampm && hours >= 1 && hours <= 7) hours += 12;
+          console.log('[DATE PARSER DEBUG] calling localTimeToUtc with:', { year: targetDate.year, month: targetDate.month, day: targetDate.day, hours, minutes, resolvedTimezone });
           const date = localTimeToUtc(targetDate.year, targetDate.month, targetDate.day, hours, minutes, resolvedTimezone);
+          console.log('[DATE PARSER DEBUG] localTimeToUtc returned:', date.toISOString());
           return { date, confident: true };
         }
         

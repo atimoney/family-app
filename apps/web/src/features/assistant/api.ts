@@ -27,17 +27,20 @@ export async function sendAgentMessage(request: AgentRequest): Promise<AgentResp
  *
  * @param conversationId - The conversation ID for context continuity
  * @param confirmationToken - The token from the pending action
+ * @param timezone - User's timezone for correct date/time formatting in response
  * @returns The agent response after executing the confirmed action
  */
 export async function confirmAgentAction(
   conversationId: string,
-  confirmationToken: string
+  confirmationToken: string,
+  timezone?: string
 ): Promise<AgentResponse> {
   return apiClient.post<AgentResponse>(AGENT_CHAT_ENDPOINT, {
     message: '', // Empty message for confirmation
     conversationId,
     confirmationToken,
     confirmed: true,
+    timezone,
   });
 }
 
