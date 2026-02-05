@@ -96,7 +96,16 @@ Your goal is to classify user messages into domains:
 - unknown: General chit-chat or unrelated topics
 
 Analyze if the message requires actions in MULTIPLE domains (e.g., "Add milk to list AND remind me to call Mom").
-Current User Timezone: ${timezone || 'UTC'}`;
+Current User Timezone: ${timezone || 'UTC'}
+
+You MUST respond with a JSON object containing ALL of these fields:
+- domain: The primary domain (tasks, calendar, meals, lists, or unknown)
+- confidence: A number from 0 to 1 indicating how confident you are
+- reasons: An array of strings explaining your classification
+- isMultiIntent: A boolean (true if the message involves multiple domains)
+- multiDomains: An array of domains if isMultiIntent is true (optional otherwise)
+
+Example response: {"domain": "calendar", "confidence": 0.95, "reasons": ["User wants to create an event"], "isMultiIntent": false}`;
 
   try {
     const result = await llmProvider.completeJson(

@@ -48,6 +48,13 @@ export {
 // Utils
 export { parseDateTime, extractDateTimeFromMessage, parseDateRange } from './utils/index.js';
 
+// Conversation Context
+export {
+  conversationContextStore,
+  type ConversationContext,
+  type PendingEventContext,
+} from './conversation-context.js';
+
 // Confirmation
 export {
   pendingActionStore,

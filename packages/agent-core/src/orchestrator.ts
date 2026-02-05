@@ -7,6 +7,7 @@ import type {
   PendingActionInfo,
 } from './types.js';
 import { routeIntent, detectMultiIntent } from './router.js';
+import { conversationContextStore, type ConversationContext } from './conversation-context.js';
 
 // ----------------------------------------------------------------------
 // SPECIALIST AGENT EXECUTORS
@@ -167,10 +168,12 @@ async function handleMultiIntent(
  * Main orchestrator that routes requests and coordinates agent execution.
  *
  * Flow:
- * 1. Check for multi-intent messages
- * 2. Route the intent to a domain (or multiple domains)
- * 3. Get the specialist executor(s) for those domains
- * 4. Execute and return the response
+ * 1. Load previous conversation context (for multi-turn interactions)
+ * 2. Check for multi-intent messages
+ * 3. Route the intent to a domain (or multiple domains)
+ * 4. Get the specialist executor(s) for those domains
+ * 5. Execute and return the response
+ * 6. Store conversation context for follow-up messages
  */
 export async function orchestrate(
   request: AgentRequest,
@@ -178,18 +181,40 @@ export async function orchestrate(
 ): Promise<AgentResponse> {
   const startTime = Date.now();
 
+  // Step 0: Load previous conversation context
+  const previousContext = conversationContextStore.get(
+    context.conversationId,
+    context.userId,
+    context.familyId
+  );
+
+  // Attach previous context to the run context for agents to use
+  context.previousContext = previousContext;
+
   context.logger.info(
     {
       requestId: context.requestId,
       message: request.message.substring(0, 100),
       conversationId: context.conversationId,
       domainHint: request.domainHint,
+      hasPreviousContext: !!previousContext,
+      awaitingInput: previousContext?.awaitingInput,
     },
     'Orchestrator: starting request'
   );
 
+  // If we have previous context with pending input, use the previous domain as a hint
+  let effectiveDomainHint = request.domainHint;
+  if (!effectiveDomainHint && previousContext?.awaitingInput && previousContext.lastDomain) {
+    effectiveDomainHint = previousContext.lastDomain;
+    context.logger.debug(
+      { lastDomain: previousContext.lastDomain, awaitingInput: previousContext.awaitingInput },
+      'Orchestrator: using previous domain from context'
+    );
+  }
+
   // Step 1: Check for multi-intent (unless domain hint is provided)
-  if (!request.domainHint) {
+  if (!effectiveDomainHint) {
     const multiIntent = await detectMultiIntent(request.message, { logger: context.logger, timezone: context.timezone });
 
     if (multiIntent.isMultiIntent && multiIntent.domains.length > 1) {
@@ -226,7 +251,7 @@ export async function orchestrate(
 
   // Step 2: Route the intent (single domain)
   const route = await routeIntent(request.message, {
-    domainHint: request.domainHint,
+    domainHint: effectiveDomainHint,
     logger: context.logger,
     timezone: context.timezone,
   });
@@ -279,7 +304,32 @@ export async function orchestrate(
     'Orchestrator: request completed'
   );
 
-  // Step 5: Build and return the response
+  // Step 5: Update conversation context for multi-turn interactions
+  const payload = result.payload ?? {};
+  if (payload.awaitingInput || payload.pendingEvent || payload.pendingTask) {
+    // Store context for follow-up messages
+    conversationContextStore.set(
+      context.conversationId,
+      context.userId,
+      context.familyId,
+      {
+        lastDomain: route.domain,
+        awaitingInput: payload.awaitingInput as ConversationContext['awaitingInput'],
+        pendingEvent: payload.pendingEvent as ConversationContext['pendingEvent'],
+        pendingTask: payload.pendingTask as ConversationContext['pendingTask'],
+      }
+    );
+    context.logger.debug(
+      { domain: route.domain, awaitingInput: payload.awaitingInput },
+      'Orchestrator: stored conversation context for follow-up'
+    );
+  } else if (result.actions.length > 0 && result.actions.some(a => a.result.success)) {
+    // Clear context after successful action
+    conversationContextStore.clear(context.conversationId, context.userId, context.familyId);
+    context.logger.debug({}, 'Orchestrator: cleared conversation context after successful action');
+  }
+
+  // Step 6: Build and return the response
   return {
     text: result.text,
     actions: result.actions,

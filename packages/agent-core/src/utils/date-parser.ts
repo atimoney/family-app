@@ -123,9 +123,9 @@ export function parseDateTime(
         return { date, confident: true };
       },
     },
-    // Day of week (next occurrence)
+    // Day of week with time (e.g., "saturday 10am", "next monday at 3pm")
     {
-      pattern: /^(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i,
+      pattern: /^(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$/i,
       handler: (match) => {
         const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         const targetDay = dayNames.indexOf(match[1].toLowerCase());
@@ -134,6 +134,20 @@ export function parseDateTime(
         let daysToAdd = targetDay - currentDay;
         if (daysToAdd <= 0) daysToAdd += 7; // Next week if today or past
         date.setDate(date.getDate() + daysToAdd);
+        
+        // Handle time if provided
+        if (match[2]) {
+          let hours = parseInt(match[2], 10);
+          const minutes = match[3] ? parseInt(match[3], 10) : 0;
+          const ampm = match[4]?.toLowerCase();
+          if (ampm === 'pm' && hours < 12) hours += 12;
+          if (ampm === 'am' && hours === 12) hours = 0;
+          // If no am/pm specified and hour is 1-7, assume pm for reasonable defaults
+          if (!ampm && hours >= 1 && hours <= 7) hours += 12;
+          date.setHours(hours, minutes, 0, 0);
+          return { date, confident: true };
+        }
+        
         date.setHours(23, 59, 0, 0);
         return { date, confident: true };
       },
@@ -198,13 +212,19 @@ export function extractDateTimeFromMessage(
   timezone?: string
 ): DateTimeExtractResult {
   const resolvedTimezone = timezone ?? 'UTC';
-  // Common patterns to look for in the message
+  // Common patterns to look for in the message (ordered from most specific to least)
   const datePatterns = [
+    // Day of week with time (e.g., "saturday 10am", "next saturday at 10am")
+    /(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)/i,
+    // Explicit preposition patterns
     /(?:due|by|on|at|for)\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?/i,
-    /(?:due|by|on|at|for)\s+next\s+(week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
+    /(?:due|by|on|at|for)\s+next\s+(week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?/i,
     /(?:due|by|on|at|for)\s+in\s+(\d+)\s+(day|days|hour|hours)/i,
+    // Bare patterns (no preposition required)
     /(tomorrow|today)(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?/i,
-    /next\s+(week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
+    /next\s+(week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?/i,
+    // Just day name without preposition
+    /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
   ];
 
   for (const pattern of datePatterns) {

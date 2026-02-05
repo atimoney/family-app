@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ConversationContext } from './conversation-context.js';
 
 // ----------------------------------------------------------------------
 // CORE TYPES
@@ -123,6 +124,8 @@ export type AgentRunContext = {
   conversationId: string;
   /** Structured logger */
   logger: AgentLogger;
+  /** Previous conversation context for multi-turn interactions */
+  previousContext?: ConversationContext | null;
 };
 
 /**

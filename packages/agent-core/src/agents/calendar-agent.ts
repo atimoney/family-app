@@ -149,9 +149,99 @@ async function loadCalendarPreferences(
 
 /**
  * Parse user message into a structured calendar intent.
+ * If there's pending context (previous message asked for clarification), merge it with the new message.
  */
 function parseCalendarIntent(message: string, context: AgentRunContext): CalendarIntent {
   const lower = message.toLowerCase();
+  const previousContext = context.previousContext;
+
+  // Check if this is a follow-up to a previous clarification request
+  if (previousContext?.awaitingInput && previousContext.pendingEvent) {
+    context.logger.debug(
+      { awaitingInput: previousContext.awaitingInput, pendingEvent: previousContext.pendingEvent },
+      'CalendarAgent: processing follow-up message with pending context'
+    );
+
+    // User is providing the date/time we asked for
+    if (previousContext.awaitingInput === 'dateTime') {
+      // Try to parse just the date/time from the new message
+      const dateResult = extractDateTimeFromMessage(message, new Date(), context.timezone);
+      
+      if (dateResult.datetime) {
+        // Merge with pending event data
+        const start = new Date(dateResult.datetime);
+        const end = new Date(start.getTime() + 60 * 60 * 1000); // Default 1 hour
+
+        return {
+          type: 'create',
+          title: previousContext.pendingEvent.title,
+          startAt: dateResult.datetime,
+          endAt: end.toISOString(),
+          location: previousContext.pendingEvent.location ?? null,
+          notes: previousContext.pendingEvent.notes ?? null,
+          allDay: false,
+          attendees: previousContext.pendingEvent.attendees ?? [],
+          needsClarification: null,
+          confidence: 0.90, // High confidence since user explicitly provided the date
+        };
+      }
+    }
+
+    // User is providing the time we asked for (date already known)
+    if (previousContext.awaitingInput === 'time' && previousContext.pendingEvent.startAt) {
+      const timeMatch = message.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+      const allDayMatch = /all\s*day/i.test(message);
+
+      if (timeMatch || allDayMatch) {
+        const existingDate = new Date(previousContext.pendingEvent.startAt);
+
+        if (allDayMatch) {
+          const start = new Date(existingDate);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(start);
+          end.setHours(23, 59, 59, 999);
+
+          return {
+            type: 'create',
+            title: previousContext.pendingEvent.title,
+            startAt: start.toISOString(),
+            endAt: end.toISOString(),
+            location: previousContext.pendingEvent.location ?? null,
+            notes: null,
+            allDay: true,
+            attendees: previousContext.pendingEvent.attendees ?? [],
+            needsClarification: null,
+            confidence: 0.90,
+          };
+        }
+
+        if (timeMatch) {
+          let hours = parseInt(timeMatch[1], 10);
+          const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+          const ampm = timeMatch[3]?.toLowerCase();
+          if (ampm === 'pm' && hours < 12) hours += 12;
+          if (ampm === 'am' && hours === 12) hours = 0;
+          if (!ampm && hours >= 1 && hours <= 7) hours += 12; // Assume PM for 1-7
+
+          existingDate.setHours(hours, minutes, 0, 0);
+          const end = new Date(existingDate.getTime() + 60 * 60 * 1000);
+
+          return {
+            type: 'create',
+            title: previousContext.pendingEvent.title,
+            startAt: existingDate.toISOString(),
+            endAt: end.toISOString(),
+            location: previousContext.pendingEvent.location ?? null,
+            notes: null,
+            allDay: false,
+            attendees: previousContext.pendingEvent.attendees ?? [],
+            needsClarification: null,
+            confidence: 0.90,
+          };
+        }
+      }
+    }
+  }
 
   // SEARCH patterns
   if (/(?:show|list|what['']?s|get|find|see|check)\s+(?:my\s+)?(?:calendar|events?|schedule)/i.test(lower)) {
@@ -176,26 +266,72 @@ function parseCalendarIntent(message: string, context: AgentRunContext): Calenda
     }
   }
 
-  // CREATE patterns
+  // CREATE patterns - improved to handle "create event for saturday 10am kids basketball"
   const createPatterns: Array<{ pattern: RegExp; confidence: number }> = [
+    // "create event for saturday 10am kids basketball" - time before title
+    { pattern: /^(?:schedule|book|add|create|new)\s+(?:a\s+)?(?:event|meeting|appointment)\s+(?:for|on)\s+((?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+(.+)$/i, confidence: 0.95 },
+    // Standard patterns
     { pattern: /^(?:schedule|book|add|create|new)\s+(?:a\s+)?(?:event|meeting|appointment)[:\s]+(.+)$/i, confidence: 0.95 },
     { pattern: /^(?:schedule|book|add|create)\s+["']?(.+?)["']?\s+(?:on|at|for)\s+(.+)$/i, confidence: 0.90 },
     { pattern: /^(?:event|meeting|appointment)[:\s]+(.+)$/i, confidence: 0.88 },
     { pattern: /^(?:put|add)\s+(.+?)\s+(?:on|in)\s+(?:the\s+)?calendar/i, confidence: 0.85 },
   ];
 
-  for (const { pattern, confidence } of createPatterns) {
+  for (let i = 0; i < createPatterns.length; i++) {
+    const { pattern, confidence } = createPatterns[i];
     const match = message.match(pattern);
     if (match) {
+      // Special handling for first pattern: "create event for saturday 10am kids basketball"
+      if (i === 0 && match[1] && match[2] && match[5]) {
+        const dayName = match[1]; // "saturday" or "next saturday"
+        let hours = parseInt(match[2], 10);
+        const minutes = match[3] ? parseInt(match[3], 10) : 0;
+        const ampm = match[4]?.toLowerCase();
+        const title = match[5].trim();
+
+        // Parse the day
+        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const dayLower = dayName.toLowerCase().replace(/^next\s+/, '');
+        const targetDay = dayNames.indexOf(dayLower);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const currentDay = today.getDay();
+        let daysToAdd = targetDay - currentDay;
+        if (daysToAdd <= 0) daysToAdd += 7;
+        const eventDate = new Date(today);
+        eventDate.setDate(today.getDate() + daysToAdd);
+
+        // Apply time
+        if (ampm === 'pm' && hours < 12) hours += 12;
+        if (ampm === 'am' && hours === 12) hours = 0;
+        if (!ampm && hours >= 1 && hours <= 7) hours += 12;
+        eventDate.setHours(hours, minutes, 0, 0);
+
+        const endDate = new Date(eventDate.getTime() + 60 * 60 * 1000);
+
+        return {
+          type: 'create',
+          title,
+          startAt: eventDate.toISOString(),
+          endAt: endDate.toISOString(),
+          location: null,
+          notes: null,
+          allDay: false,
+          attendees: [],
+          needsClarification: null,
+          confidence,
+        };
+      }
+
       const eventText = match[2] ? `${match[1]} ${match[2]}` : match[1];
       return parseCreateIntent(eventText.trim(), context, confidence);
     }
   }
 
   // Check for general event-related keywords with a time component
-  if (/(?:training|practice|meeting|appointment|dinner|lunch|party|class|lesson)/i.test(lower) && 
-      /(?:at|on|this|next|tomorrow|today|\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i.test(lower)) {
-    return parseCreateIntent(message, context, 0.70);
+  if (/(?:training|practice|meeting|appointment|dinner|lunch|party|class|lesson|basketball|soccer|football|game)/i.test(lower) && 
+      /(?:at|on|this|next|tomorrow|today|\d{1,2}(?::\d{2})?\s*(?:am|pm)?|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(lower)) {
+    return parseCreateIntent(message, context, 0.75);
   }
 
   // If message mentions calendar-related terms but unclear intent
