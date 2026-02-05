@@ -1,5 +1,7 @@
 import type { ChatMessage } from 'src/features/assistant';
 
+import Markdown from 'react-markdown';
+
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Avatar from '@mui/material/Avatar';
@@ -70,19 +72,43 @@ export function AssistantMessageItem({ message, onConfirm, onCancel }: Props) {
         borderRadius: 1,
         typography: 'body2',
         bgcolor: 'background.neutral',
-        whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
         ...(isUser && {
           color: 'grey.800',
           bgcolor: 'primary.lighter',
+          whiteSpace: 'pre-wrap',
         }),
         ...(isError && {
           color: 'error.dark',
           bgcolor: 'error.lighter',
         }),
+        // Markdown styling for assistant messages
+        ...(!isUser && {
+          '& p': { m: 0, mb: 1, '&:last-child': { mb: 0 } },
+          '& h1, & h2, & h3, & h4': { mt: 1.5, mb: 1, fontWeight: 600 },
+          '& h3': { fontSize: '1rem' },
+          '& ul, & ol': { m: 0, pl: 2.5, mb: 1 },
+          '& li': { mb: 0.5 },
+          '& strong': { fontWeight: 600 },
+          '& code': {
+            px: 0.5,
+            py: 0.25,
+            borderRadius: 0.5,
+            bgcolor: 'action.hover',
+            fontFamily: 'monospace',
+            fontSize: '0.875em',
+          },
+          '& pre': {
+            p: 1,
+            borderRadius: 1,
+            bgcolor: 'action.hover',
+            overflow: 'auto',
+            '& code': { p: 0, bgcolor: 'transparent' },
+          },
+        }),
       }}
     >
-      {message.content}
+      {isUser ? message.content : <Markdown>{message.content}</Markdown>}
     </Stack>
   );
 
