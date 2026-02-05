@@ -627,7 +627,6 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
           }
 
           const current = currentEvent.data;
-          const eventUpdate: calendar_v3.Schema$Event = {};
 
           // Handle allDay conversion
           if (input.patch.allDay !== undefined) {
@@ -652,51 +651,115 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
                 endDate = current.end?.date ?? startDate!;
               }
 
-              eventUpdate.start = { date: startDate };
-              eventUpdate.end = { date: endDate };
+              // Build full event object for update (required for recurring event instances)
+              // Using events.update (PUT) instead of events.patch because:
+              // 1. Recurring event instances require full event data
+              // 2. Converting from timed to all-day requires clearing dateTime fields
+              const fullEventUpdate: calendar_v3.Schema$Event = {
+                summary: input.patch.title ?? current.summary,
+                description: current.description,
+                location: input.patch.location ?? current.location,
+                start: { date: startDate },
+                end: { date: endDate },
+                // Preserve other properties
+                colorId: current.colorId,
+                transparency: current.transparency,
+                visibility: current.visibility,
+                attendees: current.attendees,
+                reminders: current.reminders,
+                extendedProperties: current.extendedProperties,
+              };
+
+              // Use events.update (PUT) for full replacement
+              await calendar.events.update({
+                calendarId,
+                eventId,
+                requestBody: fullEventUpdate,
+              });
+
+              updated++;
+              updatedEvents.push({
+                id: eventId,
+                title: current.summary ?? 'Untitled',
+              });
+
+              context.logger.info(
+                { eventId, title: current.summary, startDate, endDate },
+                'Converted event to all-day'
+              );
             } else {
               // Convert from all-day to timed (default to 9am-10am)
               const startDate = current.start?.date ?? new Date().toISOString().split('T')[0];
               const tz = context.timezone ?? 'UTC';
-              eventUpdate.start = { dateTime: `${startDate}T09:00:00`, timeZone: tz };
-              eventUpdate.end = { dateTime: `${startDate}T10:00:00`, timeZone: tz };
+              
+              const fullEventUpdate: calendar_v3.Schema$Event = {
+                summary: input.patch.title ?? current.summary,
+                description: current.description,
+                location: input.patch.location ?? current.location,
+                start: { dateTime: `${startDate}T09:00:00`, timeZone: tz },
+                end: { dateTime: `${startDate}T10:00:00`, timeZone: tz },
+                colorId: current.colorId,
+                transparency: current.transparency,
+                visibility: current.visibility,
+                attendees: current.attendees,
+                reminders: current.reminders,
+                extendedProperties: current.extendedProperties,
+              };
+
+              await calendar.events.update({
+                calendarId,
+                eventId,
+                requestBody: fullEventUpdate,
+              });
+
+              updated++;
+              updatedEvents.push({
+                id: eventId,
+                title: current.summary ?? 'Untitled',
+              });
+
+              context.logger.info(
+                { eventId, title: current.summary },
+                'Converted event from all-day to timed'
+              );
             }
+          } else {
+            // Handle non-allDay updates (title, location only)
+            const eventUpdate: calendar_v3.Schema$Event = {};
+            
+            if (input.patch.title) {
+              eventUpdate.summary = input.patch.title;
+            }
+
+            if (input.patch.location) {
+              eventUpdate.location = input.patch.location;
+            }
+
+            // Only update if there are changes
+            if (Object.keys(eventUpdate).length === 0) {
+              context.logger.debug({ eventId }, 'No changes to apply, skipping');
+              continue;
+            }
+
+            // For non-allDay changes, we can use patch
+            await updateGoogleEvent({
+              auth: authClient,
+              calendarId,
+              eventId,
+              event: eventUpdate,
+            });
+
+            updated++;
+            updatedEvents.push({
+              id: eventId,
+              title: current.summary ?? 'Untitled',
+            });
+
+            context.logger.info(
+              { eventId, title: current.summary, changes: Object.keys(eventUpdate) },
+              'Batch updated calendar event'
+            );
           }
-
-          // Handle title update
-          if (input.patch.title) {
-            eventUpdate.summary = input.patch.title;
-          }
-
-          // Handle location update
-          if (input.patch.location) {
-            eventUpdate.location = input.patch.location;
-          }
-
-          // Only update if there are changes
-          if (Object.keys(eventUpdate).length === 0) {
-            context.logger.debug({ eventId }, 'No changes to apply, skipping');
-            continue;
-          }
-
-          // Perform the update
-          await updateGoogleEvent({
-            auth: authClient,
-            calendarId,
-            eventId,
-            event: eventUpdate,
-          });
-
-          updated++;
-          updatedEvents.push({
-            id: eventId,
-            title: current.summary ?? 'Untitled',
-          });
-
-          context.logger.info(
-            { eventId, title: current.summary, changes: Object.keys(eventUpdate) },
-            'Batch updated calendar event'
-          );
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : 'Unknown error';
           context.logger.error({ err, eventId }, `Failed to update event in batch: ${errorMessage}`);

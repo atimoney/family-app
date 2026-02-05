@@ -534,6 +534,45 @@ export async function updateEvent(options: {
     );
   }
   
+  // Check if we're converting to/from all-day format
+  // Recurring event instances (eventId contains "_") require a full PUT (events.update)
+  // instead of PATCH when changing between date and dateTime formats
+  const isRecurringInstance = options.eventId.includes('_');
+  const isAllDayConversion = requestBody.start?.date !== undefined || requestBody.end?.date !== undefined;
+  
+  if (isRecurringInstance && isAllDayConversion) {
+    // For recurring instances with all-day conversion, we need to use events.update (PUT)
+    // which requires fetching the current event first to build a complete request body
+    const existingEvent = await calendar.events.get({
+      calendarId: options.calendarId,
+      eventId: options.eventId,
+    });
+    
+    const fullEventBody: calendar_v3.Schema$Event = {
+      // Start with existing event data
+      summary: existingEvent.data.summary,
+      description: existingEvent.data.description,
+      location: existingEvent.data.location,
+      colorId: existingEvent.data.colorId,
+      transparency: existingEvent.data.transparency,
+      visibility: existingEvent.data.visibility,
+      attendees: existingEvent.data.attendees,
+      extendedProperties: existingEvent.data.extendedProperties,
+      // Apply our updates on top
+      ...requestBody,
+      // Ensure reminders are preserved if not explicitly changed
+      reminders: requestBody.reminders ?? existingEvent.data.reminders,
+    };
+    
+    const response = await calendar.events.update({
+      calendarId: options.calendarId,
+      eventId: options.eventId,
+      requestBody: fullEventBody,
+    });
+    return response.data;
+  }
+  
+  // Default: use PATCH for normal updates
   const response = await calendar.events.patch({
     calendarId: options.calendarId,
     eventId: options.eventId,
