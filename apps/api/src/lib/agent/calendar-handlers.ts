@@ -11,7 +11,7 @@ import type {
 } from '@family/mcp-server';
 import { google } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
-import { createEvent as createGoogleEvent } from '../google/calendar.js';
+import { createEvent as createGoogleEvent, listEvents as listGoogleEvents } from '../google/calendar.js';
 import { getOAuthClient, getAuthorizedClient } from '../google/oauth.js';
 import { decryptSecret } from '../crypto.js';
 
@@ -192,60 +192,97 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
     const startTime = Date.now();
 
     try {
-      // Build where clause
-      const where: Prisma.FamilyEventWhereInput = {
-        familyId: context.familyId,
-        deletedAt: null,
-      };
-
-      // Date range filter
-      if (input.from || input.to) {
-        where.startAt = {};
-        if (input.from) {
-          where.startAt.gte = new Date(input.from);
-        }
-        if (input.to) {
-          where.startAt.lte = new Date(input.to);
-        }
-      }
-
-      // Text search (title or notes)
-      if (input.query) {
-        const queryLower = input.query.toLowerCase();
-        where.OR = [
-          { title: { contains: queryLower, mode: 'insensitive' } },
-          { notes: { contains: queryLower, mode: 'insensitive' } },
-        ];
-      }
-
-      // Attendee filter
-      if (input.attendeeUserId) {
-        where.attendees = {
-          some: { userId: input.attendeeUserId },
+      // Get Google OAuth client for the user
+      const authClient = await getGoogleCalendarAuth(context.userId);
+      if (!authClient) {
+        return {
+          success: false,
+          error: 'Google Calendar not connected. Please connect your Google account in Settings.',
         };
       }
 
-      // Execute query
-      const [events, total] = await Promise.all([
-        prisma.familyEvent.findMany({
-          where,
-          include: {
-            attendees: true,
-          },
-          orderBy: { startAt: 'asc' },
-          take: input.limit ?? 20,
-        }),
-        prisma.familyEvent.count({ where }),
-      ]);
+      // Determine which calendar to use (same logic as create)
+      let calendarId: string = 'primary';
 
-      // Get member names for attendees
-      const memberMap = await getFamilyMembersMap(context.familyId);
+      const family = await prisma.family.findUnique({
+        where: { id: context.familyId },
+        select: { sharedCalendarId: true },
+      });
+
+      if (family?.sharedCalendarId) {
+        calendarId = family.sharedCalendarId;
+      } else {
+        // Fall back to user's first selected calendar
+        const selectedCalendar = await prisma.selectedCalendar.findFirst({
+          where: { userId: context.userId, isVisible: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (selectedCalendar) {
+          calendarId = selectedCalendar.calendarId;
+        }
+      }
+
+      // Set default date range if not provided (default to next 30 days)
+      const now = new Date();
+      const timeMin = input.from ?? now.toISOString();
+      const timeMax = input.to ?? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Fetch events from Google Calendar
+      const googleEvents = await listGoogleEvents({
+        auth: authClient,
+        calendarId,
+        timeMin,
+        timeMax,
+      });
+
+      // Filter by query if provided
+      let filteredEvents = googleEvents;
+      if (input.query) {
+        const queryLower = input.query.toLowerCase();
+        filteredEvents = googleEvents.filter((event) => {
+          const title = event.summary?.toLowerCase() ?? '';
+          const description = event.description?.toLowerCase() ?? '';
+          return title.includes(queryLower) || description.includes(queryLower);
+        });
+      }
+
+      // Apply limit
+      const limit = input.limit ?? 20;
+      const limitedEvents = filteredEvents.slice(0, limit);
+
+      // Map Google Calendar events to our output format
+      const events: CalendarEventOutput[] = limitedEvents.map((event) => {
+        // Parse start/end times
+        const startAt = event.start?.dateTime ?? event.start?.date ?? '';
+        const endAt = event.end?.dateTime ?? event.end?.date ?? '';
+        const allDay = !event.start?.dateTime;
+
+        return {
+          id: event.id ?? '',
+          familyId: context.familyId,
+          title: event.summary ?? 'Untitled Event',
+          startAt,
+          endAt,
+          location: event.location ?? null,
+          notes: event.description ?? null,
+          allDay,
+          createdByUserId: context.familyMemberId,
+          attendees: event.attendees?.map((a) => ({
+            userId: a.email ?? '',
+            displayName: a.displayName ?? a.email ?? null,
+            status: (a.responseStatus === 'accepted' ? 'accepted' :
+                    a.responseStatus === 'declined' ? 'declined' : 'pending') as 'pending' | 'accepted' | 'declined',
+          })) ?? [],
+          createdAt: event.created ?? new Date().toISOString(),
+          updatedAt: event.updated ?? new Date().toISOString(),
+        };
+      });
 
       const result: ToolResult<CalendarSearchOutput> = {
         success: true,
         data: {
-          events: events.map((e) => mapEventToOutput(e, memberMap)),
-          total,
+          events,
+          total: filteredEvents.length,
         },
       };
 

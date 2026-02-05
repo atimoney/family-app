@@ -60,6 +60,15 @@ type CalendarIntent =
       };
       confidence: number;
     }
+  | {
+      type: 'analyze';
+      question: string;
+      from: string | null;
+      to: string | null;
+      keywords: string[];
+      pattern: string | null;
+      confidence: number;
+    }
   | { type: 'unclear'; confidence: number };
 
 /**
@@ -103,7 +112,7 @@ const DEFAULT_EVENT_DURATION_MINUTES = 60;
  * Schema for LLM-parsed calendar intent.
  */
 const llmCalendarIntentSchema = z.object({
-  type: z.enum(['create', 'search', 'update', 'delete', 'unclear']),
+  type: z.enum(['create', 'search', 'update', 'delete', 'analyze', 'unclear']),
   confidence: z.number().min(0).max(1),
   reasoning: z.string(),
 
@@ -126,7 +135,7 @@ const llmCalendarIntentSchema = z.object({
     dateRange: z.object({
       from: z.string().describe('Relative date like "today", "this weekend", "next week", or ISO date'),
       to: z.string().nullable().describe('End of range, or null if same as from'),
-    }),
+    }).nullable().describe('Date range to search, or null to search all upcoming events'),
     attendee: z.string().nullable(),
   }).optional(),
 
@@ -145,6 +154,19 @@ const llmCalendarIntentSchema = z.object({
   delete: z.object({
     targetEvent: z.string().describe('Title or description of event to delete'),
     date: z.string().nullable().describe('Specific date if mentioned'),
+  }).optional(),
+
+  // For ANALYZE intent - complex questions requiring reasoning over events
+  analyze: z.object({
+    question: z.string().describe('The analytical question to answer about calendar events'),
+    dateRange: z.object({
+      from: z.string().describe('Start of date range to analyze'),
+      to: z.string().nullable().describe('End of date range'),
+    }).nullable().describe('Date range to analyze, or null for all upcoming events'),
+    filters: z.object({
+      keywords: z.array(z.string()).describe('Keywords to filter events by'),
+      pattern: z.string().nullable().describe('Pattern to look for in event titles'),
+    }).optional(),
   }).optional(),
 });
 
@@ -165,6 +187,7 @@ INTENT TYPES:
 - create: User wants to ADD a new event (e.g., "schedule dinner Friday 7pm", "add kids basketball Saturday 10am")
 - update: User wants to CHANGE an existing event (e.g., "move meeting to 3pm", "reschedule dentist to Thursday")
 - delete: User wants to REMOVE an event (e.g., "cancel tomorrow's appointment")
+- analyze: User asks a COMPLEX QUESTION requiring reasoning about events (e.g., "which events look like meal placeholders?", "what patterns do I see in my calendar?", "are there any conflicts?")
 - unclear: Cannot determine intent or missing critical information
 
 DATE INTERPRETATION RULES:
@@ -182,18 +205,32 @@ CONFIDENCE SCORING:
 - 0.5-0.69: Ambiguous, may need clarification
 - Below 0.5: Unclear intent
 
-For SEARCH intents:
-- Questions about "what's on", "what do we have", "am I free", "any events" are SEARCH
-- Always populate dateRange.from with the interpreted date
-- If asking about a specific day, set both from and to to that day
-- If asking about a range (weekend, week), set appropriate from/to
+RESPONSE FORMAT - You MUST use this EXACT JSON structure:
 
-For CREATE intents:
-- Extract title, date, time, location, attendees
-- Set needsClarification if date or time is missing but intent is clear
-- Default to 60 minutes duration if not specified
+For SEARCH intent (simple queries):
+{"type":"search","confidence":0.9,"reasoning":"User wants to see weekend events","search":{"query":null,"dateRange":{"from":"this weekend","to":null},"attendee":null}}
 
-Respond ONLY with valid JSON matching the schema. No markdown, no explanations, just the JSON object.`;
+For ANALYZE intent (complex reasoning questions):
+{"type":"analyze","confidence":0.85,"reasoning":"User wants to find events that look like meal placeholders","analyze":{"question":"Find events that look like meal plan placeholders","dateRange":null,"filters":{"keywords":["dinner","lunch","pizza","meal"],"pattern":"meal-like names"}}}
+
+For CREATE intent:
+{"type":"create","confidence":0.9,"reasoning":"User wants to add an event","create":{"title":"Team meeting","startDate":"tomorrow","startTime":"3pm","endTime":null,"durationMinutes":60,"location":null,"attendees":[],"allDay":false,"needsClarification":null}}
+
+For UPDATE intent:
+{"type":"update","confidence":0.85,"reasoning":"User wants to reschedule","update":{"targetEvent":"dentist appointment","changes":{"newDate":"Thursday","newTime":"2pm","newTitle":null,"newLocation":null}}}
+
+For UNCLEAR intent:
+{"type":"unclear","confidence":0.3,"reasoning":"Cannot determine what the user wants"}
+
+IMPORTANT RULES:
+1. The "type" field MUST be one of: "search", "create", "update", "delete", "analyze", "unclear"
+2. Always include "reasoning" explaining your interpretation
+3. Include the appropriate nested object based on type
+4. For dates, use relative terms like "tomorrow", "this weekend", "next Monday" - I will parse them
+5. Use "analyze" for questions that require REASONING about events (patterns, conflicts, suggestions, categorization)
+6. Use "search" for simple queries that just need to fetch and display events
+
+Respond ONLY with valid JSON. No markdown, no explanations.`;
 }
 
 /**
@@ -345,17 +382,26 @@ function convertLLMResultToCalendarIntent(
         return { type: 'unclear', confidence: llmResult.confidence };
       }
       const search = llmResult.search;
-      const dateRange = parseRelativeDateRange(
-        search.dateRange.from,
-        search.dateRange.to,
-        timezone
-      );
+      
+      // Handle null dateRange - default to next 30 days
+      let from: string | null = null;
+      let to: string | null = null;
+      
+      if (search.dateRange) {
+        const dateRange = parseRelativeDateRange(
+          search.dateRange.from,
+          search.dateRange.to,
+          timezone
+        );
+        from = dateRange.from;
+        to = dateRange.to;
+      }
 
       return {
         type: 'search',
         query: search.query,
-        from: dateRange.from,
-        to: dateRange.to,
+        from,
+        to,
         attendee: search.attendee,
         confidence: llmResult.confidence,
       };
@@ -463,6 +509,37 @@ function convertLLMResultToCalendarIntent(
         eventTitle: update.targetEvent,
         eventId: null,
         patch,
+        confidence: llmResult.confidence,
+      };
+    }
+
+    case 'analyze': {
+      if (!llmResult.analyze) {
+        return { type: 'unclear', confidence: llmResult.confidence };
+      }
+      const analyze = llmResult.analyze;
+
+      // Handle date range
+      let from: string | null = null;
+      let to: string | null = null;
+
+      if (analyze.dateRange) {
+        const dateRange = parseRelativeDateRange(
+          analyze.dateRange.from,
+          analyze.dateRange.to,
+          timezone
+        );
+        from = dateRange.from;
+        to = dateRange.to;
+      }
+
+      return {
+        type: 'analyze',
+        question: analyze.question,
+        from,
+        to,
+        keywords: analyze.filters?.keywords ?? [],
+        pattern: analyze.filters?.pattern ?? null,
         confidence: llmResult.confidence,
       };
     }
@@ -1103,13 +1180,16 @@ export async function executeCalendarAgent(
       return handleSearchIntent(intent, context, toolExecutor);
     case 'update':
       return handleUpdateIntent(intent, context, toolExecutor);
+    case 'analyze':
+      return handleAnalyzeIntent(intent, message, context, toolExecutor);
     case 'unclear':
     default:
       return {
         text: "I'm not sure what you'd like me to do with the calendar. I can help you:\n" +
           '- Create an event: "Schedule team meeting tomorrow at 3pm"\n' +
           '- View events: "What\'s on my calendar this week?"\n' +
-          '- Reschedule: "Move Hamish training to Thursday 6pm"\n\n' +
+          '- Reschedule: "Move Hamish training to Thursday 6pm"\n' +
+          '- Analyze events: "Which events look like meal placeholders?"\n\n' +
           'What would you like to do?',
         actions: [],
         payload: { needsInput: true },
@@ -1297,6 +1377,125 @@ async function handleCreateIntent(
       text: `❌ Sorry, I couldn't create that event. ${result.error || 'Please try again.'}`,
       actions: [action],
       payload: { error: result.error },
+    };
+  }
+}
+
+/**
+ * Handle analyze intent - fetch events then use LLM to reason about them.
+ */
+async function handleAnalyzeIntent(
+  intent: Extract<CalendarIntent, { type: 'analyze' }>,
+  originalMessage: string,
+  context: AgentRunContext,
+  toolExecutor: ToolExecutor
+): Promise<CalendarAgentResult> {
+  // Step 1: Fetch events from calendar
+  const searchInput: Record<string, unknown> = {};
+  
+  if (intent.from) {
+    searchInput.from = intent.from;
+  }
+  if (intent.to) {
+    searchInput.to = intent.to;
+  }
+  // Get more events for analysis
+  searchInput.limit = 50;
+
+  const searchResult = await toolExecutor('calendar.search', searchInput);
+
+  const searchAction: AgentAction = {
+    tool: 'calendar.search',
+    input: searchInput,
+    result: searchResult,
+  };
+
+  if (!searchResult.success) {
+    return {
+      text: `❌ Sorry, I couldn't fetch your calendar events to analyze. ${searchResult.error || ''}`,
+      actions: [searchAction],
+      payload: { error: searchResult.error },
+    };
+  }
+
+  const data = searchResult.data as { 
+    events: Array<{ 
+      id: string;
+      title: string; 
+      startAt: string; 
+      endAt: string;
+      location?: string | null;
+      notes?: string | null;
+      allDay?: boolean;
+    }>; 
+    total: number 
+  };
+
+  if (data.events.length === 0) {
+    return {
+      text: "📅 I don't see any events in your calendar to analyze. Try creating some events first!",
+      actions: [searchAction],
+      payload: { events: [], total: 0 },
+    };
+  }
+
+  // Step 2: Build a prompt for the LLM to analyze the events
+  const { llmProvider } = getRouterConfig();
+  const tz = context.timezone ?? 'UTC';
+
+  const eventsForAnalysis = data.events.map((e) => ({
+    title: e.title,
+    date: formatDateShort(e.startAt, tz),
+    time: e.allDay ? 'All day' : formatTimeShort(e.startAt, tz),
+    location: e.location ?? null,
+    notes: e.notes ?? null,
+  }));
+
+  const analysisPrompt = `You are analyzing a family's calendar events to answer their question.
+
+USER'S QUESTION: "${originalMessage}"
+
+CALENDAR EVENTS (${data.events.length} events):
+${JSON.stringify(eventsForAnalysis, null, 2)}
+
+${intent.keywords.length > 0 ? `KEYWORDS TO LOOK FOR: ${intent.keywords.join(', ')}` : ''}
+${intent.pattern ? `PATTERN TO IDENTIFY: ${intent.pattern}` : ''}
+
+Analyze the events and answer the user's question. Be specific and reference actual events from the list.
+If looking for patterns or categorizations, explain your reasoning.
+Format your response in a clear, readable way with bullet points if listing multiple items.`;
+
+  try {
+    const analysisResponse = await llmProvider.complete(
+      [
+        { role: 'system', content: 'You are a helpful calendar assistant that analyzes events and answers questions about them.' },
+        { role: 'user', content: analysisPrompt },
+      ],
+      { temperature: 0.5 }
+    );
+
+    return {
+      text: analysisResponse,
+      actions: [searchAction],
+      payload: { 
+        events: data.events, 
+        total: data.total,
+        analysisType: 'calendar_reasoning',
+      },
+    };
+  } catch (err) {
+    context.logger.error({ err }, 'CalendarAgent: analysis LLM call failed');
+    
+    // Fallback: just list the events
+    const eventList = data.events
+      .slice(0, 10)
+      .map((e) => `• **${e.title}** – ${formatEventDate(e.startAt, false, tz)}`)
+      .join('\n');
+
+    return {
+      text: `📅 I found ${data.total} events but couldn't complete the analysis. Here are the events:\n\n${eventList}`,
+      actions: [searchAction],
+      payload: { events: data.events, total: data.total, error: 'Analysis failed' },
     };
   }
 }
@@ -1530,6 +1729,15 @@ function formatDateShort(isoString: string, timezone = 'UTC'): string {
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
+    timeZone: timezone,
+  });
+}
+
+function formatTimeShort(isoString: string, timezone = 'UTC'): string {
+  const date = new Date(isoString);
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
     timeZone: timezone,
   });
 }
