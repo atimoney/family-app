@@ -171,10 +171,11 @@ export function useAgentChat(): UseAgentChatReturn {
       }));
 
       try {
-        // Send to API
+        // Send to API with browser's timezone for accurate date/time interpretation
         const response = await sendAgentMessage({
           message: content,
           conversationId: conversation.id,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         });
 
         // Update user message status and add assistant response

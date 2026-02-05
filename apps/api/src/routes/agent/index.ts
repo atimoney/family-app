@@ -74,7 +74,15 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
   // --------------------------------------------------------------------------
   // REGISTER CALENDAR TOOL HANDLERS
   // --------------------------------------------------------------------------
-  const calendarHandlers = createCalendarToolHandlers({ prisma: fastify.prisma });
+  const calendarHandlers = createCalendarToolHandlers({
+    prisma: fastify.prisma,
+    googleOAuth: {
+      clientId: fastify.config.GOOGLE_CLIENT_ID,
+      clientSecret: fastify.config.GOOGLE_CLIENT_SECRET,
+      redirectUri: fastify.config.GOOGLE_REDIRECT_URL,
+    },
+    tokenEncryptionKey: fastify.config.TOKEN_ENCRYPTION_KEY,
+  });
   registerCalendarToolHandlers(calendarHandlers);
 
   fastify.log.info('Calendar tool handlers registered');
@@ -235,13 +243,14 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
     const logger = createRequestLogger(fastify.log, requestId);
 
     // Build agent run context
+    // Use profile timezone, fallback to request timezone from browser, then UTC
     const context: AgentRunContext = {
       requestId,
       userId,
       familyId: membership.familyId,
       familyMemberId: membership.id,
       roles: [membership.role],
-      timezone: membership.profile.timezone ?? undefined,
+      timezone: membership.profile.timezone ?? parsed.data.timezone ?? undefined,
       conversationId,
       logger,
     };

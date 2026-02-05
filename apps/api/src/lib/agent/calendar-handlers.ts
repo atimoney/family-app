@@ -9,6 +9,11 @@ import type {
   CalendarUpdateOutput,
   CalendarEventOutput,
 } from '@family/mcp-server';
+import { google } from 'googleapis';
+import type { OAuth2Client } from 'google-auth-library';
+import { createEvent as createGoogleEvent } from '../google/calendar.js';
+import { getOAuthClient, getAuthorizedClient } from '../google/oauth.js';
+import { decryptSecret } from '../crypto.js';
 
 // ----------------------------------------------------------------------
 // TYPES
@@ -122,13 +127,19 @@ async function writeAuditLog(
 
 export type CalendarHandlerDependencies = {
   prisma: PrismaClient;
+  googleOAuth?: {
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+  };
+  tokenEncryptionKey?: string;
 };
 
 /**
  * Create calendar tool handlers with injected dependencies.
  */
 export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
-  const { prisma } = deps;
+  const { prisma, googleOAuth, tokenEncryptionKey } = deps;
 
   // Helper to get family members map
   async function getFamilyMembersMap(
@@ -141,6 +152,34 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       },
     });
     return new Map(members.map((m) => [m.id, m]));
+  }
+
+  /**
+   * Helper to get an authorized Google Calendar OAuth client for a user.
+   * Returns null if Google OAuth is not configured or user has no account.
+   */
+  async function getGoogleCalendarAuth(userId: string): Promise<OAuth2Client | null> {
+    if (!googleOAuth || !tokenEncryptionKey) {
+      return null;
+    }
+
+    const googleAccount = await prisma.googleAccount.findFirst({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (!googleAccount) {
+      return null;
+    }
+
+    try {
+      const refreshToken = decryptSecret(googleAccount.refreshToken, tokenEncryptionKey);
+      const oauthClient = getOAuthClient(googleOAuth);
+      return getAuthorizedClient({ oauthClient, refreshToken });
+    } catch (err) {
+      // Failed to get OAuth client, will fall back to local-only
+      return null;
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -251,59 +290,106 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
         };
       }
 
-      // Validate attendees if provided
-      if (input.attendeeUserIds && input.attendeeUserIds.length > 0) {
-        const validMembers = await prisma.familyMember.findMany({
-          where: {
-            familyId: context.familyId,
-            id: { in: input.attendeeUserIds },
-            removedAt: null,
-          },
-          select: { id: true },
+      // Get Google OAuth client for the user
+      const authClient = await getGoogleCalendarAuth(context.userId);
+      if (!authClient) {
+        return {
+          success: false,
+          error: 'Google Calendar not connected. Please connect your Google account in Settings.',
+        };
+      }
+
+      // Determine which calendar to use:
+      // 1. Family's shared calendar (if set)
+      // 2. User's first selected calendar
+      // 3. Primary calendar as fallback
+      let calendarId: string = 'primary';
+
+      const family = await prisma.family.findUnique({
+        where: { id: context.familyId },
+        select: { sharedCalendarId: true },
+      });
+
+      if (family?.sharedCalendarId) {
+        calendarId = family.sharedCalendarId;
+      } else {
+        // Fall back to user's first selected calendar
+        const selectedCalendar = await prisma.selectedCalendar.findFirst({
+          where: { userId: context.userId, isVisible: true },
+          orderBy: { createdAt: 'asc' },
         });
-
-        const validIds = new Set(validMembers.map((m) => m.id));
-        const invalidIds = input.attendeeUserIds.filter((id) => !validIds.has(id));
-
-        if (invalidIds.length > 0) {
-          return {
-            success: false,
-            error: `Invalid attendee IDs: ${invalidIds.join(', ')}`,
-          };
+        if (selectedCalendar) {
+          calendarId = selectedCalendar.calendarId;
         }
       }
 
-      // Create event with attendees
-      const event = await prisma.familyEvent.create({
-        data: {
-          familyId: context.familyId,
-          title: input.title,
-          startAt,
-          endAt,
-          location: input.location ?? null,
-          notes: input.notes ?? null,
-          allDay: input.allDay ?? false,
-          createdByUserId: context.familyMemberId,
-          attendees: input.attendeeUserIds
-            ? {
-                create: input.attendeeUserIds.map((userId) => ({
-                  userId,
-                  status: 'pending',
-                })),
-              }
-            : undefined,
-        },
-        include: {
-          attendees: true,
+      // Create event directly in Google Calendar (same as calendar page)
+      const googleEvent = await createGoogleEvent({
+        auth: authClient,
+        calendarId,
+        event: {
+          summary: input.title,
+          description: input.notes ?? undefined,
+          location: input.location ?? undefined,
+          start: input.allDay
+            ? { date: startAt.toISOString().split('T')[0] }
+            : { dateTime: startAt.toISOString(), timeZone: context.timezone ?? 'UTC' },
+          end: input.allDay
+            ? { date: endAt.toISOString().split('T')[0] }
+            : { dateTime: endAt.toISOString(), timeZone: context.timezone ?? 'UTC' },
         },
       });
 
-      const memberMap = await getFamilyMembersMap(context.familyId);
+      const eventId = googleEvent.id ?? '';
 
+      // Store metadata in EventLink (same pattern as calendar page)
+      if (eventId) {
+        const eventExtraData = {
+          tags: [] as string[],
+          category: null,
+          notes: input.notes ?? null,
+          audience: 'family',
+          createdVia: 'ai-agent',
+        };
+
+        await prisma.eventLink.upsert({
+          where: {
+            userId_calendarId_eventId: {
+              userId: context.userId,
+              calendarId,
+              eventId,
+            },
+          },
+          create: {
+            userId: context.userId,
+            calendarId,
+            eventId,
+            extraData: eventExtraData,
+          },
+          update: {
+            extraData: eventExtraData,
+          },
+        });
+      }
+
+      // Build response in the expected format
       const result: ToolResult<CalendarCreateOutput> = {
         success: true,
         data: {
-          event: mapEventToOutput(event, memberMap),
+          event: {
+            id: eventId,
+            familyId: context.familyId,
+            title: googleEvent.summary ?? input.title,
+            startAt: input.startAt,
+            endAt: input.endAt,
+            location: googleEvent.location ?? input.location ?? null,
+            notes: input.notes ?? null,
+            allDay: input.allDay ?? false,
+            createdByUserId: context.familyMemberId,
+            attendees: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
         },
       };
 
@@ -311,8 +397,8 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       await writeAuditLog(prisma, context, 'calendar.create', input, result, executionMs);
 
       context.logger.info(
-        { eventId: event.id, title: event.title },
-        'Created calendar event'
+        { eventId, title: input.title, calendarId },
+        'Created calendar event in Google Calendar'
       );
 
       return result;

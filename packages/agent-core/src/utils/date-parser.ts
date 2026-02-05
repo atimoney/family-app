@@ -17,8 +17,141 @@ export type DateTimeParseResult = {
 };
 
 /**
+ * Get the timezone offset in minutes for a given timezone at a specific date.
+ * Returns the offset to ADD to local time to get UTC (opposite of getTimezoneOffset).
+ */
+function getTimezoneOffsetMinutes(timezone: string, date: Date): number {
+  if (timezone === 'UTC') return 0;
+  
+  try {
+    // Get the time in the target timezone
+    const localStr = date.toLocaleString('en-US', { timeZone: timezone });
+    const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
+    
+    const localDate = new Date(localStr);
+    const utcDate = new Date(utcStr);
+    
+    // Return offset in minutes (local - UTC)
+    return Math.round((localDate.getTime() - utcDate.getTime()) / (60 * 1000));
+  } catch {
+    // If timezone is invalid, return 0 (UTC)
+    return 0;
+  }
+}
+
+/**
+ * Convert a local time in a specific timezone to UTC.
+ * @param localHours Hours in local timezone (0-23)
+ * @param localMinutes Minutes in local timezone (0-59)
+ * @param localDate The date in local timezone
+ * @param timezone IANA timezone string
+ * @returns Date object in UTC
+ */
+function localTimeToUtc(
+  localYear: number,
+  localMonth: number, 
+  localDay: number,
+  localHours: number,
+  localMinutes: number,
+  timezone: string
+): Date {
+  if (timezone === 'UTC') {
+    return new Date(Date.UTC(localYear, localMonth, localDay, localHours, localMinutes, 0, 0));
+  }
+  
+  // Create a date string in ISO format without timezone
+  const isoString = `${localYear}-${String(localMonth + 1).padStart(2, '0')}-${String(localDay).padStart(2, '0')}T${String(localHours).padStart(2, '0')}:${String(localMinutes).padStart(2, '0')}:00`;
+  
+  // Use Intl.DateTimeFormat to get the UTC offset for this specific date/time in the timezone
+  try {
+    // Create a formatter that shows the offset
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZoneName: 'shortOffset',
+    });
+    
+    // Parse the date as if it were UTC first
+    const utcGuess = new Date(isoString + 'Z');
+    
+    // Get what that UTC time looks like in the target timezone
+    const parts = formatter.formatToParts(utcGuess);
+    const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+    
+    // Parse offset like "GMT+11" or "GMT-5" or "UTC"
+    const offsetMatch = tzPart.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
+    if (offsetMatch) {
+      const sign = offsetMatch[1] === '+' ? 1 : -1;
+      const hours = parseInt(offsetMatch[2], 10);
+      const minutes = offsetMatch[3] ? parseInt(offsetMatch[3], 10) : 0;
+      const offsetMinutes = sign * (hours * 60 + minutes);
+      
+      // Local time = UTC + offset, so UTC = Local - offset
+      const utcMs = utcGuess.getTime() - offsetMinutes * 60 * 1000;
+      return new Date(utcMs);
+    }
+    
+    // Fallback: just return as UTC
+    return utcGuess;
+  } catch {
+    // If anything fails, treat as UTC
+    return new Date(Date.UTC(localYear, localMonth, localDay, localHours, localMinutes, 0, 0));
+  }
+}
+
+/**
+ * Get today's date in a specific timezone.
+ */
+function getTodayInTimezone(referenceDate: Date, timezone: string): { year: number; month: number; day: number; dayOfWeek: number } {
+  if (timezone === 'UTC') {
+    return {
+      year: referenceDate.getUTCFullYear(),
+      month: referenceDate.getUTCMonth(),
+      day: referenceDate.getUTCDate(),
+      dayOfWeek: referenceDate.getUTCDay(),
+    };
+  }
+  
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'short',
+    });
+    
+    const parts = formatter.formatToParts(referenceDate);
+    const year = parseInt(parts.find(p => p.type === 'year')?.value || '0', 10);
+    const month = parseInt(parts.find(p => p.type === 'month')?.value || '1', 10) - 1;
+    const day = parseInt(parts.find(p => p.type === 'day')?.value || '1', 10);
+    
+    const weekdayStr = parts.find(p => p.type === 'weekday')?.value?.toLowerCase() || '';
+    const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const dayOfWeek = dayNames.findIndex(d => weekdayStr.startsWith(d));
+    
+    return { year, month, day, dayOfWeek: dayOfWeek >= 0 ? dayOfWeek : 0 };
+  } catch {
+    // Fallback to UTC
+    return {
+      year: referenceDate.getUTCFullYear(),
+      month: referenceDate.getUTCMonth(),
+      day: referenceDate.getUTCDate(),
+      dayOfWeek: referenceDate.getUTCDay(),
+    };
+  }
+}
+
+/**
  * Attempt to parse natural language date/time expressions.
  * Returns ISO string if confident, null if ambiguous.
+ * Times are interpreted in the user's timezone and converted to UTC for storage.
  */
 export function parseDateTime(
   text: string,
@@ -28,20 +161,18 @@ export function parseDateTime(
   const lower = text.toLowerCase().trim();
   const resolvedTimezone = timezone ?? 'UTC';
 
-  // Always work in UTC to avoid server timezone issues
-  // Get current UTC date parts
-  const now = referenceDate;
-  const nowUtcYear = now.getUTCFullYear();
-  const nowUtcMonth = now.getUTCMonth();
-  const nowUtcDay = now.getUTCDate();
-  const nowUtcDayOfWeek = now.getUTCDay();
+  // Get today's date in the user's timezone
+  const today = getTodayInTimezone(referenceDate, resolvedTimezone);
+  const { year: todayYear, month: todayMonth, day: todayDay, dayOfWeek: todayDayOfWeek } = today;
 
-  // Create "today at midnight UTC"
-  const todayUtc = new Date(Date.UTC(nowUtcYear, nowUtcMonth, nowUtcDay, 0, 0, 0, 0));
-
-  // Helper to create a UTC date
-  const createUtcDate = (year: number, month: number, day: number, hours = 0, minutes = 0): Date => {
-    return new Date(Date.UTC(year, month, day, hours, minutes, 0, 0));
+  // Helper to add days to a date in the user's timezone
+  const addDays = (baseYear: number, baseMonth: number, baseDay: number, daysToAdd: number): { year: number; month: number; day: number } => {
+    const tempDate = new Date(Date.UTC(baseYear, baseMonth, baseDay + daysToAdd));
+    return {
+      year: tempDate.getUTCFullYear(),
+      month: tempDate.getUTCMonth(),
+      day: tempDate.getUTCDate(),
+    };
   };
 
   // Patterns for relative dates
@@ -59,11 +190,11 @@ export function parseDateTime(
           const ampm = match[3]?.toLowerCase();
           if (ampm === 'pm' && hours < 12) hours += 12;
           if (ampm === 'am' && hours === 12) hours = 0;
-          const date = createUtcDate(nowUtcYear, nowUtcMonth, nowUtcDay, hours, minutes);
+          const date = localTimeToUtc(todayYear, todayMonth, todayDay, hours, minutes, resolvedTimezone);
           return { date, confident: true };
         } else {
-          // End of day
-          const date = createUtcDate(nowUtcYear, nowUtcMonth, nowUtcDay, 23, 59);
+          // End of day in user's timezone
+          const date = localTimeToUtc(todayYear, todayMonth, todayDay, 23, 59, resolvedTimezone);
           return { date, confident: true };
         }
       },
@@ -72,17 +203,17 @@ export function parseDateTime(
     {
       pattern: /^tomorrow(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$/i,
       handler: (match) => {
-        const tomorrowDate = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
+        const tomorrow = addDays(todayYear, todayMonth, todayDay, 1);
         if (match[1]) {
           let hours = parseInt(match[1], 10);
           const minutes = match[2] ? parseInt(match[2], 10) : 0;
           const ampm = match[3]?.toLowerCase();
           if (ampm === 'pm' && hours < 12) hours += 12;
           if (ampm === 'am' && hours === 12) hours = 0;
-          const date = createUtcDate(tomorrowDate.getUTCFullYear(), tomorrowDate.getUTCMonth(), tomorrowDate.getUTCDate(), hours, minutes);
+          const date = localTimeToUtc(tomorrow.year, tomorrow.month, tomorrow.day, hours, minutes, resolvedTimezone);
           return { date, confident: true };
         } else {
-          const date = createUtcDate(tomorrowDate.getUTCFullYear(), tomorrowDate.getUTCMonth(), tomorrowDate.getUTCDate(), 23, 59);
+          const date = localTimeToUtc(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, resolvedTimezone);
           return { date, confident: true };
         }
       },
@@ -95,12 +226,12 @@ export function parseDateTime(
         const unit = match[2].toLowerCase();
         let date: Date;
         if (unit.startsWith('day')) {
-          const futureDate = new Date(todayUtc.getTime() + amount * 24 * 60 * 60 * 1000);
-          date = createUtcDate(futureDate.getUTCFullYear(), futureDate.getUTCMonth(), futureDate.getUTCDate(), 23, 59);
+          const futureDay = addDays(todayYear, todayMonth, todayDay, amount);
+          date = localTimeToUtc(futureDay.year, futureDay.month, futureDay.day, 23, 59, resolvedTimezone);
         } else if (unit.startsWith('hour')) {
-          date = new Date(now.getTime() + amount * 60 * 60 * 1000);
+          date = new Date(referenceDate.getTime() + amount * 60 * 60 * 1000);
         } else {
-          date = new Date(now.getTime() + amount * 60 * 1000);
+          date = new Date(referenceDate.getTime() + amount * 60 * 1000);
         }
         return { date, confident: true };
       },
@@ -111,10 +242,10 @@ export function parseDateTime(
       handler: (match) => {
         const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         const targetDay = dayNames.indexOf(match[1].toLowerCase());
-        let daysToAdd = targetDay - nowUtcDayOfWeek;
+        let daysToAdd = targetDay - todayDayOfWeek;
         if (daysToAdd <= 0) daysToAdd += 7; // Next week if today or past
         
-        const targetDate = new Date(todayUtc.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+        const targetDate = addDays(todayYear, todayMonth, todayDay, daysToAdd);
         
         // Handle time if provided
         if (match[2]) {
@@ -125,11 +256,11 @@ export function parseDateTime(
           if (ampm === 'am' && hours === 12) hours = 0;
           // If no am/pm specified and hour is 1-7, assume pm for reasonable defaults
           if (!ampm && hours >= 1 && hours <= 7) hours += 12;
-          const date = createUtcDate(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate(), hours, minutes);
+          const date = localTimeToUtc(targetDate.year, targetDate.month, targetDate.day, hours, minutes, resolvedTimezone);
           return { date, confident: true };
         }
         
-        const date = createUtcDate(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate(), 23, 59);
+        const date = localTimeToUtc(targetDate.year, targetDate.month, targetDate.day, 23, 59, resolvedTimezone);
         return { date, confident: true };
       },
     },
@@ -137,7 +268,8 @@ export function parseDateTime(
     {
       pattern: /^next\s+week$/i,
       handler: () => {
-        const date = new Date(todayUtc.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const nextWeek = addDays(todayYear, todayMonth, todayDay, 7);
+        const date = localTimeToUtc(nextWeek.year, nextWeek.month, nextWeek.day, 23, 59, resolvedTimezone);
         return { date, confident: false }; // Ambiguous - which day?
       },
     },

@@ -391,8 +391,8 @@ function parseCreateIntent(
   context: AgentRunContext,
   baseConfidence: number
 ): CalendarIntent {
-  // Extract date/time from the text
-  const dateResult = extractDateTimeFromMessage(eventText, new Date());
+  // Extract date/time from the text - pass timezone for correct local time interpretation
+  const dateResult = extractDateTimeFromMessage(eventText, new Date(), context.timezone);
 
   // Extract time separately for events like "6pm", "at 3:30"
   const timeMatch = eventText.match(/(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
@@ -423,7 +423,8 @@ function parseCreateIntent(
   // First, try to extract a meaningful title from common patterns
   // Pattern: "I have to go [EVENT] on/at [DATE]" -> extract EVENT
   // Also handle: "I have to go to [EVENT]" and "I need to attend [EVENT]"
-  const goToMatch = eventText.match(/(?:(?:have\s+to|need\s+to|want\s+to|going\s+to)\s+)?(?:go\s+(?:to\s+)?|attend\s+)([a-zA-Z][a-zA-Z\s']+?)(?:\s+(?:on|at|for|,)\s+|\s+(?:next|this|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday))/i);
+  // The ^ is removed and we use a more flexible pattern that handles "I " prefix
+  const goToMatch = eventText.match(/(?:I\s+)?(?:have\s+to|need\s+to|want\s+to|going\s+to)\s+(?:go\s+(?:to\s+)?|attend\s+)?([a-zA-Z][a-zA-Z0-9\s']+?)(?:\s+(?:on|at|for|,)\s+|\s+(?:next|this|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday))/i);
   if (goToMatch && goToMatch[1]) {
     title = goToMatch[1].trim();
   } else {
@@ -513,7 +514,7 @@ function parseUpdateIntent(
   } = {};
 
   if (newTimeText) {
-    const dateResult = extractDateTimeFromMessage(newTimeText, new Date());
+    const dateResult = extractDateTimeFromMessage(newTimeText, new Date(), context.timezone);
     if (dateResult.datetime) {
       patch.startAt = dateResult.datetime;
       // Default 1 hour duration
@@ -599,10 +600,11 @@ export async function executeConfirmedAction(
 
   if (toolResult.success) {
     const toolName = pendingAction.toolCall.toolName;
+    const tz = context.timezone ?? 'UTC';
 
     if (toolName === 'calendar.create' && toolResult.data) {
       const event = (toolResult.data as { event: { title: string; startAt: string } }).event;
-      const startStr = formatEventDate(event.startAt);
+      const startStr = formatEventDate(event.startAt, false, tz);
       return {
         text: `✅ Scheduled "${event.title}" for ${startStr}`,
         actions: [agentAction],
@@ -613,7 +615,7 @@ export async function executeConfirmedAction(
     if (toolName === 'calendar.update' && toolResult.data) {
       const event = (toolResult.data as { event: { title: string; startAt: string } }).event;
       return {
-        text: `✅ Updated "${event.title}" – now scheduled for ${formatEventDate(event.startAt)}`,
+        text: `✅ Updated "${event.title}" – now scheduled for ${formatEventDate(event.startAt, false, tz)}`,
         actions: [agentAction],
         payload: { event },
       };
@@ -751,8 +753,9 @@ async function handleCreateIntent(
   }
 
   if (intent.needsClarification === 'time') {
+    const tz = context.timezone ?? 'UTC';
     return {
-      text: `I'll add "${intent.title}" on ${formatEventDate(intent.startAt!, true)}, but I'm not sure about the exact time. ` +
+      text: `I'll add "${intent.title}" on ${formatEventDate(intent.startAt!, true, tz)}, but I'm not sure about the exact time. ` +
         `What time should it be? Or say "all day" for an all-day event.`,
       actions: [],
       payload: {
@@ -805,9 +808,10 @@ async function handleCreateIntent(
 
   const toolName = 'calendar.create';
   const needsConfirmation = requiresConfirmation(toolName, intent.confidence, false);
+  const tz = context.timezone ?? 'UTC';
 
   if (needsConfirmation) {
-    const dateStr = formatEventDate(intent.startAt!, intent.allDay);
+    const dateStr = formatEventDate(intent.startAt!, intent.allDay, tz);
     const locationStr = intent.location ? ` at ${intent.location}` : '';
     const durationStr = !intent.allDay ? ` (${defaultDurationMinutes} min)` : '';
     const description = `I'll schedule "${intent.title}" for ${dateStr}${durationStr}${locationStr}.`;
@@ -831,7 +835,7 @@ async function handleCreateIntent(
 
   if (result.success && result.data) {
     const event = (result.data as { event: { id: string; title: string; startAt: string; location?: string | null } }).event;
-    const dateStr = formatEventDate(event.startAt, intent.allDay);
+    const dateStr = formatEventDate(event.startAt, intent.allDay, tz);
     const locationStr = event.location ? ` at ${event.location}` : '';
 
     return {
@@ -885,10 +889,11 @@ async function handleSearchIntent(
 
   if (result.success && result.data) {
     const data = result.data as { events: Array<{ title: string; startAt: string; location?: string | null }>; total: number };
+    const tz = context.timezone ?? 'UTC';
 
     if (data.events.length === 0) {
       const rangeStr = intent.from && intent.to
-        ? `between ${formatDateShort(intent.from)} and ${formatDateShort(intent.to)}`
+        ? `between ${formatDateShort(intent.from, tz)} and ${formatDateShort(intent.to, tz)}`
         : 'in that time range';
       return {
         text: `📅 No events found ${rangeStr}.`,
@@ -900,7 +905,7 @@ async function handleSearchIntent(
     const eventList = data.events
       .slice(0, 5)
       .map((e) => {
-        const dateStr = formatEventDate(e.startAt);
+        const dateStr = formatEventDate(e.startAt, false, tz);
         const locationStr = e.location ? ` @ ${e.location}` : '';
         return `• **${e.title}** – ${dateStr}${locationStr}`;
       })
@@ -954,9 +959,10 @@ async function handleUpdateIntent(
 
     if (searchData.events.length > 1) {
       // Multiple matches - ask user to clarify
+      const tz = context.timezone ?? 'UTC';
       const options = searchData.events
         .slice(0, 3)
-        .map((e, i) => `${i + 1}. "${e.title}" on ${formatEventDate(e.startAt)}`)
+        .map((e, i) => `${i + 1}. "${e.title}" on ${formatEventDate(e.startAt, false, tz)}`)
         .join('\n');
 
       return {
@@ -1000,11 +1006,12 @@ async function handleUpdateIntent(
 
   const toolName = 'calendar.update';
   const needsConfirmation = requiresConfirmation(toolName, intent.confidence, false);
+  const tz = context.timezone ?? 'UTC';
 
   if (needsConfirmation) {
     const changesList: string[] = [];
     if (intent.patch.startAt) {
-      changesList.push(`new time: ${formatEventDate(intent.patch.startAt)}`);
+      changesList.push(`new time: ${formatEventDate(intent.patch.startAt, false, tz)}`);
     }
     if (intent.patch.location) {
       changesList.push(`location: ${intent.patch.location}`);
@@ -1035,7 +1042,7 @@ async function handleUpdateIntent(
   if (result.success && result.data) {
     const event = (result.data as { event: { title: string; startAt: string } }).event;
     return {
-      text: `✅ Updated "${event.title}" – now scheduled for ${formatEventDate(event.startAt)}`,
+      text: `✅ Updated "${event.title}" – now scheduled for ${formatEventDate(event.startAt, false, tz)}`,
       actions: [action],
       payload: { event },
     };
@@ -1052,12 +1059,13 @@ async function handleUpdateIntent(
 // FORMATTING HELPERS
 // ----------------------------------------------------------------------
 
-function formatEventDate(isoString: string, allDayOnly = false): string {
+function formatEventDate(isoString: string, allDayOnly = false, timezone = 'UTC'): string {
   const date = new Date(isoString);
   const options: Intl.DateTimeFormatOptions = {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
+    timeZone: timezone,
   };
 
   if (!allDayOnly) {
@@ -1068,10 +1076,11 @@ function formatEventDate(isoString: string, allDayOnly = false): string {
   return date.toLocaleDateString('en-US', options);
 }
 
-function formatDateShort(isoString: string): string {
+function formatDateShort(isoString: string, timezone = 'UTC'): string {
   const date = new Date(isoString);
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
+    timeZone: timezone,
   });
 }
