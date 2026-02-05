@@ -1,6 +1,16 @@
 // Types
 export * from './types.js';
 
+// LLM Providers
+export {
+  type LLMProvider,
+  type LLMMessage,
+  type LLMCompletionOptions,
+  MockLLMProvider,
+  OpenAIProvider,
+  type OpenAIProviderConfig,
+} from './llm/index.js';
+
 // Router
 export {
   routeIntent,

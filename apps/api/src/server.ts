@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import envPlugin from './plugins/env.js';
 import prismaPlugin from './plugins/prisma.js';
+import llmPlugin from './plugins/llm.js';
 import routes from './routes/index.js';
 
 export function buildServer() {
@@ -16,6 +17,7 @@ export function buildServer() {
   // Register plugins
   fastify.register(envPlugin);
   fastify.register(prismaPlugin);
+  fastify.register(llmPlugin);
 
   fastify.register(cors, (instance: FastifyInstance) => {
     // Support comma-separated list of origins or allow all if not set

@@ -19,6 +19,11 @@ declare module 'fastify' {
       OAUTH_STATE_SECRET: string;
       TOKEN_ENCRYPTION_KEY: string;
       FRONTEND_URL?: string;
+      // AI/LLM Configuration
+      OPENAI_API_KEY?: string;
+      AI_MODEL?: string;
+      AI_MAX_TOKENS?: number;
+      AI_TEMPERATURE?: number;
     };
   }
 }
@@ -79,6 +84,22 @@ const schema = {
     FRONTEND_URL: {
       type: 'string',
       default: 'http://localhost:8081',
+    },
+    // AI/LLM Configuration
+    OPENAI_API_KEY: {
+      type: 'string',
+    },
+    AI_MODEL: {
+      type: 'string',
+      default: 'gpt-4o',
+    },
+    AI_MAX_TOKENS: {
+      type: 'number',
+      default: 1024,
+    },
+    AI_TEMPERATURE: {
+      type: 'number',
+      default: 0.7,
     },
   },
 } as const;
