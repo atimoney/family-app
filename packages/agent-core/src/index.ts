@@ -36,6 +36,7 @@ export {
   isWriteTool,
   isDestructiveTool,
   CONFIDENCE_THRESHOLD,
+  PendingActionCapacityError,
   type PendingAction,
   type CreatePendingActionOptions,
   type GetPendingActionResult,

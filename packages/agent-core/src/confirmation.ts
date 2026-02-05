@@ -79,12 +79,27 @@ const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const CLEANUP_INTERVAL_MS = 60 * 1000; // 1 minute
 
 /**
+ * Error thrown when pending action capacity is exceeded.
+ */
+export class PendingActionCapacityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PendingActionCapacityError';
+  }
+}
+
+/**
  * In-memory store for pending actions.
  * Production: Replace with Redis or database-backed store.
  */
 class PendingActionStore {
   private actions: Map<string, PendingAction> = new Map();
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Maximum pending actions per user to prevent abuse */
+  private static readonly MAX_ACTIONS_PER_USER = 10;
+  /** Maximum total actions to prevent memory exhaustion */
+  private static readonly MAX_TOTAL_ACTIONS = 10000;
 
   constructor() {
     this.startCleanup();
@@ -102,8 +117,28 @@ class PendingActionStore {
 
   /**
    * Create a pending action and return its token.
+   * @throws {PendingActionCapacityError} If capacity limits are exceeded.
    */
   create(options: CreatePendingActionOptions): PendingAction {
+    // Check per-user limit to prevent abuse
+    const userActions = this.getByUser(options.userId);
+    if (userActions.length >= PendingActionStore.MAX_ACTIONS_PER_USER) {
+      throw new PendingActionCapacityError(
+        `User has too many pending actions (max ${PendingActionStore.MAX_ACTIONS_PER_USER}). Please confirm or cancel existing actions first.`
+      );
+    }
+
+    // Check total capacity to prevent memory exhaustion
+    if (this.actions.size >= PendingActionStore.MAX_TOTAL_ACTIONS) {
+      // Try cleanup first
+      this.cleanup();
+      if (this.actions.size >= PendingActionStore.MAX_TOTAL_ACTIONS) {
+        throw new PendingActionCapacityError(
+          'System is at capacity. Please try again later.'
+        );
+      }
+    }
+
     const token = this.generateToken();
     const action: PendingAction = {
       token,

@@ -19,11 +19,60 @@ export class MockLLMProvider implements LLMProvider {
     // Very basic mocking logic for demonstration
     // This allows the "router" to work without a real LLM for simple cases
     if (schema.description === 'Intent Routing') {
-       if (lastMsg.includes('task') || lastMsg.includes('todo')) return { domain: 'tasks', confidence: 0.9, reasons: ['keyword match'] } as unknown as T;
-       if (lastMsg.includes('calendar') || lastMsg.includes('event')) return { domain: 'calendar', confidence: 0.9, reasons: ['keyword match'] } as unknown as T;
-       if (lastMsg.includes('meal') || lastMsg.includes('cook')) return { domain: 'meals', confidence: 0.9, reasons: ['keyword match'] } as unknown as T;
-       if (lastMsg.includes('buy') || lastMsg.includes('list')) return { domain: 'lists', confidence: 0.9, reasons: ['keyword match'] } as unknown as T;
-       return { domain: 'unknown', confidence: 0.5, reasons: ['no key match'] } as unknown as T;
+      // Detect multi-intent patterns (e.g., "X and Y", "X, also Y")
+      const multiIntentPatterns = [
+        /\band\b.*\b(task|todo|calendar|event|meal|cook|buy|list|shopping)\b/i,
+        /\b(task|todo|calendar|event|meal|cook|buy|list|shopping)\b.*\band\b/i,
+        /,\s*(also|and|plus)\b/i,
+      ];
+      
+      const hasMultiIntent = multiIntentPatterns.some(p => p.test(lastMsg));
+      
+      // Determine which domains are mentioned
+      const detectedDomains: Array<'tasks' | 'calendar' | 'meals' | 'lists'> = [];
+      if (lastMsg.includes('task') || lastMsg.includes('todo') || lastMsg.includes('remind')) {
+        detectedDomains.push('tasks');
+      }
+      if (lastMsg.includes('calendar') || lastMsg.includes('event') || lastMsg.includes('schedule') || lastMsg.includes('appointment')) {
+        detectedDomains.push('calendar');
+      }
+      if (lastMsg.includes('meal') || lastMsg.includes('cook') || lastMsg.includes('recipe') || lastMsg.includes('dinner') || lastMsg.includes('lunch')) {
+        detectedDomains.push('meals');
+      }
+      if (lastMsg.includes('buy') || lastMsg.includes('list') || lastMsg.includes('shopping') || lastMsg.includes('grocery') || lastMsg.includes('groceries')) {
+        detectedDomains.push('lists');
+      }
+      
+      // If multi-intent detected with multiple domains
+      if (hasMultiIntent && detectedDomains.length > 1) {
+        return {
+          domain: detectedDomains[0],
+          confidence: 0.85,
+          reasons: ['Multi-intent detected via keyword matching'],
+          isMultiIntent: true,
+          multiDomains: detectedDomains,
+        } as unknown as T;
+      }
+      
+      // Single domain routing
+      if (detectedDomains.length > 0) {
+        return {
+          domain: detectedDomains[0],
+          confidence: 0.9,
+          reasons: ['Keyword match'],
+          isMultiIntent: false,
+          multiDomains: undefined,
+        } as unknown as T;
+      }
+      
+      // Unknown domain
+      return {
+        domain: 'unknown',
+        confidence: 0.5,
+        reasons: ['No keyword match'],
+        isMultiIntent: false,
+        multiDomains: undefined,
+      } as unknown as T;
     }
     
     throw new Error('Mock response not implemented for this schema');

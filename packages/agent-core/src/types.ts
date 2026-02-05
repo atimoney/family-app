@@ -115,6 +115,8 @@ export type AgentRunContext = {
   familyId: string;
   /** Family member ID for assignment operations */
   familyMemberId: string;
+  /** User's roles/permissions */
+  roles?: string[];
   /** User's timezone (e.g., 'America/New_York') */
   timezone?: string;
   /** Conversation ID for context continuity */

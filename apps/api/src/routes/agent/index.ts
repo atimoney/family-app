@@ -116,7 +116,7 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
         userId: context.userId,
         familyId: context.familyId,
         familyMemberId: context.familyMemberId,
-        roles: ['member'], // TODO: Get actual roles
+        roles: context.roles ?? ['member'],
         timezone: context.timezone,
         logger: context.logger,
       };
@@ -143,7 +143,7 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
         userId: context.userId,
         familyId: context.familyId,
         familyMemberId: context.familyMemberId,
-        roles: ['member'], // TODO: Get actual roles
+        roles: context.roles ?? ['member'],
         timezone: context.timezone,
         logger: context.logger,
       };
@@ -170,7 +170,7 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
         userId: context.userId,
         familyId: context.familyId,
         familyMemberId: context.familyMemberId,
-        roles: ['member'], // TODO: Get actual roles
+        roles: context.roles ?? ['member'],
         timezone: context.timezone,
         logger: context.logger,
       };
@@ -239,6 +239,7 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
       userId,
       familyId: membership.familyId,
       familyMemberId: membership.id,
+      roles: [membership.role],
       timezone: membership.profile.timezone ?? undefined,
       conversationId,
       logger,
@@ -267,7 +268,7 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
           userId: context.userId,
           familyId: context.familyId,
           familyMemberId: context.familyMemberId,
-          roles: ['member'],
+          roles: context.roles ?? ['member'],
           timezone: context.timezone,
           logger: context.logger,
         };
