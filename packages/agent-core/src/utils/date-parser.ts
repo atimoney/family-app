@@ -3,6 +3,20 @@
 // ----------------------------------------------------------------------
 
 /**
+ * Result from parsing a date/time expression.
+ */
+export type DateTimeParseResult = {
+  /** ISO datetime string (UTC) */
+  datetime: string | null;
+  /** Whether the parsing was confident/unambiguous */
+  confident: boolean;
+  /** Human-readable parsed representation */
+  parsed: string | null;
+  /** The timezone used for interpretation (IANA timezone or 'UTC') */
+  timezone: string;
+};
+
+/**
  * Attempt to parse natural language date/time expressions.
  * Returns ISO string if confident, null if ambiguous.
  */
@@ -10,8 +24,9 @@ export function parseDateTime(
   text: string,
   referenceDate: Date = new Date(),
   timezone?: string
-): { datetime: string | null; confident: boolean; parsed: string | null } {
+): DateTimeParseResult {
   const lower = text.toLowerCase().trim();
+  const resolvedTimezone = timezone ?? 'UTC';
 
   // Get current date parts in user's timezone
   let now = referenceDate;
@@ -151,13 +166,28 @@ export function parseDateTime(
           datetime: date.toISOString(),
           confident,
           parsed: date.toLocaleString(),
+          timezone: resolvedTimezone,
         };
       }
     }
   }
 
-  return { datetime: null, confident: false, parsed: null };
+  return { datetime: null, confident: false, parsed: null, timezone: resolvedTimezone };
 }
+
+/**
+ * Result from extracting date/time from a message.
+ */
+export type DateTimeExtractResult = {
+  /** ISO datetime string (UTC) */
+  datetime: string | null;
+  /** Whether the parsing was confident/unambiguous */
+  confident: boolean;
+  /** The extracted text that was parsed */
+  extracted: string | null;
+  /** The timezone used for interpretation (IANA timezone or 'UTC') */
+  timezone: string;
+};
 
 /**
  * Extract potential date/time from a message.
@@ -166,7 +196,8 @@ export function extractDateTimeFromMessage(
   message: string,
   referenceDate: Date = new Date(),
   timezone?: string
-): { datetime: string | null; confident: boolean; extracted: string | null } {
+): DateTimeExtractResult {
+  const resolvedTimezone = timezone ?? 'UTC';
   // Common patterns to look for in the message
   const datePatterns = [
     /(?:due|by|on|at|for)\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?/i,
@@ -188,19 +219,33 @@ export function extractDateTimeFromMessage(
     }
   }
 
-  return { datetime: null, confident: false, extracted: null };
+  return { datetime: null, confident: false, extracted: null, timezone: resolvedTimezone };
 }
+
+/**
+ * Result from parsing a date range.
+ */
+export type DateRangeParseResult = {
+  /** Start of range as ISO datetime (UTC) */
+  from: string | null;
+  /** End of range as ISO datetime (UTC) */
+  to: string | null;
+  /** The timezone used for interpretation (IANA timezone or 'UTC') */
+  timezone: string;
+};
 
 /**
  * Parse a date range from a message (e.g., "this week", "next month", "between Mon and Fri").
  */
 export function parseDateRange(
   message: string,
-  referenceDate: Date = new Date()
-): { from: string | null; to: string | null } {
+  referenceDate: Date = new Date(),
+  timezone?: string
+): DateRangeParseResult {
   const lower = message.toLowerCase();
   const now = referenceDate;
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const resolvedTimezone = timezone ?? 'UTC';
 
   // "today"
   if (/\btoday\b/.test(lower)) {
@@ -209,6 +254,7 @@ export function parseDateRange(
     return {
       from: today.toISOString(),
       to: endOfDay.toISOString(),
+      timezone: resolvedTimezone,
     };
   }
 
@@ -221,6 +267,7 @@ export function parseDateRange(
     return {
       from: tomorrow.toISOString(),
       to: endOfTomorrow.toISOString(),
+      timezone: resolvedTimezone,
     };
   }
 
@@ -234,6 +281,7 @@ export function parseDateRange(
     return {
       from: startOfWeek.toISOString(),
       to: endOfWeek.toISOString(),
+      timezone: resolvedTimezone,
     };
   }
 
@@ -247,6 +295,7 @@ export function parseDateRange(
     return {
       from: startOfNextWeek.toISOString(),
       to: endOfNextWeek.toISOString(),
+      timezone: resolvedTimezone,
     };
   }
 
@@ -257,9 +306,10 @@ export function parseDateRange(
     return {
       from: startOfMonth.toISOString(),
       to: endOfMonth.toISOString(),
+      timezone: resolvedTimezone,
     };
   }
 
   // Default: no range specified, return nulls
-  return { from: null, to: null };
+  return { from: null, to: null, timezone: resolvedTimezone };
 }

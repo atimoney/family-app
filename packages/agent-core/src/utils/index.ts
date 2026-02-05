@@ -1,1 +1,8 @@
-export { parseDateTime, extractDateTimeFromMessage, parseDateRange } from './date-parser.js';
+export {
+  parseDateTime,
+  extractDateTimeFromMessage,
+  parseDateRange,
+  type DateTimeParseResult,
+  type DateTimeExtractResult,
+  type DateRangeParseResult,
+} from './date-parser.js';

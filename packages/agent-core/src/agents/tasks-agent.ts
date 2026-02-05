@@ -287,22 +287,17 @@ export async function executeConfirmedAction(
   );
 
   if (!result.found) {
-    const errorMessages: Record<string, string> = {
-      not_found: 'This confirmation has already been used or does not exist.',
-      expired: 'This confirmation has expired. Please start again.',
-      user_mismatch: 'This confirmation belongs to a different user.',
-      family_mismatch: 'This confirmation is for a different family context.',
-    };
-
+    // Log the actual reason for debugging, but return generic message to client
+    // to prevent token enumeration attacks
     context.logger.warn(
       { token: confirmationToken, reason: result.reason },
       'TasksAgent: confirmation validation failed'
     );
 
     return {
-      text: `❌ ${errorMessages[result.reason] || 'Invalid confirmation.'}`,
+      text: '❌ This confirmation is invalid or has expired. Please try your request again.',
       actions: [],
-      payload: { error: result.reason },
+      payload: { error: 'invalid_confirmation' },
     };
   }
 

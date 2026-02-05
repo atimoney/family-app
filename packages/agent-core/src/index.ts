@@ -2,7 +2,15 @@
 export * from './types.js';
 
 // Router
-export { routeIntent, detectMultiIntent, type MultiIntentResult } from './router.js';
+export {
+  routeIntent,
+  detectMultiIntent,
+  configureRouter,
+  getRouterConfig,
+  resetRouterConfig,
+  type MultiIntentResult,
+  type RouterConfig,
+} from './router.js';
 
 // Orchestrator
 export {

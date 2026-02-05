@@ -33,6 +33,7 @@ import {
   chatRequestSchema,
   mcpInvokeRequestSchema,
 } from './schema.js';
+import { rateLimits } from '../../lib/rate-limiter.js';
 
 // ----------------------------------------------------------------------
 // HELPERS
@@ -209,7 +210,7 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
       confirmationToken?: string;
       confirmed?: boolean;
     };
-  }>('/chat', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  }>('/chat', { preHandler: [fastify.authenticate, rateLimits.agentChat] }, async (request, reply) => {
     const userId = request.user?.id;
     if (!userId) {
       return reply.status(401).send({ error: 'Unauthorized' });
@@ -346,7 +347,7 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
   // --------------------------------------------------------------------------
   fastify.post<{
     Body: { toolName: string; input: Record<string, unknown> };
-  }>('/mcp/invoke', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  }>('/mcp/invoke', { preHandler: [fastify.authenticate, rateLimits.mcpInvoke] }, async (request, reply) => {
     const userId = request.user?.id;
     if (!userId) {
       return reply.status(401).send({ error: 'Unauthorized' });

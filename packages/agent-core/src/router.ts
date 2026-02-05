@@ -1,9 +1,50 @@
 import { z } from 'zod';
 import type { AgentDomain, IntentRoute, AgentLogger } from './types.js';
+import type { LLMProvider } from './llm/index.js';
 import { MockLLMProvider } from './llm/index.js';
 
-// Initialize LLM Provider (In production, inject this via dependency injection)
-const llmProvider = new MockLLMProvider();
+// ----------------------------------------------------------------------
+// ROUTER CONFIGURATION
+// ----------------------------------------------------------------------
+
+/**
+ * Configuration for the intent router.
+ */
+export type RouterConfig = {
+  llmProvider: LLMProvider;
+};
+
+/**
+ * Default router configuration using MockLLMProvider.
+ * In production, call configureRouter() with a real LLM provider.
+ */
+let routerConfig: RouterConfig = {
+  llmProvider: new MockLLMProvider(),
+};
+
+/**
+ * Configure the router with a custom LLM provider.
+ * Call this during application startup before handling requests.
+ */
+export function configureRouter(config: Partial<RouterConfig>): void {
+  routerConfig = { ...routerConfig, ...config };
+}
+
+/**
+ * Get the current router configuration (for testing).
+ */
+export function getRouterConfig(): RouterConfig {
+  return routerConfig;
+}
+
+/**
+ * Reset router to default configuration (for testing).
+ */
+export function resetRouterConfig(): void {
+  routerConfig = {
+    llmProvider: new MockLLMProvider(),
+  };
+}
 
 // ----------------------------------------------------------------------
 // SCHEMAS
@@ -36,9 +77,10 @@ export type MultiIntentResult = {
  */
 export async function detectMultiIntent(
   message: string,
-  options?: { logger?: AgentLogger; timezone?: string }
+  options?: { logger?: AgentLogger; timezone?: string; llmProvider?: LLMProvider }
 ): Promise<MultiIntentResult> {
-  const { logger, timezone } = options ?? {};
+  const { logger, timezone, llmProvider: overrideProvider } = options ?? {};
+  const llmProvider = overrideProvider ?? routerConfig.llmProvider;
 
   // Short-circuit for very short messages
   if (message.length < 5) {
@@ -92,9 +134,11 @@ export async function routeIntent(
     domainHint?: AgentDomain;
     logger?: AgentLogger;
     timezone?: string;
+    llmProvider?: LLMProvider;
   }
 ): Promise<IntentRoute> {
-  const { domainHint, logger, timezone } = options ?? {};
+  const { domainHint, logger, timezone, llmProvider: overrideProvider } = options ?? {};
+  const llmProvider = overrideProvider ?? routerConfig.llmProvider;
 
   // If a domain hint is provided and it's not 'unknown', use it with high confidence
   if (domainHint && domainHint !== 'unknown') {

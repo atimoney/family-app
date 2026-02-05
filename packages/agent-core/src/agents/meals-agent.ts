@@ -893,9 +893,17 @@ export async function executeMealsConfirmedAction(
   const pendingResult = pendingActionStore.get(token, context.userId, context.familyId);
 
   if (!pendingResult.found) {
+    // Log the actual reason for debugging, but return generic message to client
+    // to prevent token enumeration attacks
+    context.logger.warn(
+      { token, reason: pendingResult.reason },
+      'MealsAgent: confirmation validation failed'
+    );
+
     return {
-      text: `Sorry, that confirmation has ${pendingResult.reason === 'expired' ? 'expired' : 'already been used or is invalid'}. Please try your request again.`,
+      text: '❌ This confirmation is invalid or has expired. Please try your request again.',
       actions: [],
+      payload: { error: 'invalid_confirmation' },
     };
   }
 
