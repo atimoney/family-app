@@ -99,6 +99,8 @@ export const updateEventSchema = z.object({
   recurrence: recurrenceRuleSchema,
   reminders: remindersSchema,
   extraData: extraDataSchema.optional(),
+  // For recurring events: 'instance' updates only this occurrence, 'all' updates the series
+  updateScope: z.enum(['instance', 'all']).optional().default('instance'),
 });
 
 export const updateMetadataSchema = z.object({

@@ -17,11 +17,12 @@ import * as z from 'zod';
 import dayjs from 'dayjs';
 import { uuidv4 } from 'minimal-shared/utils';
 import { useForm, Controller } from 'react-hook-form';
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
+import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
@@ -35,6 +36,10 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Autocomplete from '@mui/material/Autocomplete';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
+import CircularProgress from '@mui/material/CircularProgress';
+import DialogContentText from '@mui/material/DialogContentText';
+
+import { getCalendarEventDetail } from 'src/features/calendar/api';
 
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
@@ -191,7 +196,7 @@ type Props = {
   eventCategories?: EventCategoryConfig[];
   isDashboardMode?: boolean;
   onCreateEvent: (event: CalendarEventItem) => void | Promise<void>;
-  onUpdateEvent: (event: CalendarEventItem) => void;
+  onUpdateEvent: (event: CalendarEventItem, updateScope?: 'instance' | 'all') => void;
   onDeleteEvent: (eventId: string) => void;
 };
 
@@ -267,6 +272,43 @@ export function CalendarForm({
 
   // State for audit history popover
   const [auditAnchorEl, setAuditAnchorEl] = useState<HTMLElement | null>(null);
+
+  // State for recurring event handling
+  const [isLoadingEventDetail, setIsLoadingEventDetail] = useState(false);
+  const [eventRecurrence, setEventRecurrence] = useState<RecurrenceRule | null>(null);
+  const [isRecurringInstance, setIsRecurringInstance] = useState(false);
+  const [showUpdateScopeDialog, setShowUpdateScopeDialog] = useState(false);
+  const [pendingEventData, setPendingEventData] = useState<CalendarEventItem | null>(null);
+
+  // Fetch event detail to get recurrence info when editing
+  useEffect(() => {
+    const fetchEventDetail = async () => {
+      if (!isEdit || !currentEvent?.extendedProps?.googleEventId) return;
+      
+      setIsLoadingEventDetail(true);
+      try {
+        const detail = await getCalendarEventDetail(
+          currentEvent.extendedProps.googleEventId,
+          currentEvent.calendarId
+        );
+        
+        setEventRecurrence(detail.recurrence);
+        setIsRecurringInstance(detail.isRecurringInstance);
+        
+        // If we got recurrence info and it's not already set, update the form
+        if (detail.recurrence && !currentEvent.recurrence) {
+          setValue('recurrence', detail.recurrence);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch event detail for recurrence info:', err);
+      } finally {
+        setIsLoadingEventDetail(false);
+      }
+    };
+
+    fetchEventDetail();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentEvent?.extendedProps?.googleEventId, currentEvent?.calendarId, isEdit]);
 
   // E2: Get existing family assignments from event
   const existingAssignments = currentEvent?.familyAssignments || currentEvent?.extendedProps?.metadata?.familyAssignments;
@@ -433,6 +475,17 @@ export function CalendarForm({
     [values.reminders, setValue]
   );
 
+  // Handle the update scope selection for recurring events
+  const handleUpdateScopeSelect = useCallback((scope: 'instance' | 'all') => {
+    if (pendingEventData) {
+      onUpdateEvent(pendingEventData, scope);
+      onClose();
+      reset();
+    }
+    setShowUpdateScopeDialog(false);
+    setPendingEventData(null);
+  }, [pendingEventData, onUpdateEvent, onClose, reset]);
+
   const onSubmit = handleSubmit(async (data) => {
     const eventData: CalendarEventItem = {
       id: currentEvent?.id || uuidv4(),
@@ -457,13 +510,19 @@ export function CalendarForm({
     try {
       if (!dateError) {
         if (isEdit) {
-          onUpdateEvent(eventData);
-          onClose();
+          // Check if this is a recurring event instance - show dialog to choose scope
+          if (isRecurringInstance || eventRecurrence) {
+            setPendingEventData(eventData);
+            setShowUpdateScopeDialog(true);
+          } else {
+            onUpdateEvent(eventData);
+            onClose();
+            reset();
+          }
         } else {
           // onCreateEvent handles closing the form after API success
           await onCreateEvent(eventData);
         }
-        reset();
       }
     } catch (err) {
       console.error(err);
@@ -478,9 +537,32 @@ export function CalendarForm({
   }, [currentEvent?.id, onClose, onDeleteEvent]);
 
   return (
+    <>
     <Form methods={methods} onSubmit={onSubmit}>
       <Scrollbar sx={{ p: 3, bgcolor: 'background.neutral' }}>
         <Stack spacing={3}>
+          {/* Show recurring event indicator */}
+          {isEdit && (isRecurringInstance || eventRecurrence) && (
+            <Alert 
+              severity="info" 
+              icon={<Iconify icon="solar:restart-bold" />}
+              sx={{ py: 0.5 }}
+            >
+              {isLoadingEventDetail ? (
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <CircularProgress size={14} />
+                  <span>Loading recurrence info...</span>
+                </Stack>
+              ) : (
+                <>
+                  This is a <strong>recurring event</strong>
+                  {eventRecurrence && ` (${getRecurrenceSummary(eventRecurrence)})`}.
+                  Changes will be applied when you save.
+                </>
+              )}
+            </Alert>
+          )}
+
           <Field.Text name="title" label="Title" />
 
           <Field.Text
@@ -1141,5 +1223,47 @@ export function CalendarForm({
         </DialogActions>
       </Dialog>
     </Form>
+
+    {/* Update Scope Dialog for Recurring Events */}
+    <Dialog
+      open={showUpdateScopeDialog}
+      onClose={() => {
+        setShowUpdateScopeDialog(false);
+        setPendingEventData(null);
+      }}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle>Edit Recurring Event</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          This is a recurring event. Do you want to edit only this occurrence or all occurrences in the series?
+        </DialogContentText>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button 
+          onClick={() => {
+            setShowUpdateScopeDialog(false);
+            setPendingEventData(null);
+          }} 
+          color="inherit"
+        >
+          Cancel
+        </Button>
+        <Button 
+          onClick={() => handleUpdateScopeSelect('instance')} 
+          variant="outlined"
+        >
+          This event only
+        </Button>
+        <Button 
+          onClick={() => handleUpdateScopeSelect('all')} 
+          variant="contained"
+        >
+          All events
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }

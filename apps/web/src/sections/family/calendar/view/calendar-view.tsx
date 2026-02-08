@@ -362,7 +362,7 @@ export function CalendarView() {
   );
 
   const handleUpdateEvent = useCallback(
-    async (updatedEvent: CalendarEventItem) => {
+    async (updatedEvent: CalendarEventItem, updateScope?: 'instance' | 'all') => {
       try {
         // Find the existing event to get the googleEventId
         const existingEvent = mergedEvents.find((e) => e.id === updatedEvent.id);
@@ -451,6 +451,8 @@ export function CalendarView() {
           recurrence: updatedEvent.recurrence,
           reminders: updatedEvent.reminders,
           extraData: Object.keys(extraData).length > 0 ? extraData : undefined,
+          // Pass updateScope for recurring events ('instance' or 'all')
+          updateScope,
         });
       } catch (err) {
         console.error('Failed to update event:', err);

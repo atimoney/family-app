@@ -103,6 +103,23 @@ type GoogleCalendarEvent = {
   location?: string | null;
 };
 
+// Response type for single event fetch (includes recurrence info)
+export type CalendarEventDetail = {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  start: string;
+  end: string;
+  allDay: boolean;
+  calendarId: string;
+  colorId: string | null;
+  recurrence: RecurrenceRule | null;
+  recurringEventId: string | null;
+  isRecurringInstance: boolean;
+  extraData: unknown | null;
+};
+
 export async function createCalendarEvent(event: CreateEventInput): Promise<GoogleCalendarEvent> {
   const headers = await getAuthHeaders();
   return apiClient.post<GoogleCalendarEvent>('/v1/calendar/events', event, {
@@ -110,9 +127,27 @@ export async function createCalendarEvent(event: CreateEventInput): Promise<Goog
   });
 }
 
+/**
+ * Fetch a single calendar event with recurrence information
+ */
+export async function getCalendarEventDetail(
+  eventId: string,
+  calendarId?: string
+): Promise<CalendarEventDetail> {
+  const headers = await getAuthHeaders();
+  const params = calendarId ? `?calendarId=${encodeURIComponent(calendarId)}` : '';
+  return apiClient.get<CalendarEventDetail>(`/v1/calendar/events/${eventId}${params}`, {
+    headers,
+  });
+}
+
 export async function updateCalendarEvent(
   eventId: string,
-  event: Partial<CreateEventInput> & { calendarId?: string; sourceCalendarId?: string }
+  event: Partial<CreateEventInput> & { 
+    calendarId?: string; 
+    sourceCalendarId?: string;
+    updateScope?: 'instance' | 'all';
+  }
 ): Promise<GoogleCalendarEvent> {
   const headers = await getAuthHeaders();
   return apiClient.patch<GoogleCalendarEvent>(`/v1/calendar/events/${eventId}`, event, {

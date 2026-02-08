@@ -18,6 +18,40 @@ export async function listCalendars(auth: OAuth2Client) {
   return response.data.items ?? [];
 }
 
+/**
+ * Get a single event from Google Calendar
+ */
+export async function getEvent(options: {
+  auth: OAuth2Client;
+  calendarId: string;
+  eventId: string;
+}): Promise<calendar_v3.Schema$Event> {
+  const calendar = getCalendarClient(options.auth);
+  const response = await calendar.events.get({
+    calendarId: options.calendarId,
+    eventId: options.eventId,
+  });
+  return response.data;
+}
+
+/**
+ * Check if an event ID is a recurring event instance
+ * Recurring instance IDs have the format: {baseEventId}_{originalStartTime}
+ * e.g., "abc123_20260206T040000Z"
+ */
+export function isRecurringEventInstance(eventId: string): boolean {
+  return eventId.includes('_');
+}
+
+/**
+ * Get the master (parent) event ID from a recurring instance ID
+ * e.g., "abc123_20260206T040000Z" -> "abc123"
+ */
+export function getMasterEventId(eventId: string): string {
+  const underscoreIndex = eventId.indexOf('_');
+  return underscoreIndex > 0 ? eventId.substring(0, underscoreIndex) : eventId;
+}
+
 export async function listEvents(options: {
   auth: OAuth2Client;
   calendarId: string;
@@ -535,41 +569,52 @@ export async function updateEvent(options: {
   }
   
   // Check if we're converting to/from all-day format
-  // Recurring event instances (eventId contains "_") require a full PUT (events.update)
+  // Recurring events (both instances and master events with recurrence) require a full PUT (events.update)
   // instead of PATCH when changing between date and dateTime formats
   const isRecurringInstance = options.eventId.includes('_');
   const isAllDayConversion = requestBody.start?.date !== undefined || requestBody.end?.date !== undefined;
   
-  if (isRecurringInstance && isAllDayConversion) {
-    // For recurring instances with all-day conversion, we need to use events.update (PUT)
-    // which requires fetching the current event first to build a complete request body
+  // For all-day conversions, we need to check if the event is recurring
+  // This requires fetching the existing event to see if it has recurrence rules
+  if (isAllDayConversion || isRecurringInstance) {
     const existingEvent = await calendar.events.get({
       calendarId: options.calendarId,
       eventId: options.eventId,
     });
     
-    const fullEventBody: calendar_v3.Schema$Event = {
-      // Start with existing event data
-      summary: existingEvent.data.summary,
-      description: existingEvent.data.description,
-      location: existingEvent.data.location,
-      colorId: existingEvent.data.colorId,
-      transparency: existingEvent.data.transparency,
-      visibility: existingEvent.data.visibility,
-      attendees: existingEvent.data.attendees,
-      extendedProperties: existingEvent.data.extendedProperties,
-      // Apply our updates on top
-      ...requestBody,
-      // Ensure reminders are preserved if not explicitly changed
-      reminders: requestBody.reminders ?? existingEvent.data.reminders,
-    };
+    const existingHasRecurrence = existingEvent.data.recurrence && existingEvent.data.recurrence.length > 0;
+    const requestHasRecurrence = requestBody.recurrence && requestBody.recurrence.length > 0;
+    const isRecurring = isRecurringInstance || existingHasRecurrence || requestHasRecurrence;
     
-    const response = await calendar.events.update({
-      calendarId: options.calendarId,
-      eventId: options.eventId,
-      requestBody: fullEventBody,
-    });
-    return response.data;
+    // Need PUT for recurring events with all-day conversion
+    const needsPutForConversion = isAllDayConversion && isRecurring;
+    
+    if (needsPutForConversion) {
+      // For recurring events with all-day conversion, we need to use events.update (PUT)
+      const fullEventBody: calendar_v3.Schema$Event = {
+        // Start with existing event data
+        summary: existingEvent.data.summary,
+        description: existingEvent.data.description,
+        location: existingEvent.data.location,
+        colorId: existingEvent.data.colorId,
+        transparency: existingEvent.data.transparency,
+        visibility: existingEvent.data.visibility,
+        attendees: existingEvent.data.attendees,
+        extendedProperties: existingEvent.data.extendedProperties,
+        recurrence: existingEvent.data.recurrence,
+        // Apply our updates on top
+        ...requestBody,
+        // Ensure reminders are preserved if not explicitly changed
+        reminders: requestBody.reminders ?? existingEvent.data.reminders,
+      };
+      
+      const response = await calendar.events.update({
+        calendarId: options.calendarId,
+        eventId: options.eventId,
+        requestBody: fullEventBody,
+      });
+      return response.data;
+    }
   }
   
   // Default: use PATCH for normal updates

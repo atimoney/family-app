@@ -153,6 +153,9 @@ export type CalendarEventItem = {
   recurrence?: RecurrenceRule | null;
   reminders?: EventReminder[] | null;
   familyAssignments?: EventFamilyAssignments | null;
+  // Recurring event info
+  isRecurringInstance?: boolean;
+  recurringEventId?: string | null;
   // E1: Event metadata fields
   category?: EventCategory | null;
   audience?: EventAudience | null;
@@ -168,6 +171,8 @@ export type CalendarEventItem = {
     status?: string | null;
     calendarSummary?: string | null;
     metadata?: CalendarEventMetadata | null;
+    isRecurringInstance?: boolean;
+    recurringEventId?: string | null;
   };
 };
 

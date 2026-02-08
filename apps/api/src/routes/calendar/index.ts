@@ -5,7 +5,18 @@ import authPlugin from '../../plugins/auth.js';
 import { encryptSecret, decryptSecret } from '../../lib/crypto.js';
 import { createOAuthState, verifyOAuthState } from '../../lib/oauth-state.js';
 import { buildAuthUrl, exchangeCodeForTokens, getAuthorizedClient, getOAuthClient } from '../../lib/google/oauth.js';
-import { createEvent, deleteEvent, listCalendars, listEvents, updateEvent, moveEvent } from '../../lib/google/calendar.js';
+import { 
+  createEvent, 
+  deleteEvent, 
+  getEvent,
+  listCalendars, 
+  listEvents, 
+  updateEvent, 
+  moveEvent,
+  parseRRule,
+  isRecurringEventInstance,
+  getMasterEventId,
+} from '../../lib/google/calendar.js';
 import {
   createEventSchema,
   updateEventSchema,
@@ -406,6 +417,103 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
     return allEvents;
   });
 
+  // GET /v1/calendar/events/:eventId - Get a single event with recurrence info
+  fastify.get('/events/:eventId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user?.id as string;
+    const { eventId } = request.params as { eventId: string };
+    const { calendarId } = request.query as { calendarId?: string };
+
+    const refreshToken = await ensureRefreshToken(userId);
+    if (!refreshToken) {
+      return reply.status(401).send({ error: 'Google account not connected' });
+    }
+
+    const oauthClient = getAuthorizedClient({
+      oauthClient: getOauthClient(),
+      refreshToken,
+    });
+
+    // Determine calendar ID - try from query, then from EventLink
+    let effectiveCalendarId = calendarId;
+    if (!effectiveCalendarId) {
+      const eventLink = await fastify.prisma.eventLink.findFirst({
+        where: { userId, eventId },
+      });
+      effectiveCalendarId = eventLink?.calendarId ?? 'primary';
+    }
+
+    try {
+      // Fetch the event from Google Calendar
+      const event = await getEvent({
+        auth: oauthClient,
+        calendarId: effectiveCalendarId,
+        eventId,
+      });
+
+      // Check if this is a recurring event instance
+      const isInstance = isRecurringEventInstance(eventId);
+      let recurrenceRule = null;
+      let recurringEventId: string | null = event.recurringEventId ?? null;
+
+      // If this is an instance, fetch the master event to get recurrence info
+      if (isInstance || event.recurringEventId) {
+        const masterEventId = event.recurringEventId ?? getMasterEventId(eventId);
+        try {
+          const masterEvent = await getEvent({
+            auth: oauthClient,
+            calendarId: effectiveCalendarId,
+            eventId: masterEventId,
+          });
+          
+          // Parse recurrence from master event
+          if (masterEvent.recurrence && masterEvent.recurrence.length > 0) {
+            const rruleString = masterEvent.recurrence.find(r => r.startsWith('RRULE:'));
+            if (rruleString) {
+              recurrenceRule = parseRRule(rruleString);
+            }
+          }
+          recurringEventId = masterEventId;
+        } catch (err) {
+          fastify.log.warn({ err, masterEventId }, 'Failed to fetch master event for recurrence info');
+        }
+      } else if (event.recurrence && event.recurrence.length > 0) {
+        // This is a master event with recurrence
+        const rruleString = event.recurrence.find(r => r.startsWith('RRULE:'));
+        if (rruleString) {
+          recurrenceRule = parseRRule(rruleString);
+        }
+      }
+
+      // Get metadata from EventLink
+      const eventLink = await fastify.prisma.eventLink.findFirst({
+        where: { userId, eventId },
+      });
+
+      const start = event.start?.dateTime ?? event.start?.date ?? '';
+      const end = event.end?.dateTime ?? event.end?.date ?? '';
+      const allDay = Boolean(event.start?.date);
+
+      return {
+        id: event.id,
+        title: event.summary ?? '(No title)',
+        description: event.description ?? null,
+        location: event.location ?? null,
+        start: new Date(start).toISOString(),
+        end: new Date(end).toISOString(),
+        allDay,
+        calendarId: effectiveCalendarId,
+        colorId: event.colorId ?? null,
+        recurrence: recurrenceRule,
+        recurringEventId,
+        isRecurringInstance: isInstance || !!event.recurringEventId,
+        extraData: eventLink?.extraData ?? null,
+      };
+    } catch (err) {
+      fastify.log.error({ err, eventId, calendarId: effectiveCalendarId }, 'Failed to fetch event');
+      return reply.status(404).send({ error: 'Event not found' });
+    }
+  });
+
   // POST /v1/calendar/events
   fastify.post('/events', { preHandler: [fastify.authenticate] }, async (request, reply): Promise<CalendarEvent> => {
     const parsed = createEventSchema.safeParse(request.body);
@@ -533,7 +641,7 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { eventId } = request.params as { eventId: string };
-    const { title, start, end, allDay, calendarId, sourceCalendarId, description, location, color, recurrence, reminders, extraData } = parsed.data;
+    const { title, start, end, allDay, calendarId, sourceCalendarId, description, location, color, recurrence, reminders, extraData, updateScope } = parsed.data;
     
     // Determine the current calendar ID (where the event currently lives)
     const currentCalendarId = sourceCalendarId ?? calendarId ?? 'primary';
@@ -548,35 +656,119 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
       refreshToken,
     });
 
-    let movedEventId = eventId;
+    // Check if this is a recurring event instance and user wants to update all
+    const isInstance = isRecurringEventInstance(eventId);
+    let targetEventId = eventId;
+    const updatingAllOccurrences = isInstance && updateScope === 'all';
+    
+    // When updating all occurrences, we need to fetch the master event to get its original dates
+    // This is needed if we're changing format (e.g., converting to all-day)
+    let masterEventStart: string | undefined;
+    let masterEventEnd: string | undefined;
+    let masterEventAllDay: boolean | undefined;
+    
+    if (updatingAllOccurrences) {
+      // Get the master event ID to update all occurrences
+      targetEventId = getMasterEventId(eventId);
+      fastify.log.info({ eventId, masterEventId: targetEventId }, 'Updating master event for all occurrences');
+      
+      // Fetch the master event to get its original start/end dates
+      try {
+        const masterEvent = await getEvent({
+          auth: oauthClient,
+          calendarId: targetCalendarId,
+          eventId: targetEventId,
+        });
+        
+        masterEventAllDay = Boolean(masterEvent.start?.date);
+        if (masterEvent.start?.date) {
+          masterEventStart = masterEvent.start.date;
+        } else if (masterEvent.start?.dateTime) {
+          // Extract just the date portion from dateTime
+          masterEventStart = masterEvent.start.dateTime.slice(0, 10);
+        }
+        if (masterEvent.end?.date) {
+          masterEventEnd = masterEvent.end.date;
+        } else if (masterEvent.end?.dateTime) {
+          masterEventEnd = masterEvent.end.dateTime.slice(0, 10);
+        }
+        
+        fastify.log.info({ masterEventStart, masterEventEnd, masterEventAllDay, newAllDay: allDay }, 'Master event dates for format conversion');
+      } catch (err) {
+        fastify.log.warn({ err, targetEventId }, 'Failed to fetch master event for date conversion');
+      }
+    }
+
+    let movedEventId = targetEventId;
     
     // If calendar changed, move the event first
     if (needsMove) {
-      fastify.log.info({ eventId, sourceCalendarId, targetCalendarId }, 'Moving event between calendars');
+      fastify.log.info({ eventId: targetEventId, sourceCalendarId, targetCalendarId }, 'Moving event between calendars');
       
       try {
         const movedEvent = await moveEvent({
           auth: oauthClient,
           sourceCalendarId: currentCalendarId,
           destinationCalendarId: targetCalendarId,
-          eventId,
+          eventId: targetEventId,
         });
         
         // The event ID might change after a move in some cases
-        movedEventId = movedEvent.id ?? eventId;
+        movedEventId = movedEvent.id ?? targetEventId;
         
         // Also move the EventLink record to the new calendar
         await fastify.prisma.eventLink.deleteMany({
           where: {
             userId,
             calendarId: currentCalendarId,
-            eventId,
+            eventId: targetEventId,
           },
         });
       } catch (err) {
-        fastify.log.error({ err, eventId, sourceCalendarId, targetCalendarId }, 'Failed to move event');
+        fastify.log.error({ err, eventId: targetEventId, sourceCalendarId, targetCalendarId }, 'Failed to move event');
         return reply.status(500).send({ error: 'Failed to move event to new calendar' });
       }
+    }
+
+    // Determine how to handle start/end dates:
+    // - For regular events or updating "this event only": use the provided start/end
+    // - For updating all occurrences: 
+    //   - If format is changing (e.g., timed -> all-day), use master event's date with new format
+    //   - If format stays the same, don't change dates at all
+    let computedStart: { date?: string; dateTime?: string } | undefined;
+    let computedEnd: { date?: string; dateTime?: string } | undefined;
+    
+    // Flag to indicate we're doing a format conversion on a recurring series
+    let isRecurringFormatConversion = false;
+    
+    if (updatingAllOccurrences) {
+      // Check if the all-day format is changing
+      const formatChanging = allDay !== undefined && masterEventAllDay !== undefined && allDay !== masterEventAllDay;
+      
+      if (formatChanging && allDay && masterEventStart && masterEventEnd) {
+        // Converting timed event to all-day: use master event's dates in date format
+        // IMPORTANT: For all-day events, the end date must be EXCLUSIVE (the day after)
+        const endDateObj = new Date(masterEventEnd + 'T00:00:00Z');
+        endDateObj.setUTCDate(endDateObj.getUTCDate() + 1);
+        const exclusiveEndDate = endDateObj.toISOString().slice(0, 10);
+        
+        fastify.log.info({ masterEventStart, masterEventEnd, exclusiveEndDate }, 'Converting recurring series to all-day');
+        computedStart = { date: masterEventStart };
+        computedEnd = { date: exclusiveEndDate };
+        isRecurringFormatConversion = true;
+      }
+      // If format is not changing, leave computedStart/computedEnd undefined (no date changes)
+    } else if (start) {
+      // Regular update or single instance - use provided dates
+      computedStart = allDay
+        ? { date: start.slice(0, 10) }
+        : { dateTime: start };
+    }
+    
+    if (!updatingAllOccurrences && end) {
+      computedEnd = allDay
+        ? { date: end.slice(0, 10) }
+        : { dateTime: end };
     }
 
     const event = await updateEvent({
@@ -588,16 +780,8 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
         description: description !== undefined ? (description ?? undefined) : undefined,
         location: location !== undefined ? (location ?? undefined) : undefined,
         colorId: color ? getGoogleColorId(color) : undefined,
-        start: start
-          ? allDay
-            ? { date: start.slice(0, 10) }
-            : { dateTime: start }
-          : undefined,
-        end: end
-          ? allDay
-            ? { date: end.slice(0, 10) }
-            : { dateTime: end }
-          : undefined,
+        start: computedStart,
+        end: computedEnd,
       },
       recurrence: recurrence !== undefined ? recurrence : undefined,
       reminders: reminders !== undefined ? reminders : undefined,
