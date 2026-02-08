@@ -7,7 +7,7 @@ import type {
   PendingActionInfo,
 } from './types.js';
 import { routeIntent, detectMultiIntent } from './router.js';
-import { conversationContextStore, type ConversationContext } from './conversation-context.js';
+import { conversationContextStore, type ConversationContext, type LastResultsContext, type CalendarEventSummary } from './conversation-context.js';
 
 // ----------------------------------------------------------------------
 // SPECIALIST AGENT EXECUTORS
@@ -195,6 +195,19 @@ export async function orchestrate(
   // Attach previous context to the run context for agents to use
   context.previousContext = previousContext;
 
+  // Debug: log context retrieval details
+  context.logger.debug(
+    {
+      conversationId: context.conversationId,
+      userId: context.userId,
+      familyId: context.familyId,
+      contextFound: !!previousContext,
+      lastResultsEventCount: previousContext?.lastResults?.events?.length ?? 0,
+      contextStoreSize: conversationContextStore.size,
+    },
+    'Orchestrator: context retrieval details'
+  );
+
   context.logger.info(
     {
       requestId: context.requestId,
@@ -239,6 +252,61 @@ export async function orchestrate(
         },
         'Orchestrator: multi-intent request completed'
       );
+
+      // Store context for multi-intent results (same logic as single-intent)
+      const payload = result.payload ?? {};
+      let lastResults: LastResultsContext | undefined;
+      
+      // Check if calendar domain returned events we should remember
+      if (multiIntent.domains.includes('calendar') && payload.events && Array.isArray(payload.events)) {
+        const events = payload.events as Array<{ id: string; title: string; startAt: string; allDay?: boolean; recurrenceRule?: string | null }>;
+        if (events.length > 0 && events[0].id) {
+          const eventSummaries: CalendarEventSummary[] = events.map((e) => ({
+            id: e.id,
+            title: e.title,
+            startAt: e.startAt,
+            allDay: e.allDay,
+            recurrenceRule: e.recurrenceRule,
+          }));
+          
+          lastResults = {
+            domain: 'calendar',
+            queryType: payload.analysisType === 'calendar_reasoning' ? 'analyze' : 'search',
+            description: payload.analysisType === 'calendar_reasoning' 
+              ? 'analyzed events' 
+              : `searched for ${payload.matchingCount ?? events.length} events`,
+            events: eventSummaries,
+            timestamp: new Date(),
+          };
+          
+          context.logger.info(
+            { eventCount: eventSummaries.length, queryType: lastResults.queryType },
+            'Orchestrator: storing multi-intent analyze/search results for follow-up'
+          );
+        }
+      }
+      
+      if (lastResults) {
+        conversationContextStore.set(
+          context.conversationId,
+          context.userId,
+          context.familyId,
+          {
+            lastDomain: multiIntent.domains[0],
+            lastResults,
+          }
+        );
+        context.logger.info(
+          { 
+            conversationId: context.conversationId,
+            domain: multiIntent.domains[0], 
+            hasLastResults: true,
+            lastResultsEventCount: lastResults.events?.length ?? 0,
+            contextStoreSize: conversationContextStore.size,
+          },
+          'Orchestrator: stored multi-intent conversation context for follow-up'
+        );
+      }
 
       return {
         text: result.text,
@@ -310,7 +378,40 @@ export async function orchestrate(
 
   // Step 5: Update conversation context for multi-turn interactions
   const payload = result.payload ?? {};
-  if (payload.awaitingInput || payload.pendingEvent || payload.pendingTask) {
+  
+  // Check if this result contains events from an analyze/search that we should remember
+  // This enables follow-up commands like "change these to all-day events"
+  let lastResults: LastResultsContext | undefined;
+  if (route.domain === 'calendar' && payload.events && Array.isArray(payload.events)) {
+    const events = payload.events as Array<{ id: string; title: string; startAt: string; allDay?: boolean; recurrenceRule?: string | null }>;
+    if (events.length > 0 && events[0].id) {
+      // Store summarized events for follow-up references
+      const eventSummaries: CalendarEventSummary[] = events.map((e) => ({
+        id: e.id,
+        title: e.title,
+        startAt: e.startAt,
+        allDay: e.allDay,
+        recurrenceRule: e.recurrenceRule,
+      }));
+      
+      lastResults = {
+        domain: 'calendar',
+        queryType: payload.analysisType === 'calendar_reasoning' ? 'analyze' : 'search',
+        description: payload.analysisType === 'calendar_reasoning' 
+          ? 'analyzed events' 
+          : `searched for ${payload.matchingCount ?? events.length} events`,
+        events: eventSummaries,
+        timestamp: new Date(),
+      };
+      
+      context.logger.debug(
+        { eventCount: eventSummaries.length, queryType: lastResults.queryType },
+        'Orchestrator: storing analyze/search results for follow-up'
+      );
+    }
+  }
+  
+  if (payload.awaitingInput || payload.pendingEvent || payload.pendingTask || lastResults) {
     // Store context for follow-up messages
     conversationContextStore.set(
       context.conversationId,
@@ -321,10 +422,18 @@ export async function orchestrate(
         awaitingInput: payload.awaitingInput as ConversationContext['awaitingInput'],
         pendingEvent: payload.pendingEvent as ConversationContext['pendingEvent'],
         pendingTask: payload.pendingTask as ConversationContext['pendingTask'],
+        lastResults,
       }
     );
-    context.logger.debug(
-      { domain: route.domain, awaitingInput: payload.awaitingInput },
+    context.logger.info(
+      { 
+        conversationId: context.conversationId,
+        domain: route.domain, 
+        awaitingInput: payload.awaitingInput, 
+        hasLastResults: !!lastResults,
+        lastResultsEventCount: lastResults?.events?.length ?? 0,
+        contextStoreSize: conversationContextStore.size,
+      },
       'Orchestrator: stored conversation context for follow-up'
     );
   } else if (result.actions.length > 0 && result.actions.some(a => a.result.success)) {

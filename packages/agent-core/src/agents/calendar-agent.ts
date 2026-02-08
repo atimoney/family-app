@@ -71,6 +71,13 @@ type CalendarIntent =
       confidence: number;
     }
   | {
+      type: 'analyzeFromContext';
+      question: string;
+      /** Event data from previous context - populated when executing */
+      events?: Array<{ id: string; title: string; startAt: string; allDay: boolean; recurrenceRule?: string | null }>;
+      confidence: number;
+    }
+  | {
       type: 'analyzeAndUpdate';
       question: string;
       action: {
@@ -83,6 +90,18 @@ type CalendarIntent =
       to: string | null;
       keywords: string[];
       pattern: string | null;
+      confidence: number;
+    }
+  | {
+      type: 'updateFromContext';
+      action: {
+        type: 'setAllDay' | 'reschedule' | 'delete' | 'updateTitle' | 'updateLocation';
+        value: boolean | string | null;
+        newDate: string | null;
+        newTime: string | null;
+      };
+      /** Event IDs from previous context - populated when executing */
+      eventIds?: string[];
       confidence: number;
     }
   | { type: 'unclear'; confidence: number };
@@ -128,7 +147,7 @@ const DEFAULT_EVENT_DURATION_MINUTES = 60;
  * Schema for LLM-parsed calendar intent.
  */
 const llmCalendarIntentSchema = z.object({
-  type: z.enum(['create', 'search', 'update', 'delete', 'analyze', 'analyzeAndUpdate', 'unclear']),
+  type: z.enum(['create', 'search', 'update', 'delete', 'analyze', 'analyzeFromContext', 'analyzeAndUpdate', 'updateFromContext', 'unclear']),
   confidence: z.number().min(0).max(1),
   reasoning: z.string(),
 
@@ -181,9 +200,9 @@ const llmCalendarIntentSchema = z.object({
       to: z.string().nullable().describe('End of date range'),
     }).nullable().describe('Date range to analyze, or null for all upcoming events'),
     filters: z.object({
-      keywords: z.array(z.string()).describe('Keywords to filter events by'),
-      pattern: z.string().nullable().describe('Pattern to look for in event titles'),
-    }).optional(),
+      keywords: z.array(z.string()).optional().describe('Keywords to filter events by'),
+      pattern: z.string().nullable().optional().describe('Pattern to look for in event titles'),
+    }).passthrough().optional(),
   }).optional(),
 
   // For ANALYZE_AND_UPDATE intent - find events then modify them in batch
@@ -200,31 +219,74 @@ const llmCalendarIntentSchema = z.object({
       to: z.string().nullable().describe('End of date range'),
     }).nullable().describe('Date range to search, or null for all upcoming events'),
     filters: z.object({
-      keywords: z.array(z.string()).describe('Keywords to filter events by'),
-      pattern: z.string().nullable().describe('Pattern to look for'),
-    }).optional(),
+      keywords: z.array(z.string()).optional().describe('Keywords to filter events by'),
+      pattern: z.string().nullable().optional().describe('Pattern to look for'),
+    }).passthrough().optional(),
+  }).optional(),
+
+  // For ANALYZE_FROM_CONTEXT intent - analyze events from previous search/analyze results (read-only)
+  analyzeFromContext: z.object({
+    question: z.string().describe('The question to answer about the previously retrieved events'),
+  }).optional(),
+
+  // For UPDATE_FROM_CONTEXT intent - modify events from previous search/analyze results
+  updateFromContext: z.object({
+    action: z.object({
+      type: z.enum(['setAllDay', 'reschedule', 'delete', 'updateTitle', 'updateLocation']),
+      value: z.union([z.boolean(), z.string()]).nullable().describe('New value for the change'),
+      newDate: z.string().nullable().describe('New date if rescheduling'),
+      newTime: z.string().nullable().describe('New time if rescheduling'),
+    }),
   }).optional(),
 });
 
 type LLMCalendarIntent = z.infer<typeof llmCalendarIntentSchema>;
 
 /**
- * Build the system prompt for calendar intent parsing.
+ * Summary of previous results for context-aware intent parsing.
  */
-function getCalendarIntentSystemPrompt(timezone: string, currentDate: string): string {
+type PreviousResultsContext = {
+  eventCount: number;
+  eventTitles: string[];
+  description: string;
+};
+
+/**
+ * Build the system prompt for calendar intent parsing.
+ * @param timezone - User's timezone
+ * @param currentDate - Current date/time ISO string  
+ * @param previousResults - Optional context from previous search/analyze results
+ */
+function getCalendarIntentSystemPrompt(
+  timezone: string, 
+  currentDate: string,
+  previousResults?: PreviousResultsContext
+): string {
+  const contextSection = previousResults ? `
+PREVIOUS CONVERSATION CONTEXT:
+The user previously searched/analyzed and found ${previousResults.eventCount} events:
+${previousResults.eventTitles.slice(0, 10).map(t => `- ${t}`).join('\n')}${previousResults.eventCount > 10 ? `\n- ... and ${previousResults.eventCount - 10} more` : ''}
+
+IMPORTANT: 
+- If the user asks a QUESTION about "these events", "those", "them" (e.g., "which of these are recurring?"), use "analyzeFromContext" intent type.
+- If the user wants to MODIFY "these events", "those", "them" (e.g., "change these to all-day"), use "updateFromContext" intent type.
+` : '';
+
   return `You are an intent parser for a family calendar assistant.
 Your job is to analyze user messages and extract structured calendar intents.
 
 Current date/time: ${currentDate}
 User timezone: ${timezone}
-
+${contextSection}
 INTENT TYPES:
 - search: User wants to VIEW or QUERY events (e.g., "what's on this weekend?", "am I free tomorrow?", "what do we have on Saturday?")
 - create: User wants to ADD a new event (e.g., "schedule dinner Friday 7pm", "add kids basketball Saturday 10am")
 - update: User wants to CHANGE an existing event (e.g., "move meeting to 3pm", "reschedule dentist to Thursday")
 - delete: User wants to REMOVE an event (e.g., "cancel tomorrow's appointment")
-- analyze: User asks a COMPLEX QUESTION requiring reasoning about events WITHOUT wanting to change them (e.g., "which events look like meal placeholders?", "are there any conflicts?")
+- analyze: User asks a COMPLEX QUESTION requiring reasoning about events WITHOUT wanting to change them AND there are NO previous results to reference (e.g., "which events look like meal placeholders?", "are there any conflicts?")
+- analyzeFromContext: User asks a QUESTION about events from a PREVIOUS search/analyze result. Use this when user references "these events", "those", "them", etc. AND wants to ANALYZE (not modify) them (e.g., "which of these are recurring?", "how many of those are all-day?")
 - analyzeAndUpdate: User wants to FIND events matching criteria AND then MODIFY them (e.g., "find meal placeholders and make them all-day", "change all morning events to afternoon")
+- updateFromContext: User wants to MODIFY events from a PREVIOUS search/analyze result. Use this when user references "these events", "those", "them", etc. AND wants to CHANGE them (e.g., "change these to all-day", "delete them", "make those all-day")
 - unclear: Cannot determine intent or missing critical information
 
 DATE INTERPRETATION RULES:
@@ -247,11 +309,17 @@ RESPONSE FORMAT - You MUST use this EXACT JSON structure:
 For SEARCH intent (simple queries):
 {"type":"search","confidence":0.9,"reasoning":"User wants to see weekend events","search":{"query":null,"dateRange":{"from":"this weekend","to":null},"attendee":null}}
 
-For ANALYZE intent (complex reasoning questions, read-only):
+For ANALYZE intent (complex reasoning questions, NO previous context):
 {"type":"analyze","confidence":0.85,"reasoning":"User wants to find events that look like meal placeholders","analyze":{"question":"Find events that look like meal plan placeholders","dateRange":null,"filters":{"keywords":["dinner","lunch","pizza","meal"],"pattern":"meal-like names"}}}
+
+For ANALYZE_FROM_CONTEXT intent (questions about PREVIOUS results):
+{"type":"analyzeFromContext","confidence":0.95,"reasoning":"User wants to analyze the events from the previous search","analyzeFromContext":{"question":"Identify which events are recurring"}}
 
 For ANALYZE_AND_UPDATE intent (find events then modify them):
 {"type":"analyzeAndUpdate","confidence":0.9,"reasoning":"User wants to find meal placeholders and convert to all-day events","analyzeAndUpdate":{"question":"Find events that look like meal plan placeholders","action":{"type":"setAllDay","value":true,"newDate":null,"newTime":null},"dateRange":null,"filters":{"keywords":["pizza","dinner","lunch","meal","breakfast"],"pattern":"meal-like names"}}}
+
+For UPDATE_FROM_CONTEXT intent (MODIFY events from previous results):
+{"type":"updateFromContext","confidence":0.95,"reasoning":"User wants to modify the events from the previous search/analyze","updateFromContext":{"action":{"type":"setAllDay","value":true,"newDate":null,"newTime":null}}}
 
 For CREATE intent:
 {"type":"create","confidence":0.9,"reasoning":"User wants to add an event","create":{"title":"Team meeting","startDate":"tomorrow","startTime":"3pm","endTime":null,"durationMinutes":60,"location":null,"attendees":[],"allDay":false,"needsClarification":null}}
@@ -263,14 +331,16 @@ For UNCLEAR intent:
 {"type":"unclear","confidence":0.3,"reasoning":"Cannot determine what the user wants"}
 
 IMPORTANT RULES:
-1. The "type" field MUST be one of: "search", "create", "update", "delete", "analyze", "analyzeAndUpdate", "unclear"
+1. The "type" field MUST be one of: "search", "create", "update", "delete", "analyze", "analyzeFromContext", "analyzeAndUpdate", "updateFromContext", "unclear"
 2. Always include "reasoning" explaining your interpretation
 3. Include the appropriate nested object based on type
 4. For dates, use relative terms like "tomorrow", "this weekend", "next Monday" - I will parse them
-5. Use "analyze" for questions that ONLY need to identify/report on events (no changes)
-6. Use "analyzeAndUpdate" when user wants to FIND events AND MODIFY them (e.g., "find X and change them to Y")
-7. Use "search" for simple queries that just need to fetch and display events
-8. action.type can be: "setAllDay", "reschedule", "delete", "updateTitle", "updateLocation"
+5. Use "analyze" for questions that ONLY need to identify/report on events (no changes) AND there is NO previous context
+6. Use "analyzeFromContext" when user wants to ASK A QUESTION about events from a previous result (e.g., "which of these are recurring?")
+7. Use "analyzeAndUpdate" when user wants to FIND events AND MODIFY them (e.g., "find X and change them to Y")
+8. Use "updateFromContext" when user wants to MODIFY events from a previous result (e.g., "change these to all-day", "delete them")
+9. Use "search" for simple queries that just need to fetch and display events
+10. action.type can be: "setAllDay", "reschedule", "delete", "updateTitle", "updateLocation"
 
 Respond ONLY with valid JSON. No markdown, no explanations.`;
 }
@@ -623,6 +693,41 @@ function convertLLMResultToCalendarIntent(
       };
     }
 
+    case 'updateFromContext': {
+      if (!llmResult.updateFromContext) {
+        return { type: 'unclear', confidence: llmResult.confidence };
+      }
+      const updateFromContext = llmResult.updateFromContext;
+
+      return {
+        type: 'updateFromContext',
+        action: {
+          type: updateFromContext.action.type,
+          value: updateFromContext.action.value,
+          newDate: updateFromContext.action.newDate,
+          newTime: updateFromContext.action.newTime,
+        },
+        // eventIds will be populated by parseCalendarIntentWithLLM
+        eventIds: undefined,
+        confidence: llmResult.confidence,
+      };
+    }
+
+    case 'analyzeFromContext': {
+      if (!llmResult.analyzeFromContext) {
+        return { type: 'unclear', confidence: llmResult.confidence };
+      }
+      const analyzeFromContext = llmResult.analyzeFromContext;
+
+      return {
+        type: 'analyzeFromContext',
+        question: analyzeFromContext.question,
+        // events will be populated by parseCalendarIntentWithLLM
+        events: undefined,
+        confidence: llmResult.confidence,
+      };
+    }
+
     case 'delete':
     case 'unclear':
     default:
@@ -642,11 +747,26 @@ async function parseCalendarIntentWithLLM(
   const currentDate = new Date().toISOString();
   const timezone = context.timezone ?? 'UTC';
 
-  const systemPrompt = getCalendarIntentSystemPrompt(timezone, currentDate);
+  // Build previous results context if available
+  let previousResults: PreviousResultsContext | undefined;
+  const lastResults = context.previousContext?.lastResults;
+  if (lastResults?.domain === 'calendar' && lastResults.events && lastResults.events.length > 0) {
+    previousResults = {
+      eventCount: lastResults.events.length,
+      eventTitles: lastResults.events.map(e => e.title),
+      description: lastResults.description,
+    };
+    context.logger.debug(
+      { eventCount: previousResults.eventCount },
+      'CalendarAgent: including previous results context for intent parsing'
+    );
+  }
+
+  const systemPrompt = getCalendarIntentSystemPrompt(timezone, currentDate, previousResults);
 
   try {
     context.logger.debug(
-      { message },
+      { message, hasPreviousResults: !!previousResults },
       'CalendarAgent: parsing intent with LLM'
     );
 
@@ -665,7 +785,28 @@ async function parseCalendarIntentWithLLM(
     );
 
     // Convert LLM result to existing CalendarIntent format
-    return convertLLMResultToCalendarIntent(llmResult, context);
+    // Pass the event IDs from context if using updateFromContext
+    const intent = convertLLMResultToCalendarIntent(llmResult, context);
+    
+    // If it's an updateFromContext intent, attach the event IDs
+    if (intent.type === 'updateFromContext' && lastResults?.events) {
+      (intent as Extract<CalendarIntent, { type: 'updateFromContext' }>).eventIds = 
+        lastResults.events.map(e => e.id);
+    }
+
+    // If it's an analyzeFromContext intent, attach the event data
+    if (intent.type === 'analyzeFromContext' && lastResults?.events) {
+      (intent as Extract<CalendarIntent, { type: 'analyzeFromContext' }>).events = 
+        lastResults.events.map(e => ({
+          id: e.id,
+          title: e.title,
+          startAt: e.startAt,
+          allDay: e.allDay ?? false,
+          recurrenceRule: e.recurrenceRule,
+        }));
+    }
+    
+    return intent;
   } catch (error) {
     context.logger.warn(
       { error, message },
@@ -1261,8 +1402,12 @@ export async function executeCalendarAgent(
       return handleUpdateIntent(intent, context, toolExecutor);
     case 'analyze':
       return handleAnalyzeIntent(intent, message, context, toolExecutor);
+    case 'analyzeFromContext':
+      return handleAnalyzeFromContextIntent(intent, message, context);
     case 'analyzeAndUpdate':
       return handleAnalyzeAndUpdateIntent(intent, message, context, toolExecutor);
+    case 'updateFromContext':
+      return handleUpdateFromContextIntent(intent, message, context, toolExecutor);
     case 'unclear':
     default:
       return {
@@ -1305,7 +1450,9 @@ function createPendingConfirmation(
   input: Record<string, unknown>,
   description: string,
   context: AgentRunContext,
-  isDestructive: boolean
+  isDestructive: boolean,
+  /** Optional human-friendly preview (overrides raw input) */
+  friendlyPreview?: Record<string, unknown>
 ): CalendarAgentResult {
   const toolCall: ToolCall = { toolName, input };
 
@@ -1320,11 +1467,14 @@ function createPendingConfirmation(
     ttlMs: 5 * 60 * 1000,
   });
 
+  // Use friendly preview if provided, otherwise fall back to raw input
+  const inputPreview = friendlyPreview ?? pendingAction.toolCall.input;
+
   const pendingActionInfo: PendingActionInfo = {
     token: pendingAction.token,
     description: pendingAction.description,
     toolName: pendingAction.toolCall.toolName,
-    inputPreview: pendingAction.toolCall.input,
+    inputPreview,
     expiresAt: new Date(pendingAction.createdAt.getTime() + pendingAction.ttlMs).toISOString(),
     isDestructive: pendingAction.isDestructive,
   };
@@ -1602,7 +1752,7 @@ type CalendarEvent = {
 async function identifyMatchingEventsWithLLM(
   events: CalendarEvent[],
   question: string,
-  filters: { keywords: string[]; pattern: string | null } | undefined,
+  filters: { keywords?: string[]; pattern?: string | null; [key: string]: unknown } | undefined,
   context: AgentRunContext
 ): Promise<CalendarEvent[]> {
   const { llmProvider } = getRouterConfig();
@@ -1655,12 +1805,13 @@ Return ONLY the JSON array, no explanation.`;
     context.logger.warn({ err }, 'CalendarAgent: LLM event matching failed, falling back to keyword matching');
     
     // Fallback: keyword matching
-    if (!filters?.keywords?.length) {
+    const keywords = filters?.keywords;
+    if (!keywords?.length) {
       return [];
     }
     
     return events.filter((e) =>
-      filters.keywords.some((k) => e.title.toLowerCase().includes(k.toLowerCase()))
+      keywords.some((k) => e.title.toLowerCase().includes(k.toLowerCase()))
     );
   }
 }
@@ -1794,8 +1945,16 @@ async function handleAnalyzeAndUpdateIntent(
   const toolName = 'calendar.batchUpdate';
   const description = `${actionDescription} for ${matchingEvents.length} event${matchingEvents.length > 1 ? 's' : ''}`;
 
+  // Build a human-friendly preview instead of showing raw event IDs
+  const eventTitles = matchingEvents.map(e => e.title);
+  const friendlyPreview = {
+    action: actionDescription,
+    eventCount: matchingEvents.length,
+    events: eventTitles.slice(0, 5).join(', ') + (eventTitles.length > 5 ? '...' : ''),
+  };
+
   // Always require confirmation for batch operations
-  const pendingResult = createPendingConfirmation(toolName, batchInput, description, context, false);
+  const pendingResult = createPendingConfirmation(toolName, batchInput, description, context, false, friendlyPreview);
 
   return {
     text: `📅 I found **${matchingEvents.length} events** that look like meal placeholders:\n\n${eventList}${moreText}\n\n**Proposed action:** ${actionDescription}\n\nWould you like me to ${actionDescription}?`,
@@ -1805,6 +1964,201 @@ async function handleAnalyzeAndUpdateIntent(
       matchingCount: matchingEvents.length,
       totalSearched: data.total,
       proposedAction: intent.action,
+    },
+    requiresConfirmation: true,
+    pendingAction: pendingResult.pendingAction,
+  };
+}
+
+/**
+ * Handle analyze from context intent - analyze events from a previous search/analyze result.
+ * This is used when user asks "which of these are recurring?" referring to previously shown events.
+ * No database calls are made - we analyze the stored event data directly.
+ */
+async function handleAnalyzeFromContextIntent(
+  intent: Extract<CalendarIntent, { type: 'analyzeFromContext' }>,
+  originalMessage: string,
+  context: AgentRunContext
+): Promise<CalendarAgentResult> {
+  const tz = context.timezone ?? 'UTC';
+
+  // Check if we have events from context
+  if (!intent.events || intent.events.length === 0) {
+    return {
+      text: "🤔 I'm not sure which events you're referring to. Could you first show me the events you want to analyze? For example:\n\n" +
+        '- "Find events that look like meal placeholders"\n' +
+        '- "Show me my events this week"\n\n' +
+        'Then I can help you analyze them.',
+      actions: [],
+      payload: { error: 'no_context', needsInput: true },
+    };
+  }
+
+  const { llmProvider } = getRouterConfig();
+
+  // Use LLM to analyze the stored events based on the user's question
+  const eventsForAnalysis = intent.events.map((e, i) => ({
+    index: i,
+    title: e.title,
+    date: formatDateShort(e.startAt, tz),
+    time: e.allDay ? 'All day' : formatTimeShort(e.startAt, tz),
+    isAllDay: e.allDay,
+    isRecurring: !!e.recurrenceRule,
+    recurrenceRule: e.recurrenceRule,
+  }));
+
+  const analysisPrompt = `You are analyzing calendar events that were previously retrieved.
+The user is asking: "${intent.question}"
+
+Here are the ${intent.events.length} events to analyze:
+${JSON.stringify(eventsForAnalysis, null, 2)}
+
+Based on the user's question, provide a helpful analysis of these events.
+Your response should:
+1. Directly answer the user's question
+2. List the relevant events (if asking for a subset)
+3. Include any patterns or insights you notice
+
+Respond in a conversational, helpful tone with markdown formatting.`;
+
+  try {
+    const analysis = await llmProvider.complete([
+      { role: 'system', content: 'You are a helpful family calendar assistant. Provide clear, concise analysis.' },
+      { role: 'user', content: analysisPrompt },
+    ], { temperature: 0.3 });
+
+    context.logger.debug(
+      { question: intent.question, eventCount: intent.events.length },
+      'CalendarAgent: analyzeFromContext completed'
+    );
+
+    return {
+      text: analysis,
+      actions: [],
+      payload: {
+        analyzedEventCount: intent.events.length,
+        question: intent.question,
+        // Keep the events in payload so they can be used for follow-up
+        events: intent.events,
+      },
+    };
+  } catch (error) {
+    context.logger.error({ error }, 'CalendarAgent: analyzeFromContext LLM call failed');
+    return {
+      text: `Sorry, I had trouble analyzing those events. Could you rephrase your question?`,
+      actions: [],
+      payload: { error: 'llm_error' },
+    };
+  }
+}
+
+/**
+ * Handle update from context intent - modify events from a previous search/analyze result.
+ * This is used when user says "change these to all-day" referring to previously shown events.
+ */
+async function handleUpdateFromContextIntent(
+  intent: Extract<CalendarIntent, { type: 'updateFromContext' }>,
+  originalMessage: string,
+  context: AgentRunContext,
+  toolExecutor: ToolExecutor
+): Promise<CalendarAgentResult> {
+  const tz = context.timezone ?? 'UTC';
+
+  // Check if we have event IDs from context
+  if (!intent.eventIds || intent.eventIds.length === 0) {
+    return {
+      text: "🤔 I'm not sure which events you're referring to. Could you first show me the events you want to modify? For example:\n\n" +
+        '- "Find events that look like meal placeholders"\n' +
+        '- "Show me my events this week"\n\n' +
+        'Then I can help you update them.',
+      actions: [],
+      payload: { error: 'no_context', needsInput: true },
+    };
+  }
+
+  // Get the event titles from context for display
+  const lastResults = context.previousContext?.lastResults;
+  const eventTitles = lastResults?.events?.slice(0, 10).map(e => e.title) ?? [];
+
+  // Describe what action we'll take
+  let actionDescription = '';
+  switch (intent.action.type) {
+    case 'setAllDay':
+      actionDescription = intent.action.value 
+        ? 'convert to all-day events (they\'ll appear at the top of the calendar)'
+        : 'convert from all-day to timed events';
+      break;
+    case 'reschedule':
+      actionDescription = `reschedule to ${intent.action.newDate || 'new date'}${intent.action.newTime ? ` at ${intent.action.newTime}` : ''}`;
+      break;
+    case 'delete':
+      actionDescription = 'delete these events';
+      break;
+    case 'updateTitle':
+      actionDescription = `update title to "${intent.action.value}"`;
+      break;
+    case 'updateLocation':
+      actionDescription = `update location to "${intent.action.value}"`;
+      break;
+    default:
+      actionDescription = 'update these events';
+  }
+
+  // Build event list for display
+  const eventList = eventTitles
+    .map((title) => `• **${title}**`)
+    .join('\n');
+
+  const moreText = intent.eventIds.length > 10 
+    ? `\n\n_(and ${intent.eventIds.length - 10} more events)_` 
+    : '';
+
+  // Build the batch update input
+  const batchInput = {
+    eventIds: intent.eventIds,
+    patch: {} as Record<string, unknown>,
+  };
+
+  // Set up the patch based on action type
+  switch (intent.action.type) {
+    case 'setAllDay':
+      batchInput.patch.allDay = intent.action.value;
+      break;
+    case 'updateTitle':
+      batchInput.patch.title = intent.action.value;
+      break;
+    case 'updateLocation':
+      batchInput.patch.location = intent.action.value;
+      break;
+    // Note: reschedule and delete would need additional handling
+  }
+
+  const toolName = 'calendar.batchUpdate';
+  const description = `${actionDescription} for ${intent.eventIds.length} event${intent.eventIds.length > 1 ? 's' : ''} from previous search`;
+
+  context.logger.info(
+    { eventCount: intent.eventIds.length, action: intent.action.type, eventIds: intent.eventIds.slice(0, 5) },
+    'CalendarAgent: handleUpdateFromContextIntent - using event IDs from context'
+  );
+
+  // Build a human-friendly preview instead of showing raw event IDs
+  const friendlyPreview = {
+    action: actionDescription,
+    eventCount: intent.eventIds.length,
+    events: eventTitles.slice(0, 5).join(', ') + (eventTitles.length > 5 ? '...' : ''),
+  };
+
+  // Always require confirmation for batch operations
+  const pendingResult = createPendingConfirmation(toolName, batchInput, description, context, false, friendlyPreview);
+
+  return {
+    text: `📅 I'll update the **${intent.eventIds.length} events** from your previous search:\n\n${eventList}${moreText}\n\n**Proposed action:** ${actionDescription}\n\nWould you like me to proceed?`,
+    actions: [],
+    payload: {
+      eventIds: intent.eventIds,
+      eventCount: intent.eventIds.length,
+      proposedAction: intent.action,
+      fromContext: true,
     },
     requiresConfirmation: true,
     pendingAction: pendingResult.pendingAction,

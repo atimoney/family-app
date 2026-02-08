@@ -14,6 +14,33 @@ export type PendingEventContext = {
 };
 
 /**
+ * Summary of a calendar event for context tracking.
+ */
+export type CalendarEventSummary = {
+  id: string;
+  title: string;
+  startAt: string;
+  allDay?: boolean;
+  recurrenceRule?: string | null;
+};
+
+/**
+ * Last analyze/search results for follow-up reference ("these events").
+ */
+export type LastResultsContext = {
+  /** Domain the results came from */
+  domain: 'calendar' | 'tasks' | 'meals' | 'lists';
+  /** Type of query that produced these results */
+  queryType: 'search' | 'analyze';
+  /** Description of what was searched/analyzed */
+  description: string;
+  /** Events from calendar analyze/search (for "these events" references) */
+  events?: CalendarEventSummary[];
+  /** Timestamp when results were stored */
+  timestamp: Date;
+};
+
+/**
  * Context stored for a conversation to enable multi-turn interactions.
  */
 export type ConversationContext = {
@@ -36,6 +63,8 @@ export type ConversationContext = {
     assignee?: string | null;
     priority?: string | null;
   };
+  /** Last query results for follow-up references like "these events" */
+  lastResults?: LastResultsContext;
   /** When this context was created */
   createdAt: Date;
   /** When this context expires */
@@ -84,6 +113,7 @@ class ConversationContextStore {
       awaitingInput: context.awaitingInput ?? existing?.awaitingInput ?? null,
       pendingEvent: context.pendingEvent ?? existing?.pendingEvent,
       pendingTask: context.pendingTask ?? existing?.pendingTask,
+      lastResults: context.lastResults ?? existing?.lastResults,
       createdAt: existing?.createdAt ?? now,
       expiresAt: new Date(now.getTime() + ttl),
     };
