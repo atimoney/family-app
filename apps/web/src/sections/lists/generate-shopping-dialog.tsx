@@ -61,7 +61,6 @@ export function GenerateShoppingDialog({
         })
         .catch((err) => {
           setError('Failed to load shopping lists');
-          console.error(err);
         })
         .finally(() => {
           setLoadingLists(false);
@@ -174,7 +173,9 @@ export function GenerateShoppingDialog({
             variant="contained"
             onClick={handleGenerate}
             disabled={loading || !selectedListId || shoppingLists.length === 0}
-            startIcon={loading ? <CircularProgress size={16} /> : <Iconify icon="solar:cart-plus-bold" />}
+            startIcon={
+              loading ? <CircularProgress size={16} /> : <Iconify icon="solar:cart-plus-bold" />
+            }
           >
             {loading ? 'Adding...' : 'Add to Shopping List'}
           </Button>

@@ -34,7 +34,7 @@ function parseStackTrace(stack?: string) {
   };
 }
 
-function renderErrorMessage(error: any) {
+function renderErrorMessage(error: unknown) {
   if (isRouteErrorResponse(error)) {
     return (
       <>

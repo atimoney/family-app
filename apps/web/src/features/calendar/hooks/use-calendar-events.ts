@@ -22,15 +22,17 @@ import {
 // HELPERS
 // ----------------------------------------------------------------------
 
-const normalizeMetadata = (metadata: CalendarEventMetadata | null | undefined): CalendarEventMetadata =>
-  metadata ?? { 
-    tags: [], 
-    notes: null, 
-    color: null, 
+const normalizeMetadata = (
+  metadata: CalendarEventMetadata | null | undefined
+): CalendarEventMetadata =>
+  metadata ?? {
+    tags: [],
+    notes: null,
+    color: null,
     category: null,
     audience: 'family',
     categoryMetadata: {},
-    customJson: {} 
+    customJson: {},
   };
 
 export function mapApiEventToCalendarEvent(event: CalendarEventApi): CalendarEventItem {
@@ -149,9 +151,7 @@ export function useCalendarEvents(
 
       // Then sync in background (don't await, don't block UI)
       if (mounted) {
-        sync().catch((err) => {
-          console.warn('Background sync failed:', err);
-        });
+        sync().catch(() => {});
       }
     };
 
@@ -221,15 +221,16 @@ export function useUpdateEventMetadata(): UseUpdateEventMetadataState {
 
 export type UseCalendarMutationsState = {
   createEvent: (event: CreateEventInput) => Promise<void>;
-  updateEvent: (eventId: string, event: Partial<CreateEventInput> & { calendarId?: string; sourceCalendarId?: string }) => Promise<void>;
+  updateEvent: (
+    eventId: string,
+    event: Partial<CreateEventInput> & { calendarId?: string; sourceCalendarId?: string }
+  ) => Promise<void>;
   deleteEvent: (eventId: string, calendarId?: string) => Promise<void>;
   loading: boolean;
   error: Error | null;
 };
 
-export function useCalendarMutations(
-  onSuccess?: () => Promise<void>
-): UseCalendarMutationsState {
+export function useCalendarMutations(onSuccess?: () => Promise<void>): UseCalendarMutationsState {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -254,7 +255,10 @@ export function useCalendarMutations(
   );
 
   const handleUpdate = useCallback(
-    async (eventId: string, event: Partial<CreateEventInput> & { calendarId?: string; sourceCalendarId?: string }) => {
+    async (
+      eventId: string,
+      event: Partial<CreateEventInput> & { calendarId?: string; sourceCalendarId?: string }
+    ) => {
       try {
         setLoading(true);
         setError(null);

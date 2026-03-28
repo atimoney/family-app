@@ -2,7 +2,14 @@ import '@fullcalendar/core';
 
 import type { EventContentArg } from '@fullcalendar/core';
 import type { ResourceInput } from '@fullcalendar/resource';
-import type { Task, TaskStatus, TaskTemplate, CreateTaskInput, UpdateTaskInput, CreateTaskTemplateInput } from 'src/features/tasks';
+import type {
+  Task,
+  TaskStatus,
+  TaskTemplate,
+  CreateTaskInput,
+  UpdateTaskInput,
+  CreateTaskTemplateInput,
+} from 'src/features/tasks';
 
 import Calendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -109,9 +116,14 @@ export function TasksView() {
     onDateNavigation,
     onDropTask,
   } = useTasksCalendar({
-    defaultDesktopView: initialPrefs.desktopView === 'agenda' || initialPrefs.desktopView === 'kanban'
-      ? 'dayGridMonth'
-      : (initialPrefs.desktopView as 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay' | 'resourceTimeGridDay'),
+    defaultDesktopView:
+      initialPrefs.desktopView === 'agenda' || initialPrefs.desktopView === 'kanban'
+        ? 'dayGridMonth'
+        : (initialPrefs.desktopView as
+            | 'dayGridMonth'
+            | 'timeGridWeek'
+            | 'timeGridDay'
+            | 'resourceTimeGridDay'),
     defaultMobileView: 'timeGridDay',
     onViewChange: handleCalendarViewChange,
   });
@@ -158,7 +170,7 @@ export function TasksView() {
       setTemplatesLoading(true);
       getTaskTemplates()
         .then(setTemplates)
-        .catch(console.error)
+        .catch(() => {})
         .finally(() => setTemplatesLoading(false));
     }
   }, [openTemplatePicker.value]);
@@ -170,11 +182,7 @@ export function TasksView() {
       setDesktopView(newView);
 
       // If switching to a calendar view, sync the calendar
-      if (
-        newView !== 'agenda' &&
-        newView !== 'kanban' &&
-        calendarRef.current
-      ) {
+      if (newView !== 'agenda' && newView !== 'kanban' && calendarRef.current) {
         const calendarApi = calendarRef.current.getApi();
         if (calendarApi.view.type !== newView) {
           calendarApi.changeView(newView);
@@ -203,27 +211,19 @@ export function TasksView() {
         openTemplatePicker.onFalse();
         refresh();
       } catch (error) {
-        console.error('Failed to create task from template:', error);
+        // Error handled by caller
       }
     },
     [openTemplatePicker, refresh]
   );
 
   // Handle creating a new template
-  const handleCreateTemplate = useCallback(
-    async (data: CreateTaskTemplateInput) => {
-      try {
-        await createTaskTemplate(data);
-        // Refresh templates list
-        const updatedTemplates = await getTaskTemplates();
-        setTemplates(updatedTemplates);
-      } catch (error) {
-        console.error('Failed to create template:', error);
-        throw error;
-      }
-    },
-    []
-  );
+  const handleCreateTemplate = useCallback(async (data: CreateTaskTemplateInput) => {
+    await createTaskTemplate(data);
+    // Refresh templates list
+    const updatedTemplates = await getTaskTemplates();
+    setTemplates(updatedTemplates);
+  }, []);
 
   // Open form for editing task (agenda view)
   const handleClickTaskAgenda = useCallback(
@@ -391,16 +391,37 @@ export function TasksView() {
       <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <TasksToolbar
           view={activeView}
-          title={['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'resourceTimeGridDay'].includes(activeView) ? calendarTitle : undefined}
+          title={
+            ['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'resourceTimeGridDay'].includes(
+              activeView
+            )
+              ? calendarTitle
+              : undefined
+          }
           loading={loading || mutating}
           onChangeView={handleChangeView}
           onOpenForm={handleOpenNewTask}
           onOpenTemplates={handleOpenTemplatePicker}
           onDateNavigation={onDateNavigation}
-          showDateNav={['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'resourceTimeGridDay'].includes(activeView)}
+          showDateNav={[
+            'dayGridMonth',
+            'timeGridWeek',
+            'timeGridDay',
+            'resourceTimeGridDay',
+          ].includes(activeView)}
         />
 
-        <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>{renderView()}</Box>
+        <Box
+          sx={{
+            flex: 1,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+          }}
+        >
+          {renderView()}
+        </Box>
       </Card>
 
       {/* Task Form Dialog */}

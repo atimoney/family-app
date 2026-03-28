@@ -1,16 +1,16 @@
 import type { FamilyMember, EventCategoryConfig } from '@family/shared';
 import type { CalendarRange } from './hooks/use-calendar';
-import type { 
-  CalendarInfo, 
-  EventAudience, 
+import type {
+  CalendarInfo,
+  EventAudience,
   EventCategory,
   EventReminder,
   RecurrenceRule,
   ReminderMethod,
-  CategoryMetadata, 
-  CalendarEventItem, 
-  RecurrenceFrequency, 
-  EventFamilyAssignments, 
+  CategoryMetadata,
+  CalendarEventItem,
+  RecurrenceFrequency,
+  EventFamilyAssignments,
 } from 'src/features/calendar/types';
 
 import * as z from 'zod';
@@ -123,15 +123,18 @@ export const DAYS_OF_WEEK = [
 // ----------------------------------------------------------------------
 
 // Recurrence schema
-const recurrenceRuleSchema = z.object({
-  frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']),
-  interval: z.number().int().positive().optional(),
-  count: z.number().int().positive().optional(),
-  until: z.string().optional(),
-  byDay: z.array(z.string()).optional(),
-  byMonthDay: z.array(z.number()).optional(),
-  byMonth: z.array(z.number()).optional(),
-}).nullable().optional();
+const recurrenceRuleSchema = z
+  .object({
+    frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']),
+    interval: z.number().int().positive().optional(),
+    count: z.number().int().positive().optional(),
+    until: z.string().optional(),
+    byDay: z.array(z.string()).optional(),
+    byMonthDay: z.array(z.number()).optional(),
+    byMonth: z.array(z.number()).optional(),
+  })
+  .nullable()
+  .optional();
 
 // Reminder schema
 const eventReminderSchema = z.object({
@@ -140,12 +143,16 @@ const eventReminderSchema = z.object({
 });
 
 // E2: Family assignments schema
-const familyAssignmentsSchema = z.object({
-  primaryFamilyMemberId: z.string().nullable().optional(),
-  participantFamilyMemberIds: z.array(z.string()).nullable().optional(),
-  cookMemberId: z.string().nullable().optional(),
-  assignedToMemberId: z.string().nullable().optional(),
-}).passthrough().nullable().optional();
+const familyAssignmentsSchema = z
+  .object({
+    primaryFamilyMemberId: z.string().nullable().optional(),
+    participantFamilyMemberIds: z.array(z.string()).nullable().optional(),
+    cookMemberId: z.string().nullable().optional(),
+    assignedToMemberId: z.string().nullable().optional(),
+  })
+  .passthrough()
+  .nullable()
+  .optional();
 
 // E1: Category schema - flexible string to support user-defined categories
 const eventCategorySchema = z.string().nullable().optional();
@@ -269,21 +276,26 @@ export function CalendarForm({
   const [auditAnchorEl, setAuditAnchorEl] = useState<HTMLElement | null>(null);
 
   // E2: Get existing family assignments from event
-  const existingAssignments = currentEvent?.familyAssignments || currentEvent?.extendedProps?.metadata?.familyAssignments;
+  const existingAssignments =
+    currentEvent?.familyAssignments || currentEvent?.extendedProps?.metadata?.familyAssignments;
 
   // E1: Get existing metadata from event
   const existingMetadata = currentEvent?.extendedProps?.metadata;
 
   // E1: Normalize category to lowercase (for backwards compatibility with old data)
-  const normalizedCategory = existingMetadata?.category 
-    ? existingMetadata.category.toLowerCase() 
+  const normalizedCategory = existingMetadata?.category
+    ? existingMetadata.category.toLowerCase()
     : null;
 
   const defaultValues = {
     title: currentEvent?.title || '',
     description: currentEvent?.description || currentEvent?.extendedProps?.description || '',
     location: currentEvent?.location || currentEvent?.extendedProps?.location || '',
-    color: currentEvent?.color || currentEvent?.googleEventColor || currentEvent?.extendedProps?.metadata?.color || '',
+    color:
+      currentEvent?.color ||
+      currentEvent?.googleEventColor ||
+      currentEvent?.extendedProps?.metadata?.color ||
+      '',
     allDay: currentEvent?.allDay ?? false,
     start: currentEvent?.start || selectedRange?.start || dayjs().format(),
     end: currentEvent?.end || selectedRange?.end || dayjs().add(1, 'hour').format(),
@@ -313,11 +325,6 @@ export function CalendarForm({
     formState: { isSubmitting, errors },
   } = methods;
 
-  // Debug: log form errors
-  if (Object.keys(errors).length > 0) {
-    console.log('[FORM VALIDATION ERRORS]', errors);
-  }
-
   const values = watch();
 
   // Check if end date is after start date
@@ -334,7 +341,11 @@ export function CalendarForm({
           frequency: currentRecurrence?.frequency || 'WEEKLY',
           interval: currentRecurrence?.interval || 1,
           byDay: currentRecurrence?.byDay || [],
-          endType: currentRecurrence?.count ? 'count' : currentRecurrence?.until ? 'until' : 'never',
+          endType: currentRecurrence?.count
+            ? 'count'
+            : currentRecurrence?.until
+              ? 'until'
+              : 'never',
           count: currentRecurrence?.count || 10,
           until: currentRecurrence?.until || dayjs().add(1, 'month').format('YYYY-MM-DD'),
         });
@@ -353,7 +364,10 @@ export function CalendarForm({
     const rule: RecurrenceRule = {
       frequency: customRecurrence.frequency,
       interval: customRecurrence.interval > 1 ? customRecurrence.interval : undefined,
-      byDay: customRecurrence.frequency === 'WEEKLY' && customRecurrence.byDay.length > 0 ? customRecurrence.byDay : undefined,
+      byDay:
+        customRecurrence.frequency === 'WEEKLY' && customRecurrence.byDay.length > 0
+          ? customRecurrence.byDay
+          : undefined,
     };
 
     if (customRecurrence.endType === 'count') {
@@ -370,32 +384,33 @@ export function CalendarForm({
   const handleToggleDay = useCallback((day: string) => {
     setCustomRecurrence((prev) => ({
       ...prev,
-      byDay: prev.byDay.includes(day)
-        ? prev.byDay.filter((d) => d !== day)
-        : [...prev.byDay, day],
+      byDay: prev.byDay.includes(day) ? prev.byDay.filter((d) => d !== day) : [...prev.byDay, day],
     }));
   }, []);
 
   // Get human-readable recurrence summary
-  const getRecurrenceSummary = useCallback((recurrence: RecurrenceRule | null | undefined): string => {
-    if (!recurrence) return '';
-    
-    const { frequency, interval, byDay, count, until } = recurrence;
-    const isCustom = (interval && interval > 1) || (byDay && byDay.length > 0) || count || until;
-    
-    if (!isCustom) {
-      return frequency;
-    }
-    
-    // It's a custom recurrence - return 'CUSTOM' to show in dropdown
-    return 'CUSTOM';
-  }, []);
+  const getRecurrenceSummary = useCallback(
+    (recurrence: RecurrenceRule | null | undefined): string => {
+      if (!recurrence) return '';
+
+      const { frequency, interval, byDay, count, until } = recurrence;
+      const isCustom = (interval && interval > 1) || (byDay && byDay.length > 0) || count || until;
+
+      if (!isCustom) {
+        return frequency;
+      }
+
+      // It's a custom recurrence - return 'CUSTOM' to show in dropdown
+      return 'CUSTOM';
+    },
+    []
+  );
 
   // Get display label for current recurrence
   const getRecurrenceDisplayValue = useCallback((): string => {
     const recurrence = values.recurrence;
     if (!recurrence) return '';
-    
+
     const summary = getRecurrenceSummary(recurrence);
     return summary;
   }, [values.recurrence, getRecurrenceSummary]);
@@ -404,7 +419,10 @@ export function CalendarForm({
   const handleAddReminder = useCallback(() => {
     const currentReminders = values.reminders || [];
     if (currentReminders.length < 5) {
-      setValue('reminders', [...currentReminders, { method: 'popup' as ReminderMethod, minutes: 30 }]);
+      setValue('reminders', [
+        ...currentReminders,
+        { method: 'popup' as ReminderMethod, minutes: 30 },
+      ]);
     }
   }, [values.reminders, setValue]);
 
@@ -465,8 +483,8 @@ export function CalendarForm({
         }
         reset();
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Error handled by form submission
     }
   });
 
@@ -603,7 +621,12 @@ export function CalendarForm({
 
           {/* Reminders */}
           <Box>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              sx={{ mb: 1 }}
+            >
               <Typography variant="subtitle2">Reminders</Typography>
               {(values.reminders?.length || 0) < 5 && (
                 <Button
@@ -730,7 +753,7 @@ export function CalendarForm({
                   render={({ field }) => {
                     // Get current primary member to exclude from participants
                     const primaryMemberId = values.familyAssignments?.primaryFamilyMemberId;
-                    
+
                     // Filter out primary member from available options
                     const availableMembers = primaryMemberId
                       ? familyMembers.filter((m) => m.id !== primaryMemberId)
@@ -749,7 +772,9 @@ export function CalendarForm({
                       .map((id: string) => memberById.get(id))
                       .filter((m): m is FamilyMember => !!m);
 
-                    const allSelected = selectedMembers.length === availableMembers.length && availableMembers.length > 0;
+                    const allSelected =
+                      selectedMembers.length === availableMembers.length &&
+                      availableMembers.length > 0;
 
                     return (
                       <Box>
@@ -784,7 +809,10 @@ export function CalendarForm({
                                   {getMemberDisplayName(option)}
                                 </Box>
                                 {selected && (
-                                  <Iconify icon="eva:checkmark-fill" sx={{ color: 'primary.main' }} />
+                                  <Iconify
+                                    icon="eva:checkmark-fill"
+                                    sx={{ color: 'primary.main' }}
+                                  />
                                 )}
                               </li>
                             );
@@ -830,7 +858,7 @@ export function CalendarForm({
 
           {/* E1: Event Metadata Section */}
           <Divider sx={{ borderStyle: 'dashed' }} />
-          
+
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
               Event Details

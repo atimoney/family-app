@@ -1,15 +1,22 @@
-import { google, calendar_v3 } from 'googleapis';
-import type { OAuth2Client } from 'google-auth-library';
-import type { RecurrenceRule, EventReminder, FamilyAssignments, EventCategory, EventAudience, CategoryMetadata } from '../../routes/calendar/schema.js';
+import { google, calendar_v3 } from "googleapis";
+import type { OAuth2Client } from "google-auth-library";
+import type {
+  RecurrenceRule,
+  EventReminder,
+  FamilyAssignments,
+  EventCategory,
+  EventAudience,
+  CategoryMetadata,
+} from "../../routes/calendar/schema.js";
 
 // E2: Current schema version for family metadata in extendedProperties
-export const FAMILY_SCHEMA_VERSION = '2';
+export const FAMILY_SCHEMA_VERSION = "2";
 
 // E1: Source identifier for family-app created events
-export const FAMILY_SOURCE = 'family-app';
+export const FAMILY_SOURCE = "family-app";
 
 export function getCalendarClient(auth: OAuth2Client) {
-  return google.calendar({ version: 'v3', auth });
+  return google.calendar({ version: "v3", auth });
 }
 
 export async function listCalendars(auth: OAuth2Client) {
@@ -34,7 +41,7 @@ export async function listEvents(options: {
       timeMin: options.timeMin,
       timeMax: options.timeMax,
       singleEvents: true,
-      orderBy: 'startTime',
+      orderBy: "startTime",
       maxResults: 2500,
       pageToken,
     });
@@ -51,46 +58,48 @@ export async function listEvents(options: {
  * https://developers.google.com/calendar/api/concepts/events-calendars#recurring_events
  */
 export function buildRRule(rule: RecurrenceRule): string {
-  if (!rule) return '';
-  
+  if (!rule) return "";
+
   const parts: string[] = [`FREQ=${rule.frequency}`];
-  
+
   if (rule.interval && rule.interval > 1) {
     parts.push(`INTERVAL=${rule.interval}`);
   }
-  
+
   if (rule.count) {
     parts.push(`COUNT=${rule.count}`);
   } else if (rule.until) {
     // Google Calendar expects UNTIL in UTC format without separators
-    const untilDate = new Date(rule.until).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const untilDate =
+      new Date(rule.until).toISOString().replace(/[-:]/g, "").split(".")[0] +
+      "Z";
     parts.push(`UNTIL=${untilDate}`);
   }
-  
+
   if (rule.byDay && rule.byDay.length > 0) {
-    parts.push(`BYDAY=${rule.byDay.join(',')}`);
+    parts.push(`BYDAY=${rule.byDay.join(",")}`);
   }
-  
+
   if (rule.byMonthDay && rule.byMonthDay.length > 0) {
-    parts.push(`BYMONTHDAY=${rule.byMonthDay.join(',')}`);
+    parts.push(`BYMONTHDAY=${rule.byMonthDay.join(",")}`);
   }
-  
+
   if (rule.byMonth && rule.byMonth.length > 0) {
-    parts.push(`BYMONTH=${rule.byMonth.join(',')}`);
+    parts.push(`BYMONTH=${rule.byMonth.join(",")}`);
   }
-  
-  return `RRULE:${parts.join(';')}`;
+
+  return `RRULE:${parts.join(";")}`;
 }
 
 /**
  * Internal RecurrenceRule type (non-nullable) for parseRRule return
  */
 type RecurrenceRuleData = {
-  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+  frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
   interval?: number;
   count?: number;
   until?: string;
-  byDay?: ('MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU')[];
+  byDay?: ("MO" | "TU" | "WE" | "TH" | "FR" | "SA" | "SU")[];
   byMonthDay?: number[];
   byMonth?: number[];
 };
@@ -99,58 +108,60 @@ type RecurrenceRuleData = {
  * Parse a Google Calendar RRULE string into a RecurrenceRule object
  */
 export function parseRRule(rruleString: string): RecurrenceRuleData | null {
-  if (!rruleString || !rruleString.startsWith('RRULE:')) return null;
-  
-  const rule = rruleString.replace('RRULE:', '');
-  const parts = rule.split(';');
+  if (!rruleString || !rruleString.startsWith("RRULE:")) return null;
+
+  const rule = rruleString.replace("RRULE:", "");
+  const parts = rule.split(";");
   const result: Partial<RecurrenceRuleData> = {};
-  
+
   for (const part of parts) {
-    const [key, value] = part.split('=');
+    const [key, value] = part.split("=");
     switch (key) {
-      case 'FREQ':
-        result.frequency = value as RecurrenceRuleData['frequency'];
+      case "FREQ":
+        result.frequency = value as RecurrenceRuleData["frequency"];
         break;
-      case 'INTERVAL':
+      case "INTERVAL":
         result.interval = parseInt(value, 10);
         break;
-      case 'COUNT':
+      case "COUNT":
         result.count = parseInt(value, 10);
         break;
-      case 'UNTIL': {
+      case "UNTIL": {
         // Convert YYYYMMDDTHHMMSSZ to ISO string
         const year = value.slice(0, 4);
         const month = value.slice(4, 6);
         const day = value.slice(6, 8);
-        const hour = value.slice(9, 11) || '00';
-        const minute = value.slice(11, 13) || '00';
-        const second = value.slice(13, 15) || '00';
+        const hour = value.slice(9, 11) || "00";
+        const minute = value.slice(11, 13) || "00";
+        const second = value.slice(13, 15) || "00";
         result.until = `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
         break;
       }
-      case 'BYDAY':
-        result.byDay = value.split(',') as RecurrenceRuleData['byDay'];
+      case "BYDAY":
+        result.byDay = value.split(",") as RecurrenceRuleData["byDay"];
         break;
-      case 'BYMONTHDAY':
-        result.byMonthDay = value.split(',').map((v) => parseInt(v, 10));
+      case "BYMONTHDAY":
+        result.byMonthDay = value.split(",").map((v) => parseInt(v, 10));
         break;
-      case 'BYMONTH':
-        result.byMonth = value.split(',').map((v) => parseInt(v, 10));
+      case "BYMONTH":
+        result.byMonth = value.split(",").map((v) => parseInt(v, 10));
         break;
     }
   }
-  
+
   return result.frequency ? (result as RecurrenceRuleData) : null;
 }
 
 /**
  * Convert EventReminder array to Google Calendar reminder format
  */
-export function buildGoogleReminders(reminders: EventReminder[] | null | undefined): calendar_v3.Schema$Event['reminders'] | undefined {
+export function buildGoogleReminders(
+  reminders: EventReminder[] | null | undefined,
+): calendar_v3.Schema$Event["reminders"] | undefined {
   if (!reminders || reminders.length === 0) {
     return undefined;
   }
-  
+
   return {
     useDefault: false,
     overrides: reminders.map((r) => ({
@@ -163,13 +174,15 @@ export function buildGoogleReminders(reminders: EventReminder[] | null | undefin
 /**
  * Parse Google Calendar reminders into EventReminder array
  */
-export function parseGoogleReminders(reminders: calendar_v3.Schema$Event['reminders'] | undefined): EventReminder[] | null {
+export function parseGoogleReminders(
+  reminders: calendar_v3.Schema$Event["reminders"] | undefined,
+): EventReminder[] | null {
   if (!reminders || reminders.useDefault || !reminders.overrides) {
     return null;
   }
-  
+
   return reminders.overrides.map((r: calendar_v3.Schema$EventReminder) => ({
-    method: (r.method as 'email' | 'popup') || 'popup',
+    method: (r.method as "email" | "popup") || "popup",
     minutes: r.minutes || 0,
   }));
 }
@@ -204,7 +217,7 @@ export function buildFamilyExtendedProperties(
     tags?: string[] | null;
     metadata?: CategoryMetadata | null;
     eventId?: string | null;
-  }
+  },
 ): Record<string, string> | undefined {
   const props: Record<string, string> = {
     familySchemaVersion: FAMILY_SCHEMA_VERSION,
@@ -217,9 +230,14 @@ export function buildFamilyExtendedProperties(
       props.familyPrimaryMemberId = familyAssignments.primaryFamilyMemberId;
     }
 
-    if (familyAssignments.participantFamilyMemberIds && familyAssignments.participantFamilyMemberIds.length > 0) {
+    if (
+      familyAssignments.participantFamilyMemberIds &&
+      familyAssignments.participantFamilyMemberIds.length > 0
+    ) {
       // Store as JSON array string for safe round-trip
-      props.familyParticipantMemberIds = JSON.stringify(familyAssignments.participantFamilyMemberIds);
+      props.familyParticipantMemberIds = JSON.stringify(
+        familyAssignments.participantFamilyMemberIds,
+      );
     }
 
     if (familyAssignments.cookMemberId) {
@@ -280,7 +298,10 @@ export type ParsedExtendedProperties = {
  * Extracts family member assignments and E1 metadata, handling missing/malformed data gracefully
  */
 export function parseFamilyExtendedProperties(
-  extendedProperties: calendar_v3.Schema$Event['extendedProperties'] | null | undefined
+  extendedProperties:
+    | calendar_v3.Schema$Event["extendedProperties"]
+    | null
+    | undefined,
 ): FamilyAssignments | null {
   const parsed = parseAllExtendedProperties(extendedProperties);
   return parsed.familyAssignments;
@@ -290,7 +311,10 @@ export function parseFamilyExtendedProperties(
  * Parse all extended properties including E1 metadata
  */
 export function parseAllExtendedProperties(
-  extendedProperties: calendar_v3.Schema$Event['extendedProperties'] | null | undefined
+  extendedProperties:
+    | calendar_v3.Schema$Event["extendedProperties"]
+    | null
+    | undefined,
 ): ParsedExtendedProperties {
   const result: ParsedExtendedProperties = {
     familyAssignments: null,
@@ -316,14 +340,17 @@ export function parseAllExtendedProperties(
   const familyAssignments: FamilyAssignments = {};
 
   if (privateProps.familyPrimaryMemberId) {
-    familyAssignments.primaryFamilyMemberId = privateProps.familyPrimaryMemberId;
+    familyAssignments.primaryFamilyMemberId =
+      privateProps.familyPrimaryMemberId;
   }
 
   if (privateProps.familyParticipantMemberIds) {
     try {
       const parsed = JSON.parse(privateProps.familyParticipantMemberIds);
       if (Array.isArray(parsed)) {
-        familyAssignments.participantFamilyMemberIds = parsed.filter((id): id is string => typeof id === 'string');
+        familyAssignments.participantFamilyMemberIds = parsed.filter(
+          (id): id is string => typeof id === "string",
+        );
       }
     } catch {
       // Malformed JSON - skip this field
@@ -335,12 +362,15 @@ export function parseAllExtendedProperties(
   }
 
   if (privateProps.familyAssignedToMemberId) {
-    familyAssignments.assignedToMemberId = privateProps.familyAssignedToMemberId;
+    familyAssignments.assignedToMemberId =
+      privateProps.familyAssignedToMemberId;
   }
 
   // Check if we have any family assignment data
-  const hasFamilyData = familyAssignments.primaryFamilyMemberId ||
-    (familyAssignments.participantFamilyMemberIds && familyAssignments.participantFamilyMemberIds.length > 0) ||
+  const hasFamilyData =
+    familyAssignments.primaryFamilyMemberId ||
+    (familyAssignments.participantFamilyMemberIds &&
+      familyAssignments.participantFamilyMemberIds.length > 0) ||
     familyAssignments.cookMemberId ||
     familyAssignments.assignedToMemberId;
 
@@ -361,7 +391,9 @@ export function parseAllExtendedProperties(
     try {
       const parsed = JSON.parse(privateProps.familyTags);
       if (Array.isArray(parsed)) {
-        result.tags = parsed.filter((tag): tag is string => typeof tag === 'string');
+        result.tags = parsed.filter(
+          (tag): tag is string => typeof tag === "string",
+        );
       }
     } catch {
       // Malformed JSON - skip this field
@@ -371,7 +403,7 @@ export function parseAllExtendedProperties(
   if (privateProps.familyMetadata) {
     try {
       const parsed = JSON.parse(privateProps.familyMetadata);
-      if (typeof parsed === 'object' && parsed !== null) {
+      if (typeof parsed === "object" && parsed !== null) {
         result.metadata = parsed;
       }
     } catch {
@@ -391,7 +423,7 @@ export function parseAllExtendedProperties(
  * Preserves any existing private properties while adding/updating family fields
  */
 export function mergeExtendedProperties(
-  existing: calendar_v3.Schema$Event['extendedProperties'] | null | undefined,
+  existing: calendar_v3.Schema$Event["extendedProperties"] | null | undefined,
   familyAssignments: FamilyAssignments | null | undefined,
   e1Options?: {
     category?: EventCategory | string | null;
@@ -399,10 +431,13 @@ export function mergeExtendedProperties(
     tags?: string[] | null;
     metadata?: CategoryMetadata | null;
     eventId?: string | null;
-  }
-): calendar_v3.Schema$Event['extendedProperties'] | undefined {
-  const familyProps = buildFamilyExtendedProperties(familyAssignments, e1Options);
-  
+  },
+): calendar_v3.Schema$Event["extendedProperties"] | undefined {
+  const familyProps = buildFamilyExtendedProperties(
+    familyAssignments,
+    e1Options,
+  );
+
   if (!familyProps && !existing?.private) {
     return undefined;
   }
@@ -431,16 +466,16 @@ export async function createEvent(options: {
   eventId?: string | null;
 }) {
   const calendar = getCalendarClient(options.auth);
-  
+
   const requestBody: calendar_v3.Schema$Event = {
     ...options.event,
   };
-  
+
   // Add recurrence if provided
   if (options.recurrence) {
     requestBody.recurrence = [buildRRule(options.recurrence)];
   }
-  
+
   // Add reminders if provided
   const googleReminders = buildGoogleReminders(options.reminders);
   if (googleReminders) {
@@ -449,34 +484,28 @@ export async function createEvent(options: {
 
   // E2: Add family member assignments to extendedProperties.private
   // E1: Add category, audience, tags, and metadata to extendedProperties.private
-  const hasE1Data = options.category || options.audience || options.tags?.length || options.categoryMetadata;
-  
-  // Debug logging for E1 troubleshooting
-  console.log('[E1 CREATE DEBUG]', {
-    hasE1Data,
-    category: options.category,
-    audience: options.audience,
-    tags: options.tags,
-    hasFamilyAssignments: !!options.familyAssignments,
-  });
-  
+  const hasE1Data =
+    options.category ||
+    options.audience ||
+    options.tags?.length ||
+    options.categoryMetadata;
+
   if (options.familyAssignments || hasE1Data) {
     requestBody.extendedProperties = mergeExtendedProperties(
       options.event.extendedProperties,
       options.familyAssignments,
-      hasE1Data ? {
-        category: options.category,
-        audience: options.audience,
-        tags: options.tags,
-        metadata: options.categoryMetadata,
-        eventId: options.eventId,
-      } : undefined
+      hasE1Data
+        ? {
+            category: options.category,
+            audience: options.audience,
+            tags: options.tags,
+            metadata: options.categoryMetadata,
+            eventId: options.eventId,
+          }
+        : undefined,
     );
-    
-    // Debug: log the final extendedProperties
-    console.log('[E1 CREATE DEBUG] extendedProperties:', JSON.stringify(requestBody.extendedProperties, null, 2));
   }
-  
+
   const response = await calendar.events.insert({
     calendarId: options.calendarId,
     requestBody,
@@ -500,16 +529,18 @@ export async function updateEvent(options: {
   internalEventId?: string | null;
 }) {
   const calendar = getCalendarClient(options.auth);
-  
+
   const requestBody: calendar_v3.Schema$Event = {
     ...options.event,
   };
-  
+
   // Add recurrence if provided (or clear it)
   if (options.recurrence !== undefined) {
-    requestBody.recurrence = options.recurrence ? [buildRRule(options.recurrence)] : [];
+    requestBody.recurrence = options.recurrence
+      ? [buildRRule(options.recurrence)]
+      : [];
   }
-  
+
   // Add reminders if provided
   const googleReminders = buildGoogleReminders(options.reminders);
   if (googleReminders) {
@@ -518,22 +549,27 @@ export async function updateEvent(options: {
 
   // E2: Add family member assignments to extendedProperties.private
   // E1: Add category, audience, tags, and metadata to extendedProperties.private
-  const hasE1Data = options.category !== undefined || options.audience !== undefined || 
-                     options.tags !== undefined || options.categoryMetadata !== undefined;
+  const hasE1Data =
+    options.category !== undefined ||
+    options.audience !== undefined ||
+    options.tags !== undefined ||
+    options.categoryMetadata !== undefined;
   if (options.familyAssignments !== undefined || hasE1Data) {
     requestBody.extendedProperties = mergeExtendedProperties(
       options.event.extendedProperties,
       options.familyAssignments,
-      hasE1Data ? {
-        category: options.category,
-        audience: options.audience,
-        tags: options.tags,
-        metadata: options.categoryMetadata,
-        eventId: options.internalEventId,
-      } : undefined
+      hasE1Data
+        ? {
+            category: options.category,
+            audience: options.audience,
+            tags: options.tags,
+            metadata: options.categoryMetadata,
+            eventId: options.internalEventId,
+          }
+        : undefined,
     );
   }
-  
+
   const response = await calendar.events.patch({
     calendarId: options.calendarId,
     eventId: options.eventId,
