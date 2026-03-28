@@ -42,7 +42,6 @@ export const signInWithPassword = async ({
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    console.error(error);
     throw error;
   }
 
@@ -59,8 +58,6 @@ export const signInWithGoogle = async (returnTo?: string): Promise<void> => {
     callbackUrl.searchParams.set('returnTo', returnTo);
   }
 
-  console.log('[Auth] OAuth redirectTo:', callbackUrl.toString());
-
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
@@ -69,7 +66,6 @@ export const signInWithGoogle = async (returnTo?: string): Promise<void> => {
   });
 
   if (error) {
-    console.error(error);
     throw error;
   }
 };
@@ -93,7 +89,6 @@ export const signUp = async ({
   });
 
   if (error) {
-    console.error(error);
     throw error;
   }
 
@@ -111,7 +106,6 @@ export const signOut = async (): Promise<{ error: AuthError | null }> => {
   const { error } = await supabase.auth.signOut();
 
   if (error) {
-    console.error(error);
     throw error;
   }
 
@@ -129,7 +123,6 @@ export const resetPassword = async ({
   });
 
   if (error) {
-    console.error(error);
     throw error;
   }
 
@@ -139,13 +132,10 @@ export const resetPassword = async ({
 /** **************************************
  * Update password
  *************************************** */
-export const updatePassword = async ({
-  password,
-}: UpdatePasswordParams): Promise<UserResponse> => {
+export const updatePassword = async ({ password }: UpdatePasswordParams): Promise<UserResponse> => {
   const { data, error } = await supabase.auth.updateUser({ password });
 
   if (error) {
-    console.error(error);
     throw error;
   }
 

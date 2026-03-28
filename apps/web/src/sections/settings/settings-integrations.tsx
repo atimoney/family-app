@@ -41,7 +41,8 @@ const INTEGRATIONS: Integration[] = [
   {
     id: 'home-assistant',
     name: 'Home Assistant',
-    description: 'Connect to your Home Assistant instance for smart home automations and device control.',
+    description:
+      'Connect to your Home Assistant instance for smart home automations and device control.',
     icon: 'solar:home-angle-bold-duotone',
     enabled: false,
     status: 'coming-soon',
@@ -76,328 +77,353 @@ export type SettingsIntegrationsRef = {
 
 export const SettingsIntegrations = forwardRef<SettingsIntegrationsRef, SettingsIntegrationsProps>(
   function SettingsIntegrations({ familySharedCalendarId }, ref) {
-  const router = useRouter();
-  const [searchParams] = useRouterSearchParams();
-  const { status: googleStatus, loading: googleLoading, syncing: googleSyncing, connect: connectGoogle, refresh, sync: syncGoogle } = useGoogleIntegration();
-  const {
-    calendars,
-    loading: calendarsLoading,
-    toggleCalendar,
-    saveSelection,
-    hasChanges,
-    refresh: refreshCalendars,
-  } = useCalendarSelection();
-  const [showCalendars, setShowCalendars] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const prevFamilyCalendarIdRef = useRef<string | null | undefined>(undefined);
+    const router = useRouter();
+    const [searchParams] = useRouterSearchParams();
+    const {
+      status: googleStatus,
+      loading: googleLoading,
+      syncing: googleSyncing,
+      connect: connectGoogle,
+      refresh,
+      sync: syncGoogle,
+    } = useGoogleIntegration();
+    const {
+      calendars,
+      loading: calendarsLoading,
+      toggleCalendar,
+      saveSelection,
+      hasChanges,
+      refresh: refreshCalendars,
+    } = useCalendarSelection();
+    const [showCalendars, setShowCalendars] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const prevFamilyCalendarIdRef = useRef<string | null | undefined>(undefined);
 
-  // Expose refreshCalendars to parent via ref
-  useImperativeHandle(ref, () => ({
-    refreshCalendars,
-  }), [refreshCalendars]);
+    // Expose refreshCalendars to parent via ref
+    useImperativeHandle(
+      ref,
+      () => ({
+        refreshCalendars,
+      }),
+      [refreshCalendars]
+    );
 
-  // Refresh status when redirected back from Google OAuth
-  useEffect(() => {
-    if (searchParams.get('google') === 'connected') {
-      // Remove the query param by replacing URL
-      router.replace('/settings');
-      // Refresh status
-      refresh();
-      refreshCalendars();
-    }
-  }, [searchParams, router, refresh, refreshCalendars]);
+    // Refresh status when redirected back from Google OAuth
+    useEffect(() => {
+      if (searchParams.get('google') === 'connected') {
+        // Remove the query param by replacing URL
+        router.replace('/settings');
+        // Refresh status
+        refresh();
+        refreshCalendars();
+      }
+    }, [searchParams, router, refresh, refreshCalendars]);
 
-  // Refresh calendar list when family shared calendar changes
-  // This ensures the selection state is updated after a family calendar is set
-  useEffect(() => {
-    // Only refresh if the value actually changed (not on initial mount)
-    if (
-      prevFamilyCalendarIdRef.current !== undefined &&
-      familySharedCalendarId !== prevFamilyCalendarIdRef.current
-    ) {
-      refreshCalendars();
-    }
-    prevFamilyCalendarIdRef.current = familySharedCalendarId;
-  }, [familySharedCalendarId, refreshCalendars]);
+    // Refresh calendar list when family shared calendar changes
+    // This ensures the selection state is updated after a family calendar is set
+    useEffect(() => {
+      // Only refresh if the value actually changed (not on initial mount)
+      if (
+        prevFamilyCalendarIdRef.current !== undefined &&
+        familySharedCalendarId !== prevFamilyCalendarIdRef.current
+      ) {
+        refreshCalendars();
+      }
+      prevFamilyCalendarIdRef.current = familySharedCalendarId;
+    }, [familySharedCalendarId, refreshCalendars]);
 
-  const handleSaveSelection = async () => {
-    try {
-      setSaving(true);
-      await saveSelection();
-      console.log('Calendar selection saved');
-    } catch {
-      console.error('Failed to save calendar selection');
-    } finally {
-      setSaving(false);
-    }
-  };
+    const handleSaveSelection = async () => {
+      try {
+        setSaving(true);
+        await saveSelection();
+      } catch {
+        // Selection save failed silently
+      } finally {
+        setSaving(false);
+      }
+    };
 
-  const renderGoogleCalendarIntegration = () => (
-    <Box
-      sx={[
-        (theme) => ({
-          p: 2,
-          borderRadius: 1.5,
-          border: `1px solid ${varAlpha(theme.vars.palette.grey['500Channel'], 0.16)}`,
-          bgcolor: varAlpha(theme.vars.palette.grey['500Channel'], 0.04),
-        }),
-      ]}
-    >
-      <Stack
-        direction="row"
-        alignItems="flex-start"
-        justifyContent="space-between"
+    const renderGoogleCalendarIntegration = () => (
+      <Box
+        sx={[
+          (theme) => ({
+            p: 2,
+            borderRadius: 1.5,
+            border: `1px solid ${varAlpha(theme.vars.palette.grey['500Channel'], 0.16)}`,
+            bgcolor: varAlpha(theme.vars.palette.grey['500Channel'], 0.04),
+          }),
+        ]}
       >
-        <Stack direction="row" spacing={2} alignItems="flex-start">
-          <Box
-            sx={{
-              p: 1,
-              borderRadius: 1,
-              bgcolor: 'background.paper',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Iconify icon="solar:calendar-date-bold" width={28} />
-          </Box>
-          <Box sx={{ flexGrow: 1 }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <Typography variant="subtitle1">Google Calendar</Typography>
-              {googleLoading ? (
-                <Skeleton width={80} height={24} />
-              ) : (
-                <Label
-                  variant="soft"
-                  color={googleStatus?.connected ? 'success' : 'info'}
-                >
-                  {googleStatus?.connected ? 'Connected' : 'Available'}
-                </Label>
-              )}
-            </Stack>
-            <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-              {googleStatus?.connected && googleStatus.email
-                ? `Connected as ${googleStatus.email}`
-                : 'Sync your Google Calendar events to view and manage them in one place.'}
-            </Typography>
-          </Box>
-        </Stack>
-        <Stack direction="row" spacing={1}>
-          {googleStatus?.connected && (
-            <>
-              <Button
-                variant="outlined"
-                color="inherit"
-                size="small"
-                onClick={async () => {
-                  const result = await syncGoogle({ force: true });
-                  if (result) {
-                    console.log(`Synced ${result.synced} events (${result.created} created, ${result.updated} updated, ${result.deleted} deleted)`);
+        <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
+          <Stack direction="row" spacing={2} alignItems="flex-start">
+            <Box
+              sx={{
+                p: 1,
+                borderRadius: 1,
+                bgcolor: 'background.paper',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Iconify icon="solar:calendar-date-bold" width={28} />
+            </Box>
+            <Box sx={{ flexGrow: 1 }}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Typography variant="subtitle1">Google Calendar</Typography>
+                {googleLoading ? (
+                  <Skeleton width={80} height={24} />
+                ) : (
+                  <Label variant="soft" color={googleStatus?.connected ? 'success' : 'info'}>
+                    {googleStatus?.connected ? 'Connected' : 'Available'}
+                  </Label>
+                )}
+              </Stack>
+              <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
+                {googleStatus?.connected && googleStatus.email
+                  ? `Connected as ${googleStatus.email}`
+                  : 'Sync your Google Calendar events to view and manage them in one place.'}
+              </Typography>
+            </Box>
+          </Stack>
+          <Stack direction="row" spacing={1}>
+            {googleStatus?.connected && (
+              <>
+                <Button
+                  variant="outlined"
+                  color="inherit"
+                  size="small"
+                  onClick={async () => {
+                    await syncGoogle({ force: true });
+                  }}
+                  disabled={googleSyncing}
+                  startIcon={
+                    googleSyncing ? (
+                      <CircularProgress size={16} />
+                    ) : (
+                      <Iconify icon="solar:restart-bold" />
+                    )
                   }
-                }}
-                disabled={googleSyncing}
-                startIcon={googleSyncing ? <CircularProgress size={16} /> : <Iconify icon="solar:restart-bold" />}
-              >
-                {googleSyncing ? 'Syncing...' : 'Force Refresh'}
+                >
+                  {googleSyncing ? 'Syncing...' : 'Force Refresh'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="inherit"
+                  size="small"
+                  onClick={() => {
+                    setShowCalendars(!showCalendars);
+                    if (!showCalendars) refreshCalendars();
+                  }}
+                  startIcon={
+                    <Iconify
+                      icon={
+                        showCalendars ? 'eva:arrow-ios-upward-fill' : 'eva:arrow-ios-downward-fill'
+                      }
+                    />
+                  }
+                >
+                  Calendars
+                </Button>
+              </>
+            )}
+            {googleLoading ? (
+              <Skeleton width={100} height={36} />
+            ) : googleStatus?.connected ? (
+              <Button variant="outlined" color="inherit" size="small" onClick={connectGoogle}>
+                Reconnect
               </Button>
+            ) : (
               <Button
-                variant="outlined"
-                color="inherit"
-                size="small"
-                onClick={() => {
-                  setShowCalendars(!showCalendars);
-                  if (!showCalendars) refreshCalendars();
-                }}
-                startIcon={<Iconify icon={showCalendars ? 'eva:arrow-ios-upward-fill' : 'eva:arrow-ios-downward-fill'} />}
-              >
-                Calendars
-              </Button>
-            </>
-          )}
-          {googleLoading ? (
-            <Skeleton width={100} height={36} />
-          ) : googleStatus?.connected ? (
-            <Button
-              variant="outlined"
-              color="inherit"
-              size="small"
-              onClick={connectGoogle}
-            >
-              Reconnect
-            </Button>
-          ) : (
-            <Button
-              variant="contained"
-              size="small"
-              onClick={connectGoogle}
-              startIcon={<Iconify icon="eva:link-2-fill" />}
-            >
-              Connect
-            </Button>
-          )}
-        </Stack>
-      </Stack>
-
-      {/* Calendar Selection */}
-      <Collapse in={showCalendars && googleStatus?.connected}>
-        <Box sx={{ mt: 2, pt: 2, borderTop: (theme) => `1px dashed ${varAlpha(theme.vars.palette.grey['500Channel'], 0.2)}` }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-            <Typography variant="subtitle2">Select calendars to display</Typography>
-            {hasChanges && (
-              <Button
-                size="small"
                 variant="contained"
-                onClick={handleSaveSelection}
-                disabled={saving}
-                startIcon={saving ? <CircularProgress size={16} /> : <Iconify icon="eva:checkmark-fill" />}
+                size="small"
+                onClick={connectGoogle}
+                startIcon={<Iconify icon="eva:link-2-fill" />}
               >
-                Save
+                Connect
               </Button>
             )}
           </Stack>
-          {calendarsLoading ? (
-            <Stack spacing={1}>
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} height={32} />
-              ))}
+        </Stack>
+
+        {/* Calendar Selection */}
+        <Collapse in={showCalendars && googleStatus?.connected}>
+          <Box
+            sx={{
+              mt: 2,
+              pt: 2,
+              borderTop: (theme) =>
+                `1px dashed ${varAlpha(theme.vars.palette.grey['500Channel'], 0.2)}`,
+            }}
+          >
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              sx={{ mb: 1 }}
+            >
+              <Typography variant="subtitle2">Select calendars to display</Typography>
+              {hasChanges && (
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={handleSaveSelection}
+                  disabled={saving}
+                  startIcon={
+                    saving ? <CircularProgress size={16} /> : <Iconify icon="eva:checkmark-fill" />
+                  }
+                >
+                  Save
+                </Button>
+              )}
             </Stack>
-          ) : calendars.length === 0 ? (
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              No calendars found
-            </Typography>
-          ) : (
-            <Stack spacing={0.5}>
-              {calendars.map((calendar) => {
-                const isFamilyCalendar = familySharedCalendarId === calendar.id;
-                const checkboxDisabled = isFamilyCalendar && calendar.isSelected;
-                
-                return (
-                  <Tooltip
-                    key={calendar.id}
-                    title={checkboxDisabled ? 'To unselect this calendar, first remove it as the Family Calendar in Family Settings' : ''}
-                    placement="right"
-                    arrow
-                  >
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={Boolean(calendar.isSelected)}
-                          onChange={() => !checkboxDisabled && toggleCalendar(calendar.id)}
-                          disabled={checkboxDisabled}
-                          size="small"
-                          sx={{
-                            color: calendar.backgroundColor,
-                            '&.Mui-checked': {
-                              color: calendar.backgroundColor,
-                            },
-                          }}
-                        />
+            {calendarsLoading ? (
+              <Stack spacing={1}>
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} height={32} />
+                ))}
+              </Stack>
+            ) : calendars.length === 0 ? (
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                No calendars found
+              </Typography>
+            ) : (
+              <Stack spacing={0.5}>
+                {calendars.map((calendar) => {
+                  const isFamilyCalendar = familySharedCalendarId === calendar.id;
+                  const checkboxDisabled = isFamilyCalendar && calendar.isSelected;
+
+                  return (
+                    <Tooltip
+                      key={calendar.id}
+                      title={
+                        checkboxDisabled
+                          ? 'To unselect this calendar, first remove it as the Family Calendar in Family Settings'
+                          : ''
                       }
-                      label={
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <Box
+                      placement="right"
+                      arrow
+                    >
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={Boolean(calendar.isSelected)}
+                            onChange={() => !checkboxDisabled && toggleCalendar(calendar.id)}
+                            disabled={checkboxDisabled}
+                            size="small"
                             sx={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: '50%',
-                              bgcolor: calendar.backgroundColor,
+                              color: calendar.backgroundColor,
+                              '&.Mui-checked': {
+                                color: calendar.backgroundColor,
+                              },
                             }}
                           />
-                          <Typography variant="body2">{calendar.summary}</Typography>
-                          {calendar.primary && (
-                            <Label variant="soft" color="primary" sx={{ ml: 1 }}>
-                              Primary
-                            </Label>
-                          )}
-                          {isFamilyCalendar && (
-                            <Label variant="soft" color="success" sx={{ ml: calendar.primary ? 0 : 1 }}>
-                              Family
-                            </Label>
-                          )}
-                        </Stack>
-                      }
-                      sx={{ ml: 0 }}
-                    />
-                  </Tooltip>
-                );
-              })}
-            </Stack>
-          )}
-        </Box>
-      </Collapse>
-    </Box>
-  );
-
-  return (
-    <Card>
-      <CardHeader
-        title="Integrations"
-        subheader="Connect external services and automations"
-      />
-      <CardContent>
-        <Stack spacing={3}>
-          {/* Google Calendar - Active Integration */}
-          {renderGoogleCalendarIntegration()}
-
-          {/* Other Integrations */}
-          {INTEGRATIONS.map((integration) => (
-            <Box
-              key={integration.id}
-              sx={[
-                (theme) => ({
-                  p: 2,
-                  borderRadius: 1.5,
-                  border: `1px solid ${varAlpha(theme.vars.palette.grey['500Channel'], 0.16)}`,
-                  bgcolor: varAlpha(theme.vars.palette.grey['500Channel'], 0.04),
-                }),
-              ]}
-            >
-              <Stack
-                direction="row"
-                alignItems="flex-start"
-                justifyContent="space-between"
-              >
-                <Stack direction="row" spacing={2} alignItems="flex-start">
-                  <Box
-                    sx={{
-                      p: 1,
-                      borderRadius: 1,
-                      bgcolor: 'background.paper',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Iconify icon={integration.icon} width={28} />
-                  </Box>
-                  <Box sx={{ flexGrow: 1 }}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <Typography variant="subtitle1">{integration.name}</Typography>
-                      <Label
-                        variant="soft"
-                        color={
-                          (integration.status === 'connected' && 'success') ||
-                          (integration.status === 'available' && 'info') ||
-                          'default'
                         }
-                      >
-                        {integration.status === 'coming-soon' ? 'Coming Soon' : integration.status}
-                      </Label>
-                    </Stack>
-                    <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-                      {integration.description}
-                    </Typography>
-                  </Box>
-                </Stack>
-                <Switch
-                  disabled={integration.status === 'coming-soon'}
-                  checked={integration.enabled}
-                />
+                        label={
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <Box
+                              sx={{
+                                width: 12,
+                                height: 12,
+                                borderRadius: '50%',
+                                bgcolor: calendar.backgroundColor,
+                              }}
+                            />
+                            <Typography variant="body2">{calendar.summary}</Typography>
+                            {calendar.primary && (
+                              <Label variant="soft" color="primary" sx={{ ml: 1 }}>
+                                Primary
+                              </Label>
+                            )}
+                            {isFamilyCalendar && (
+                              <Label
+                                variant="soft"
+                                color="success"
+                                sx={{ ml: calendar.primary ? 0 : 1 }}
+                              >
+                                Family
+                              </Label>
+                            )}
+                          </Stack>
+                        }
+                        sx={{ ml: 0 }}
+                      />
+                    </Tooltip>
+                  );
+                })}
               </Stack>
-            </Box>
-          ))}
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-});
+            )}
+          </Box>
+        </Collapse>
+      </Box>
+    );
+
+    return (
+      <Card>
+        <CardHeader title="Integrations" subheader="Connect external services and automations" />
+        <CardContent>
+          <Stack spacing={3}>
+            {/* Google Calendar - Active Integration */}
+            {renderGoogleCalendarIntegration()}
+
+            {/* Other Integrations */}
+            {INTEGRATIONS.map((integration) => (
+              <Box
+                key={integration.id}
+                sx={[
+                  (theme) => ({
+                    p: 2,
+                    borderRadius: 1.5,
+                    border: `1px solid ${varAlpha(theme.vars.palette.grey['500Channel'], 0.16)}`,
+                    bgcolor: varAlpha(theme.vars.palette.grey['500Channel'], 0.04),
+                  }),
+                ]}
+              >
+                <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
+                  <Stack direction="row" spacing={2} alignItems="flex-start">
+                    <Box
+                      sx={{
+                        p: 1,
+                        borderRadius: 1,
+                        bgcolor: 'background.paper',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Iconify icon={integration.icon} width={28} />
+                    </Box>
+                    <Box sx={{ flexGrow: 1 }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <Typography variant="subtitle1">{integration.name}</Typography>
+                        <Label
+                          variant="soft"
+                          color={
+                            (integration.status === 'connected' && 'success') ||
+                            (integration.status === 'available' && 'info') ||
+                            'default'
+                          }
+                        >
+                          {integration.status === 'coming-soon'
+                            ? 'Coming Soon'
+                            : integration.status}
+                        </Label>
+                      </Stack>
+                      <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
+                        {integration.description}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  <Switch
+                    disabled={integration.status === 'coming-soon'}
+                    checked={integration.enabled}
+                  />
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        </CardContent>
+      </Card>
+    );
+  }
+);

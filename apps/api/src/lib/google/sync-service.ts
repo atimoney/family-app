@@ -1,11 +1,19 @@
-import type { OAuth2Client } from 'google-auth-library';
-import type { PrismaClient, SelectedCalendar, GoogleAccount, Prisma } from '@prisma/client';
-import { google, calendar_v3 } from 'googleapis';
+import type { OAuth2Client } from "google-auth-library";
+import type {
+  PrismaClient,
+  SelectedCalendar,
+  GoogleAccount,
+  Prisma,
+} from "@prisma/client";
+import { google, calendar_v3 } from "googleapis";
 
-import { decryptSecret } from '../crypto.js';
-import { parseEventTimes, withRetry } from './sync-utils.js';
-import { refreshAccessToken } from './token-refresh.js';
-import { parseFamilyExtendedProperties, parseAllExtendedProperties } from './calendar.js';
+import { decryptSecret } from "../crypto.js";
+import { parseEventTimes, withRetry } from "./sync-utils.js";
+import { refreshAccessToken } from "./token-refresh.js";
+import {
+  parseFamilyExtendedProperties,
+  parseAllExtendedProperties,
+} from "./calendar.js";
 
 // ============================================================================
 // TYPES
@@ -50,7 +58,7 @@ const DEFAULT_SYNC_WINDOW_DAYS_FUTURE = 365;
 // ============================================================================
 
 function getCalendarClient(auth: OAuth2Client) {
-  return google.calendar({ version: 'v3', auth });
+  return google.calendar({ version: "v3", auth });
 }
 
 // ============================================================================
@@ -66,16 +74,17 @@ export async function syncGoogleCalendar(options: {
   forceFullSync?: boolean;
   logger?: Logger;
 }): Promise<SyncSummary> {
-  const { prisma, userId, oauthClient, encryptionKey, forceFullSync, logger } = options;
+  const { prisma, userId, oauthClient, encryptionKey, forceFullSync, logger } =
+    options;
 
   // 1. Get the user's Google account with refresh token
   const googleAccount = await prisma.googleAccount.findFirst({
     where: { userId },
-    orderBy: { updatedAt: 'desc' },
+    orderBy: { updatedAt: "desc" },
   });
 
   if (!googleAccount) {
-    throw new Error('Google account not connected');
+    throw new Error("Google account not connected");
   }
 
   // 2. Get valid access token using refresh token
@@ -89,7 +98,7 @@ export async function syncGoogleCalendar(options: {
     });
     accessToken = refreshed.accessToken;
   } catch (err) {
-    logger?.warn({ err, userId }, 'Google token refresh failed');
+    logger?.warn({ err, userId }, "Google token refresh failed");
     throw err;
   }
 
@@ -112,16 +121,16 @@ export async function syncGoogleCalendar(options: {
 
   // If no calendars selected, sync primary calendar
   if (selectedCalendars.length === 0) {
-    logger?.info({ userId }, 'No calendars selected, syncing primary calendar');
+    logger?.info({ userId }, "No calendars selected, syncing primary calendar");
 
     // Create a default SelectedCalendar for primary
     const primaryCalendar = await prisma.selectedCalendar.upsert({
-      where: { userId_calendarId: { userId, calendarId: 'primary' } },
+      where: { userId_calendarId: { userId, calendarId: "primary" } },
       create: {
         userId,
         googleAccountId: googleAccount.id,
-        calendarId: 'primary',
-        summary: 'Primary Calendar',
+        calendarId: "primary",
+        summary: "Primary Calendar",
         isVisible: true,
       },
       update: {},
@@ -164,7 +173,10 @@ export async function syncGoogleCalendar(options: {
         summary.nextSyncToken = result.nextSyncToken;
       }
     } catch (err) {
-      logger?.error({ err, calendarId: selectedCalendar.calendarId }, 'Failed to sync calendar');
+      logger?.error(
+        { err, calendarId: selectedCalendar.calendarId },
+        "Failed to sync calendar",
+      );
       summary.failed += 1;
     }
   }
@@ -185,12 +197,21 @@ async function syncSingleCalendar(options: {
   forceFullSync?: boolean;
   logger?: Logger;
 }): Promise<SyncCalendarResult> {
-  const { prisma, userId, googleAccount, selectedCalendar, calendar, forceFullSync, logger } =
-    options;
+  const {
+    prisma,
+    userId,
+    googleAccount,
+    selectedCalendar,
+    calendar,
+    forceFullSync,
+    logger,
+  } = options;
   const { calendarId } = selectedCalendar;
 
   // Use stored sync token for incremental sync (unless forced full sync)
-  let syncToken = forceFullSync ? undefined : (selectedCalendar.syncToken ?? undefined);
+  let syncToken = forceFullSync
+    ? undefined
+    : (selectedCalendar.syncToken ?? undefined);
   let nextSyncToken: string | undefined;
   let pageToken: string | undefined;
   let fullSync = !syncToken;
@@ -211,7 +232,10 @@ async function syncSingleCalendar(options: {
   const timeMax = new Date(now);
   timeMax.setDate(timeMax.getDate() + DEFAULT_SYNC_WINDOW_DAYS_FUTURE);
 
-  logger?.info({ userId, calendarId, fullSync, hasSyncToken: !!syncToken }, 'Starting calendar sync');
+  logger?.info(
+    { userId, calendarId, fullSync, hasSyncToken: !!syncToken },
+    "Starting calendar sync",
+  );
 
   // Process paginated results
   do {
@@ -229,7 +253,7 @@ async function syncSingleCalendar(options: {
                 timeMin: timeMin.toISOString(),
                 timeMax: timeMax.toISOString(),
               }),
-        })
+        }),
       );
 
       const items = response.data.items ?? [];
@@ -253,12 +277,12 @@ async function syncSingleCalendar(options: {
             logger,
           });
 
-          if (eventResult === 'created') result.created += 1;
-          else if (eventResult === 'updated') result.updated += 1;
-          else if (eventResult === 'deleted') result.deleted += 1;
+          if (eventResult === "created") result.created += 1;
+          else if (eventResult === "updated") result.updated += 1;
+          else if (eventResult === "deleted") result.deleted += 1;
         } catch (err) {
           result.failed += 1;
-          logger?.warn({ err, eventId: event.id }, 'Failed to process event');
+          logger?.warn({ err, eventId: event.id }, "Failed to process event");
         }
       }
 
@@ -269,7 +293,10 @@ async function syncSingleCalendar(options: {
 
       // Handle 410 Gone - sync token expired, need full sync
       if (error.code === 410 || error.response?.status === 410) {
-        logger?.info({ userId, calendarId }, 'Sync token expired, performing full sync');
+        logger?.info(
+          { userId, calendarId },
+          "Sync token expired, performing full sync",
+        );
         syncToken = undefined;
         pageToken = undefined;
         fullSync = true;
@@ -277,7 +304,7 @@ async function syncSingleCalendar(options: {
         continue;
       }
 
-      logger?.error({ err, userId, calendarId }, 'Calendar sync failed');
+      logger?.error({ err, userId, calendarId }, "Calendar sync failed");
       throw err;
     }
   } while (pageToken);
@@ -294,7 +321,7 @@ async function syncSingleCalendar(options: {
     result.nextSyncToken = nextSyncToken;
   }
 
-  logger?.info({ userId, calendarId, ...result }, 'Calendar sync completed');
+  logger?.info({ userId, calendarId, ...result }, "Calendar sync completed");
 
   return result;
 }
@@ -303,7 +330,7 @@ async function syncSingleCalendar(options: {
 // PROCESS SINGLE EVENT
 // ============================================================================
 
-type ProcessEventResult = 'created' | 'updated' | 'deleted' | 'skipped';
+type ProcessEventResult = "created" | "updated" | "deleted" | "skipped";
 
 async function processEvent(options: {
   prisma: PrismaClient;
@@ -313,13 +340,15 @@ async function processEvent(options: {
   event: calendar_v3.Schema$Event;
   logger?: Logger;
 }): Promise<ProcessEventResult> {
-  const { prisma, userId, googleAccountId, calendarId, event, logger } = options;
+  const { prisma, userId, googleAccountId, calendarId, event, logger } =
+    options;
 
-  if (!event.id) return 'skipped';
+  if (!event.id) return "skipped";
 
   // Check if event is cancelled/deleted
   const isCancelled =
-    event.status === 'cancelled' || (event as { deleted?: boolean }).deleted === true;
+    event.status === "cancelled" ||
+    (event as { deleted?: boolean }).deleted === true;
 
   // Parse event times
   const parsedTimes = parseEventTimes({
@@ -335,17 +364,17 @@ async function processEvent(options: {
         googleEventId: event.id,
       },
       data: {
-        status: 'cancelled',
+        status: "cancelled",
         deletedAt: new Date(),
       },
     });
-    return deleted.count > 0 ? 'deleted' : 'skipped';
+    return deleted.count > 0 ? "deleted" : "skipped";
   }
 
   // Skip events without valid times
   if (!parsedTimes.startsAt || !parsedTimes.endsAt) {
-    logger?.warn({ eventId: event.id }, 'Event has invalid times, skipping');
-    return 'skipped';
+    logger?.warn({ eventId: event.id }, "Event has invalid times, skipping");
+    return "skipped";
   }
 
   // Upsert the event
@@ -360,7 +389,7 @@ async function processEvent(options: {
     googleEventId: event.id,
     startsAt: parsedTimes.startsAt,
     endsAt: parsedTimes.endsAt,
-    title: event.summary ?? '(No title)',
+    title: event.summary ?? "(No title)",
     description: event.description ?? null,
     location: event.location ?? null,
     allDay: parsedTimes.allDay,
@@ -379,7 +408,7 @@ async function processEvent(options: {
     // E2: Extract and store family assignments from extendedProperties
     await syncFamilyAssignmentsToMetadata(prisma, updatedEvent.id, event);
 
-    return 'updated';
+    return "updated";
   } else {
     const createdEvent = await prisma.calendarEvent.create({
       data: eventData,
@@ -388,7 +417,7 @@ async function processEvent(options: {
     // E2: Extract and store family assignments from extendedProperties
     await syncFamilyAssignmentsToMetadata(prisma, createdEvent.id, event);
 
-    return 'created';
+    return "created";
   }
 }
 
@@ -400,30 +429,20 @@ async function processEvent(options: {
 async function syncFamilyAssignmentsToMetadata(
   prisma: PrismaClient,
   eventId: string,
-  googleEvent: calendar_v3.Schema$Event
+  googleEvent: calendar_v3.Schema$Event,
 ): Promise<void> {
   const parsed = parseAllExtendedProperties(googleEvent.extendedProperties);
 
-  // Debug logging for E1 troubleshooting
-  console.log('[E1 SYNC DEBUG]', {
-    eventId,
-    googleEventId: googleEvent.id,
-    eventSummary: googleEvent.summary,
-    hasExtendedProps: !!googleEvent.extendedProperties,
-    privateProps: googleEvent.extendedProperties?.private,
-    parsedCategory: parsed.category,
-    parsedAudience: parsed.audience,
-    parsedTags: parsed.tags,
-  });
-
   // Check if we have any data to sync
   const hasE2Data = parsed.familyAssignments !== null;
-  const hasE1Data = parsed.category || parsed.audience || parsed.tags.length > 0 || 
-                    Object.keys(parsed.metadata).length > 0;
+  const hasE1Data =
+    parsed.category ||
+    parsed.audience ||
+    parsed.tags.length > 0 ||
+    Object.keys(parsed.metadata).length > 0;
 
   if (!hasE2Data && !hasE1Data) {
     // No family or E1 data to sync
-    console.log('[E1 SYNC DEBUG] No E1/E2 data to sync, skipping');
     return;
   }
 
@@ -432,25 +451,33 @@ async function syncFamilyAssignmentsToMetadata(
     where: { eventId },
   });
 
-  const existingCustomJson = (existingMetadata?.customJson ?? {}) as Record<string, unknown>;
+  const existingCustomJson = (existingMetadata?.customJson ?? {}) as Record<
+    string,
+    unknown
+  >;
   const mergedCustomJson = {
     ...existingCustomJson,
-    ...(parsed.familyAssignments ? { familyAssignments: parsed.familyAssignments } : {}),
+    ...(parsed.familyAssignments
+      ? { familyAssignments: parsed.familyAssignments }
+      : {}),
   };
 
   await prisma.calendarEventMetadata.upsert({
     where: { eventId },
     create: {
       eventId,
-      tags: parsed.tags.length > 0 ? parsed.tags : (existingMetadata?.tags ?? []),
+      tags:
+        parsed.tags.length > 0 ? parsed.tags : (existingMetadata?.tags ?? []),
       notes: existingMetadata?.notes ?? null,
       color: existingMetadata?.color ?? null,
       // E1: Add category, audience, and categoryMetadata
       category: parsed.category ?? existingMetadata?.category ?? null,
-      audience: parsed.audience ?? existingMetadata?.audience ?? 'family',
-      categoryMetadata: Object.keys(parsed.metadata).length > 0 
-        ? (parsed.metadata as Prisma.InputJsonValue) 
-        : ((existingMetadata?.categoryMetadata as Prisma.InputJsonValue) ?? {}),
+      audience: parsed.audience ?? existingMetadata?.audience ?? "family",
+      categoryMetadata:
+        Object.keys(parsed.metadata).length > 0
+          ? (parsed.metadata as Prisma.InputJsonValue)
+          : ((existingMetadata?.categoryMetadata as Prisma.InputJsonValue) ??
+            {}),
       customJson: mergedCustomJson,
     },
     update: {
@@ -459,7 +486,9 @@ async function syncFamilyAssignmentsToMetadata(
       // E1: Update category, audience, and categoryMetadata if present
       ...(parsed.category ? { category: parsed.category } : {}),
       ...(parsed.audience ? { audience: parsed.audience } : {}),
-      ...(Object.keys(parsed.metadata).length > 0 ? { categoryMetadata: parsed.metadata as Prisma.InputJsonValue } : {}),
+      ...(Object.keys(parsed.metadata).length > 0
+        ? { categoryMetadata: parsed.metadata as Prisma.InputJsonValue }
+        : {}),
       customJson: mergedCustomJson,
     },
   });

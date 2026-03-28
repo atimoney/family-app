@@ -35,7 +35,7 @@ function validateApiConfig(): void {
     } else {
       // In production, log an error but don't crash the app
       // This helps diagnose deployment issues
-      console.error(errorMessage);
+      // Production: API URL not configured - this will cause API calls to fail
     }
   }
 }
@@ -47,9 +47,6 @@ validateApiConfig();
  * Log the resolved API base URL once on startup (for diagnostics).
  * Does not expose sensitive data - just the base URL.
  */
-if (typeof window !== 'undefined') {
-  console.info(`[API Client] Base URL: ${API_BASE_URL || '(not configured - using relative paths)'}`);
-}
 
 // ----------------------------------------------------------------------
 
@@ -78,7 +75,9 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   const url = API_BASE_URL ? new URL(endpoint, API_BASE_URL).toString() : endpoint;
 
   // Get auth token from Supabase session
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   const authHeaders: Record<string, string> = {};
   if (session?.access_token) {
     authHeaders.Authorization = `Bearer ${session.access_token}`;

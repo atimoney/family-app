@@ -16,7 +16,6 @@ type AuthGuardProps = {
 };
 
 const signInPaths: Record<string, string> = {
-  jwt: paths.auth.jwt.signIn,
   supabase: paths.auth.supabase.signIn,
 };
 

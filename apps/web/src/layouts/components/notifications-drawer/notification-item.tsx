@@ -27,16 +27,31 @@ export type NotificationItemProps = {
   };
 };
 
-const readerContent = (data: string) => (
-  <Box
-    dangerouslySetInnerHTML={{ __html: data }}
-    sx={{
-      '& p': { m: 0, typography: 'body2' },
-      '& a': { color: 'inherit', textDecoration: 'none' },
-      '& strong': { typography: 'subtitle2' },
-    }}
-  />
-);
+const readerContent = (data: string) => {
+  // Parse simple HTML tags safely instead of using dangerouslySetInnerHTML
+  const parts = data.replace(/<\/?p>/g, '').split(/(<strong>.*?<\/strong>)/g);
+
+  return (
+    <Box
+      sx={{
+        typography: 'body2',
+        '& a': { color: 'inherit', textDecoration: 'none' },
+      }}
+    >
+      {parts.map((part, index) => {
+        const strongMatch = part.match(/^<strong>(.*?)<\/strong>$/);
+        if (strongMatch) {
+          return (
+            <Box key={index} component="span" sx={{ typography: 'subtitle2' }}>
+              {strongMatch[1]}
+            </Box>
+          );
+        }
+        return part || null;
+      })}
+    </Box>
+  );
+};
 
 const renderIcon = (type: string) =>
   ({
@@ -158,7 +173,7 @@ export function NotificationItem({ notification }: NotificationItemProps) {
         bgcolor: 'background.neutral',
       })}
     >
-      <FileThumbnail file="http://localhost:8080/httpsdesign-suriname-2015.mp3" />
+      <FileThumbnail file="design-suriname-2015.mp3" />
 
       <ListItemText
         primary="design-suriname-2015.mp3 design-suriname-2015.mp3"

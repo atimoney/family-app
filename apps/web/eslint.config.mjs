@@ -23,6 +23,7 @@ const commonRules = () => ({
   'default-case-last': 2,
   'consistent-return': 2,
   'no-constant-condition': 1,
+  'no-console': [1, { allow: ['warn', 'error'] }],
   'default-case': [2, { commentPattern: '^no default$' }],
   'lines-around-directive': [2, { before: 'always', after: 'always' }],
   'arrow-body-style': [2, 'as-needed', { requireReturnForObjectLiteral: false }],
@@ -43,7 +44,7 @@ const commonRules = () => ({
   'react-hooks/preserve-manual-memoization': 0,
   // typescript
   '@typescript-eslint/no-shadow': 2,
-  '@typescript-eslint/no-explicit-any': 0,
+  '@typescript-eslint/no-explicit-any': 1,
   '@typescript-eslint/no-empty-object-type': 0,
   '@typescript-eslint/consistent-type-imports': 1,
   '@typescript-eslint/no-unused-vars': [1, { args: 'none' }],

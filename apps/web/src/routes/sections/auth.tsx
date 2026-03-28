@@ -10,44 +10,6 @@ import { GuestGuard } from 'src/auth/guard';
 // ----------------------------------------------------------------------
 
 /** **************************************
- * Jwt
- *************************************** */
-const Jwt = {
-  SignInPage: lazy(() => import('src/pages/auth/jwt/sign-in')),
-  SignUpPage: lazy(() => import('src/pages/auth/jwt/sign-up')),
-};
-
-const authJwt = {
-  path: 'jwt',
-  children: [
-    {
-      path: 'sign-in',
-      element: (
-        <GuestGuard>
-          <AuthSplitLayout
-            slotProps={{
-              section: { title: 'Hi, Welcome back' },
-            }}
-          >
-            <Jwt.SignInPage />
-          </AuthSplitLayout>
-        </GuestGuard>
-      ),
-    },
-    {
-      path: 'sign-up',
-      element: (
-        <GuestGuard>
-          <AuthSplitLayout>
-            <Jwt.SignUpPage />
-          </AuthSplitLayout>
-        </GuestGuard>
-      ),
-    },
-  ],
-};
-
-/** **************************************
  * Supabase
  *************************************** */
 const Supabase = {
@@ -66,7 +28,7 @@ const authSupabase = {
             slotProps={{
               section: {
                 title: 'Hi, Welcome back',
-                subtitle: 'Your family\'s schedules, events, and activities all in one place.',
+                subtitle: "Your family's schedules, events, and activities all in one place.",
               },
             }}
           >
@@ -92,6 +54,6 @@ export const authRoutes: RouteObject[] = [
         <Outlet />
       </Suspense>
     ),
-    children: [authJwt, authSupabase],
+    children: [authSupabase],
   },
 ];

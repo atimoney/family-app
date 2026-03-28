@@ -37,7 +37,6 @@ export function useInviteValidation(token: string | null): UseInviteValidationRe
       const result = await validateInvite(token);
       setValidation(result);
     } catch (err) {
-      console.error('Failed to validate invite:', err);
       setError(err instanceof Error ? err : new Error('Failed to validate invite'));
       setValidation({ valid: false, reason: 'not_found' });
     } finally {
@@ -57,7 +56,6 @@ export function useInviteValidation(token: string | null): UseInviteValidationRe
       const result = await acceptInvite(token);
       return result;
     } catch (err) {
-      console.error('Failed to accept invite:', err);
       setError(err instanceof Error ? err : new Error('Failed to accept invite'));
       return { success: false };
     } finally {
@@ -73,7 +71,6 @@ export function useInviteValidation(token: string | null): UseInviteValidationRe
       await declineInvite(token);
       return true;
     } catch (err) {
-      console.error('Failed to decline invite:', err);
       setError(err instanceof Error ? err : new Error('Failed to decline invite'));
       return false;
     } finally {

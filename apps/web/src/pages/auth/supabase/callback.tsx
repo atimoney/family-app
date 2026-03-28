@@ -26,55 +26,40 @@ export default function CallbackPage() {
 
   const returnTo = searchParams.get('returnTo') || paths.family.root;
 
-  // Log immediately when component mounts
-  console.log('[Auth Callback] Page loaded!');
-  console.log('[Auth Callback] Full URL:', window.location.href);
-  console.log('[Auth Callback] Hash:', window.location.hash);
-  console.log('[Auth Callback] returnTo:', returnTo);
-
   useEffect(() => {
     const handleOAuthCallback = async () => {
       try {
-        console.log('[Auth Callback] handleOAuthCallback running...');
         // Check if we have hash params (OAuth redirect includes tokens in hash)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
 
-        console.log('[Auth Callback] Has access_token:', !!accessToken);
-        console.log('[Auth Callback] Has refresh_token:', !!refreshToken);
-
         if (accessToken && refreshToken) {
           // Exchange the tokens for a session
-          console.log('[Auth Callback] Exchanging OAuth tokens for session...');
           const { error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
 
           if (sessionError) {
-            console.error('[Auth Callback] Session error:', sessionError);
             setError(sessionError.message);
             return;
           }
 
-          console.log('[Auth Callback] Session established, redirecting to:', returnTo);
           router.replace(returnTo);
         } else {
           // No tokens in hash - check if we already have a session
-          console.log('[Auth Callback] No tokens in hash, checking existing session...');
-          const { data: { session } } = await supabase.auth.getSession();
-          
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+
           if (session) {
-            console.log('[Auth Callback] Existing session found, redirecting to:', returnTo);
             router.replace(returnTo);
           } else {
-            console.error('[Auth Callback] No tokens or session found');
             setError('Authentication failed - no tokens received');
           }
         }
       } catch (err) {
-        console.error('[Auth Callback] Error:', err);
         setError(err instanceof Error ? err.message : 'Authentication failed');
       }
     };

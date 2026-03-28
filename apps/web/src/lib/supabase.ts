@@ -35,7 +35,6 @@ export async function getSession(): Promise<Session | null> {
   const { data, error } = await supabase.auth.getSession();
 
   if (error) {
-    console.error('Error getting session:', error);
     return null;
   }
 
@@ -86,7 +85,6 @@ export async function signInWithGoogle(returnTo?: string): Promise<void> {
   });
 
   if (error) {
-    console.error('Error signing in with Google:', error);
     throw error;
   }
 }
@@ -98,7 +96,6 @@ export async function signOut(): Promise<void> {
   const { error } = await supabase.auth.signOut();
 
   if (error) {
-    console.error('Error signing out:', error);
     throw error;
   }
 }

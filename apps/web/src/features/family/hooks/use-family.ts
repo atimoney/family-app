@@ -42,7 +42,6 @@ export function useFamily(): UseFamilyReturn {
       const result = await getFamily();
       setFamily(result.family);
     } catch (err) {
-      console.error('Failed to fetch family:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch family'));
     } finally {
       setLoading(false);
@@ -60,7 +59,6 @@ export function useFamily(): UseFamilyReturn {
       setFamily(newFamily);
       return newFamily;
     } catch (err) {
-      console.error('Failed to create family:', err);
       setError(err instanceof Error ? err : new Error('Failed to create family'));
       return null;
     }
@@ -75,7 +73,6 @@ export function useFamily(): UseFamilyReturn {
         setFamily((prev) => (prev ? { ...prev, name } : null));
         return true;
       } catch (err) {
-        console.error('Failed to update family:', err);
         setError(err instanceof Error ? err : new Error('Failed to update family'));
         return false;
       }
@@ -91,7 +88,6 @@ export function useFamily(): UseFamilyReturn {
       setFamily(null);
       return true;
     } catch (err) {
-      console.error('Failed to delete family:', err);
       setError(err instanceof Error ? err : new Error('Failed to delete family'));
       return false;
     }
@@ -105,7 +101,6 @@ export function useFamily(): UseFamilyReturn {
       setFamily(null);
       return true;
     } catch (err) {
-      console.error('Failed to leave family:', err);
       setError(err instanceof Error ? err : new Error('Failed to leave family'));
       return false;
     }
@@ -120,7 +115,6 @@ export function useFamily(): UseFamilyReturn {
         await fetchFamily(); // Refresh to get updated roles
         return true;
       } catch (err) {
-        console.error('Failed to transfer ownership:', err);
         setError(err instanceof Error ? err : new Error('Failed to transfer ownership'));
         return false;
       }
@@ -176,7 +170,6 @@ export function useFamilyMembers(familyId: string | null): UseFamilyMembersRetur
         setMembers(result.family.members);
       }
     } catch (err) {
-      console.error('Failed to fetch members:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch members'));
     } finally {
       setLoading(false);
@@ -198,7 +191,6 @@ export function useFamilyMembers(familyId: string | null): UseFamilyMembersRetur
         setMembers((prev) => prev.map((m) => (m.id === memberId ? updated : m)));
         return true;
       } catch (err) {
-        console.error('Failed to update member role:', err);
         setError(err instanceof Error ? err : new Error('Failed to update member role'));
         return false;
       }
@@ -218,7 +210,6 @@ export function useFamilyMembers(familyId: string | null): UseFamilyMembersRetur
         setMembers((prev) => prev.map((m) => (m.id === memberId ? updated : m)));
         return true;
       } catch (err) {
-        console.error('Failed to update member:', err);
         setError(err instanceof Error ? err : new Error('Failed to update member'));
         return false;
       }
@@ -235,7 +226,6 @@ export function useFamilyMembers(familyId: string | null): UseFamilyMembersRetur
         setMembers((prev) => prev.filter((m) => m.id !== memberId));
         return true;
       } catch (err) {
-        console.error('Failed to remove member:', err);
         setError(err instanceof Error ? err : new Error('Failed to remove member'));
         return false;
       }
@@ -286,7 +276,6 @@ export function useFamilyInvites(familyId: string | null): UseFamilyInvitesRetur
       const result = await getFamilyInvites(familyId);
       setInvites(result);
     } catch (err) {
-      console.error('Failed to fetch invites:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch invites'));
     } finally {
       setLoading(false);
@@ -312,7 +301,6 @@ export function useFamilyInvites(familyId: string | null): UseFamilyInvitesRetur
         setInvites((prev) => [invite, ...prev]);
         return invite;
       } catch (err) {
-        console.error('Failed to create invite:', err);
         setError(err instanceof Error ? err : new Error('Failed to create invite'));
         return null;
       }
@@ -329,7 +317,6 @@ export function useFamilyInvites(familyId: string | null): UseFamilyInvitesRetur
         setInvites((prev) => prev.filter((i) => i.id !== inviteId));
         return true;
       } catch (err) {
-        console.error('Failed to revoke invite:', err);
         setError(err instanceof Error ? err : new Error('Failed to revoke invite'));
         return false;
       }

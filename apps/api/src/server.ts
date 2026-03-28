@@ -1,21 +1,25 @@
-import type { FastifyInstance } from 'fastify';
-import Fastify from 'fastify';
-import cors from '@fastify/cors';
-import envPlugin from './plugins/env.js';
-import prismaPlugin from './plugins/prisma.js';
-import routes from './routes/index.js';
+import type { FastifyInstance } from "fastify";
+import Fastify from "fastify";
+import cors from "@fastify/cors";
+import envPlugin from "./plugins/env.js";
+import prismaPlugin from "./plugins/prisma.js";
+import rateLimitPlugin from "./plugins/rate-limit.js";
+import routes from "./routes/index.js";
 
 export function buildServer() {
   const fastify = Fastify({
     // Enable logging in all environments for better debugging
     logger: {
-      level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+      level:
+        process.env.LOG_LEVEL ||
+        (process.env.NODE_ENV === "production" ? "info" : "debug"),
     },
   });
 
   // Register plugins
   fastify.register(envPlugin);
   fastify.register(prismaPlugin);
+  fastify.register(rateLimitPlugin);
 
   fastify.register(cors, (instance: FastifyInstance) => {
     // Support comma-separated list of origins or allow all if not set
@@ -24,7 +28,7 @@ export function buildServer() {
 
     if (corsOrigin) {
       // Split by comma and trim whitespace
-      origin = corsOrigin.split(',').map((o: string) => o.trim());
+      origin = corsOrigin.split(",").map((o: string) => o.trim());
     }
 
     return {

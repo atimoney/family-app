@@ -38,7 +38,6 @@ export function useSharedCalendarAccess(familyId: string | null): UseSharedCalen
       const result = await checkSharedCalendarAccess(familyId);
       setData(result);
     } catch (err) {
-      console.error('Failed to check shared calendar access:', err);
       setError(err instanceof Error ? err : new Error('Failed to check shared calendar access'));
     } finally {
       setLoading(false);
