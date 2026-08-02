@@ -27,9 +27,7 @@ import { signInWithGoogle, signInWithPassword } from '../../context/supabase';
 
 export const SignInSchema = z.object({
   email: schemaUtils.email(),
-  password: z
-    .string()
-    .min(1, { message: 'Password is required!' }),
+  password: z.string().min(1, { message: 'Password is required!' }),
 });
 
 export type SignInSchemaType = z.infer<typeof SignInSchema>;
@@ -78,7 +76,6 @@ export function SupabaseSignInView() {
 
       await checkUserSession?.();
     } catch (error) {
-      console.error(error);
       const feedbackMessage = getErrorMessage(error);
       setErrorMessage(feedbackMessage);
     }
@@ -95,7 +92,6 @@ export function SupabaseSignInView() {
       // Note: The page will redirect to Google, so we won't reach here
       // The loading state will remain true until redirect
     } catch (error) {
-      console.error(error);
       const feedbackMessage = getErrorMessage(error);
       setErrorMessage(feedbackMessage);
       isGoogleLoading.onFalse();
@@ -177,7 +173,9 @@ export function SupabaseSignInView() {
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton onClick={password.onToggle} edge="end">
-                        <Iconify icon={password.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'} />
+                        <Iconify
+                          icon={password.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'}
+                        />
                       </IconButton>
                     </InputAdornment>
                   ),

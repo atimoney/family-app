@@ -9,10 +9,6 @@ const ROOTS = {
 export const paths = {
   // AUTH
   auth: {
-    jwt: {
-      signIn: `${ROOTS.AUTH}/jwt/sign-in`,
-      signUp: `${ROOTS.AUTH}/jwt/sign-up`,
-    },
     supabase: {
       signIn: `${ROOTS.AUTH}/supabase/sign-in`,
       signUp: `${ROOTS.AUTH}/supabase/sign-up`,

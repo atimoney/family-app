@@ -1,11 +1,20 @@
-import type { FastifyPluginAsync } from 'fastify';
-import type { Task, TaskStatus, TaskPriority, TaskRecurrenceRule } from '@family/shared';
-import { Prisma } from '@prisma/client';
-import { createTaskSchema, updateTaskSchema, tasksQuerySchema } from './schema.js';
-import authPlugin from '../../plugins/auth.js';
-import { decryptSecret } from '../../lib/crypto.js';
-import { getAuthorizedClient, getOAuthClient } from '../../lib/google/oauth.js';
-import { createEvent } from '../../lib/google/calendar.js';
+import type { FastifyPluginAsync } from "fastify";
+import type {
+  Task,
+  TaskStatus,
+  TaskPriority,
+  TaskRecurrenceRule,
+} from "@family/shared";
+import { Prisma } from "@prisma/client";
+import {
+  createTaskSchema,
+  updateTaskSchema,
+  tasksQuerySchema,
+} from "./schema.js";
+import authPlugin from "../../plugins/auth.js";
+import { decryptSecret } from "../../lib/crypto.js";
+import { getAuthorizedClient, getOAuthClient } from "../../lib/google/oauth.js";
+import { createEvent } from "../../lib/google/calendar.js";
 
 // ----------------------------------------------------------------------
 
@@ -85,99 +94,133 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
   // ----------------------------------------------------------------------
   // GET /v1/tasks - List tasks for user's family
   // ----------------------------------------------------------------------
-  fastify.get('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const userId = request.user?.id;
-    if (!userId) {
-      return reply.status(401).send({ error: 'Unauthorized' });
-    }
+  fastify.get(
+    "/",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const userId = request.user?.id;
+      if (!userId) {
+        return reply.status(401).send({ error: "Unauthorized" });
+      }
 
-    const membership = await getUserFamilyMembership(userId);
-    if (!membership) {
-      return reply.status(404).send({ error: 'No family found' });
-    }
+      const membership = await getUserFamilyMembership(userId);
+      if (!membership) {
+        return reply.status(404).send({ error: "No family found" });
+      }
 
-    const parsedQuery = tasksQuerySchema.safeParse(request.query);
-    if (!parsedQuery.success) {
-      return reply.status(400).send({
-        error: 'Validation failed',
-        details: parsedQuery.error.flatten().fieldErrors,
+      const parsedQuery = tasksQuerySchema.safeParse(request.query);
+      if (!parsedQuery.success) {
+        return reply.status(400).send({
+          error: "Validation failed",
+          details: parsedQuery.error.flatten().fieldErrors,
+        });
+      }
+
+      const {
+        status,
+        assignedTo,
+        dueBefore,
+        dueAfter,
+        includeCompleted,
+        labels,
+        search,
+      } = parsedQuery.data;
+
+      // Build where clause
+      type TaskWhereInput = NonNullable<
+        Parameters<typeof fastify.prisma.task.findMany>[0]
+      >["where"];
+      const where: TaskWhereInput = {
+        familyId: membership.familyId,
+        deletedAt: null,
+      };
+
+      // Status filter
+      const statusArray = status
+        ? Array.isArray(status)
+          ? status
+          : [status]
+        : null;
+      if (statusArray) {
+        where.status = { in: statusArray };
+      }
+
+      // Don't show done tasks by default (unless includeCompleted or filtering for done)
+      const filteringForDone = statusArray?.includes("done");
+      if (!includeCompleted && !filteringForDone) {
+        where.OR = [
+          { status: { not: "done" } },
+          {
+            completedAt: {
+              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            },
+          },
+        ];
+      }
+
+      // Assignee filter
+      if (assignedTo === "unassigned") {
+        where.assignedToUserId = null;
+      } else if (assignedTo) {
+        where.assignedToUserId = assignedTo;
+      }
+
+      // Due date filters
+      if (dueBefore) {
+        where.dueAt = {
+          ...((where.dueAt as object) || {}),
+          lte: new Date(dueBefore),
+        };
+      }
+      if (dueAfter) {
+        where.dueAt = {
+          ...((where.dueAt as object) || {}),
+          gte: new Date(dueAfter),
+        };
+      }
+
+      // Labels filter (any match)
+      if (labels) {
+        const labelArray = labels.split(",").map((l) => l.trim());
+        where.labels = { hasSome: labelArray };
+      }
+
+      // Search filter
+      if (search) {
+        where.OR = [
+          { title: { contains: search, mode: "insensitive" } },
+          { description: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const tasks = await fastify.prisma.task.findMany({
+        where,
+        orderBy: [
+          { dueAt: "asc" },
+          { sortOrder: "asc" },
+          { createdAt: "desc" },
+        ],
       });
-    }
 
-    const { status, assignedTo, dueBefore, dueAfter, includeCompleted, labels, search } =
-      parsedQuery.data;
-
-    // Build where clause
-    type TaskWhereInput = NonNullable<Parameters<typeof fastify.prisma.task.findMany>[0]>['where'];
-    const where: TaskWhereInput = {
-      familyId: membership.familyId,
-      deletedAt: null,
-    };
-
-    // Status filter
-    const statusArray = status ? (Array.isArray(status) ? status : [status]) : null;
-    if (statusArray) {
-      where.status = { in: statusArray };
-    }
-
-    // Don't show done tasks by default (unless includeCompleted or filtering for done)
-    const filteringForDone = statusArray?.includes('done');
-    if (!includeCompleted && !filteringForDone) {
-      where.OR = [{ status: { not: 'done' } }, { completedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }];
-    }
-
-    // Assignee filter
-    if (assignedTo === 'unassigned') {
-      where.assignedToUserId = null;
-    } else if (assignedTo) {
-      where.assignedToUserId = assignedTo;
-    }
-
-    // Due date filters
-    if (dueBefore) {
-      where.dueAt = { ...((where.dueAt as object) || {}), lte: new Date(dueBefore) };
-    }
-    if (dueAfter) {
-      where.dueAt = { ...((where.dueAt as object) || {}), gte: new Date(dueAfter) };
-    }
-
-    // Labels filter (any match)
-    if (labels) {
-      const labelArray = labels.split(',').map((l) => l.trim());
-      where.labels = { hasSome: labelArray };
-    }
-
-    // Search filter
-    if (search) {
-      where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
-    const tasks = await fastify.prisma.task.findMany({
-      where,
-      orderBy: [{ dueAt: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
-    });
-
-    return tasks.map(mapTaskToApi);
-  });
+      return tasks.map(mapTaskToApi);
+    },
+  );
 
   // ----------------------------------------------------------------------
   // GET /v1/tasks/:id - Get a single task
   // ----------------------------------------------------------------------
   fastify.get<{ Params: { id: string } }>(
-    '/:id',
+    "/:id",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const userId = request.user?.id;
       if (!userId) {
-        return reply.status(401).send({ error: 'Unauthorized' });
+        return reply.status(401).send({ error: "Unauthorized" });
       }
 
       const membership = await getUserFamilyMembership(userId);
       if (!membership) {
-        return reply.status(404).send({ error: 'No family found' });
+        return reply.status(404).send({ error: "No family found" });
       }
 
       const { id } = request.params;
@@ -191,72 +234,85 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       if (!task) {
-        return reply.status(404).send({ error: 'Task not found' });
+        return reply.status(404).send({ error: "Task not found" });
       }
 
       return mapTaskToApi(task);
-    }
+    },
   );
 
   // ----------------------------------------------------------------------
   // POST /v1/tasks - Create a task
   // ----------------------------------------------------------------------
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const userId = request.user?.id;
-    if (!userId) {
-      return reply.status(401).send({ error: 'Unauthorized' });
-    }
+  fastify.post(
+    "/",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const userId = request.user?.id;
+      if (!userId) {
+        return reply.status(401).send({ error: "Unauthorized" });
+      }
 
-    const membership = await getUserFamilyMembership(userId);
-    if (!membership) {
-      return reply.status(404).send({ error: 'No family found' });
-    }
+      const membership = await getUserFamilyMembership(userId);
+      if (!membership) {
+        return reply.status(404).send({ error: "No family found" });
+      }
 
-    const parsed = createTaskSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.status(400).send({
-        error: 'Validation failed',
-        details: parsed.error.flatten().fieldErrors,
-      });
-    }
+      const parsed = createTaskSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: "Validation failed",
+          details: parsed.error.flatten().fieldErrors,
+        });
+      }
 
-    const { title, description, status, priority, dueAt, assignedToUserId, labels, recurrence } = parsed.data;
-
-    const task = await fastify.prisma.task.create({
-      data: {
-        familyId: membership.familyId,
+      const {
         title,
-        description: description ?? null,
+        description,
         status,
         priority,
-        dueAt: dueAt ? new Date(dueAt) : null,
-        assignedToUserId: assignedToUserId ?? null,
-        createdByUserId: membership.id,
-        labels: labels ?? [],
-        // Recurrence fields
-        isRecurring: !!recurrence,
-        recurrenceRule: recurrence ?? undefined,
-      },
-    });
+        dueAt,
+        assignedToUserId,
+        labels,
+        recurrence,
+      } = parsed.data;
 
-    return reply.status(201).send(mapTaskToApi(task));
-  });
+      const task = await fastify.prisma.task.create({
+        data: {
+          familyId: membership.familyId,
+          title,
+          description: description ?? null,
+          status,
+          priority,
+          dueAt: dueAt ? new Date(dueAt) : null,
+          assignedToUserId: assignedToUserId ?? null,
+          createdByUserId: membership.id,
+          labels: labels ?? [],
+          // Recurrence fields
+          isRecurring: !!recurrence,
+          recurrenceRule: recurrence ?? undefined,
+        },
+      });
+
+      return reply.status(201).send(mapTaskToApi(task));
+    },
+  );
 
   // ----------------------------------------------------------------------
   // PATCH /v1/tasks/:id - Update a task
   // ----------------------------------------------------------------------
   fastify.patch<{ Params: { id: string } }>(
-    '/:id',
+    "/:id",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const userId = request.user?.id;
       if (!userId) {
-        return reply.status(401).send({ error: 'Unauthorized' });
+        return reply.status(401).send({ error: "Unauthorized" });
       }
 
       const membership = await getUserFamilyMembership(userId);
       if (!membership) {
-        return reply.status(404).send({ error: 'No family found' });
+        return reply.status(404).send({ error: "No family found" });
       }
 
       const { id } = request.params;
@@ -264,7 +320,7 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (!parsed.success) {
         return reply.status(400).send({
-          error: 'Validation failed',
+          error: "Validation failed",
           details: parsed.error.flatten().fieldErrors,
         });
       }
@@ -273,34 +329,58 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
         where: { id, familyId: membership.familyId, deletedAt: null },
       });
       if (!existing) {
-        return reply.status(404).send({ error: 'Task not found' });
+        return reply.status(404).send({ error: "Task not found" });
       }
 
-      const { title, description, status, priority, dueAt, completedAt, assignedToUserId, labels, sortOrder, recurrence } =
-        parsed.data;
+      const {
+        title,
+        description,
+        status,
+        priority,
+        dueAt,
+        completedAt,
+        assignedToUserId,
+        labels,
+        sortOrder,
+        recurrence,
+      } = parsed.data;
 
       // Auto-set completedAt when marking as done
-      let finalCompletedAt = completedAt !== undefined ? (completedAt ? new Date(completedAt) : null) : undefined;
-      if (status === 'done' && !existing.completedAt && finalCompletedAt === undefined) {
+      let finalCompletedAt =
+        completedAt !== undefined
+          ? completedAt
+            ? new Date(completedAt)
+            : null
+          : undefined;
+      if (
+        status === "done" &&
+        !existing.completedAt &&
+        finalCompletedAt === undefined
+      ) {
         finalCompletedAt = new Date();
-      } else if (status && status !== 'done' && existing.completedAt) {
+      } else if (status && status !== "done" && existing.completedAt) {
         finalCompletedAt = null;
       }
 
       // Build update data object
-      type TaskUpdateData = Parameters<typeof fastify.prisma.task.update>[0]['data'];
+      type TaskUpdateData = Parameters<
+        typeof fastify.prisma.task.update
+      >[0]["data"];
       const updateData: TaskUpdateData = {};
-      
+
       if (title !== undefined) updateData.title = title;
       if (description !== undefined) updateData.description = description;
       if (status !== undefined) updateData.status = status;
       if (priority !== undefined) updateData.priority = priority;
-      if (dueAt !== undefined) updateData.dueAt = dueAt ? new Date(dueAt) : null;
-      if (finalCompletedAt !== undefined) updateData.completedAt = finalCompletedAt;
-      if (assignedToUserId !== undefined) updateData.assignedToUserId = assignedToUserId;
+      if (dueAt !== undefined)
+        updateData.dueAt = dueAt ? new Date(dueAt) : null;
+      if (finalCompletedAt !== undefined)
+        updateData.completedAt = finalCompletedAt;
+      if (assignedToUserId !== undefined)
+        updateData.assignedToUserId = assignedToUserId;
       if (labels !== undefined) updateData.labels = labels;
       if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
-      
+
       // Handle recurrence update
       if (recurrence !== undefined) {
         if (recurrence === null) {
@@ -320,24 +400,24 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return mapTaskToApi(task);
-    }
+    },
   );
 
   // ----------------------------------------------------------------------
   // DELETE /v1/tasks/:id - Soft delete a task
   // ----------------------------------------------------------------------
   fastify.delete<{ Params: { id: string } }>(
-    '/:id',
+    "/:id",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const userId = request.user?.id;
       if (!userId) {
-        return reply.status(401).send({ error: 'Unauthorized' });
+        return reply.status(401).send({ error: "Unauthorized" });
       }
 
       const membership = await getUserFamilyMembership(userId);
       if (!membership) {
-        return reply.status(404).send({ error: 'No family found' });
+        return reply.status(404).send({ error: "No family found" });
       }
 
       const { id } = request.params;
@@ -346,7 +426,7 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
         where: { id, familyId: membership.familyId, deletedAt: null },
       });
       if (!existing) {
-        return reply.status(404).send({ error: 'Task not found' });
+        return reply.status(404).send({ error: "Task not found" });
       }
 
       await fastify.prisma.task.update({
@@ -355,29 +435,33 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return { ok: true };
-    }
+    },
   );
 
   // ----------------------------------------------------------------------
   // POST /v1/tasks/bulk-update - Bulk update tasks (for drag-drop, etc.)
   // ----------------------------------------------------------------------
-  fastify.post<{ Body: { updates: Array<{ id: string; status?: string; sortOrder?: number }> } }>(
-    '/bulk-update',
+  fastify.post<{
+    Body: {
+      updates: Array<{ id: string; status?: string; sortOrder?: number }>;
+    };
+  }>(
+    "/bulk-update",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const userId = request.user?.id;
       if (!userId) {
-        return reply.status(401).send({ error: 'Unauthorized' });
+        return reply.status(401).send({ error: "Unauthorized" });
       }
 
       const membership = await getUserFamilyMembership(userId);
       if (!membership) {
-        return reply.status(404).send({ error: 'No family found' });
+        return reply.status(404).send({ error: "No family found" });
       }
 
       const { updates } = request.body;
       if (!Array.isArray(updates) || updates.length === 0) {
-        return reply.status(400).send({ error: 'Updates array required' });
+        return reply.status(400).send({ error: "Updates array required" });
       }
 
       // Process updates in transaction
@@ -391,32 +475,37 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
             },
             data: {
               ...(update.status !== undefined && { status: update.status }),
-              ...(update.sortOrder !== undefined && { sortOrder: update.sortOrder }),
-              ...(update.status === 'done' && { completedAt: new Date() }),
+              ...(update.sortOrder !== undefined && {
+                sortOrder: update.sortOrder,
+              }),
+              ...(update.status === "done" && { completedAt: new Date() }),
             },
-          })
-        )
+          }),
+        ),
       );
 
-      return { ok: true, updated: results.reduce((sum, r) => sum + r.count, 0) };
-    }
+      return {
+        ok: true,
+        updated: results.reduce((sum, r) => sum + r.count, 0),
+      };
+    },
   );
 
   // ----------------------------------------------------------------------
   // POST /v1/tasks/:id/complete-and-generate-next - Complete recurring task and create next occurrence
   // ----------------------------------------------------------------------
   fastify.post<{ Params: { id: string } }>(
-    '/:id/complete-and-generate-next',
+    "/:id/complete-and-generate-next",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const userId = request.user?.id;
       if (!userId) {
-        return reply.status(401).send({ error: 'Unauthorized' });
+        return reply.status(401).send({ error: "Unauthorized" });
       }
 
       const membership = await getUserFamilyMembership(userId);
       if (!membership) {
-        return reply.status(404).send({ error: 'No family found' });
+        return reply.status(404).send({ error: "No family found" });
       }
 
       const { id } = request.params;
@@ -426,25 +515,25 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       if (!task) {
-        return reply.status(404).send({ error: 'Task not found' });
+        return reply.status(404).send({ error: "Task not found" });
       }
 
       if (!task.isRecurring || !task.recurrenceRule) {
-        return reply.status(400).send({ error: 'Task is not recurring' });
+        return reply.status(400).send({ error: "Task is not recurring" });
       }
 
       // Complete the current task
       const completedTask = await fastify.prisma.task.update({
         where: { id },
         data: {
-          status: 'done',
+          status: "done",
           completedAt: new Date(),
         },
       });
 
       // Calculate next due date based on recurrence rule
       const rule = task.recurrenceRule as {
-        frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+        frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
         interval?: number;
         count?: number;
         until?: string;
@@ -476,7 +565,7 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
           familyId: task.familyId,
           title: task.title,
           description: task.description,
-          status: 'todo',
+          status: "todo",
           priority: task.priority,
           dueAt: nextDueDate,
           assignedToUserId: task.assignedToUserId,
@@ -493,7 +582,7 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
         completed: mapTaskToApi(completedTask),
         next: mapTaskToApi(nextTask),
       };
-    }
+    },
   );
 
   // ----------------------------------------------------------------------
@@ -503,19 +592,19 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
     Params: { id: string };
     Body: { calendarId?: string; duration?: number };
   }>(
-    '/:id/create-calendar-event',
+    "/:id/create-calendar-event",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const userId = request.user?.id;
       if (!userId) {
-        return reply.status(401).send({ error: 'Unauthorized' });
+        return reply.status(401).send({ error: "Unauthorized" });
       }
 
       const membership = await fastify.prisma.familyMember.findFirst({
         where: { profileId: userId, removedAt: null },
       });
       if (!membership) {
-        return reply.status(403).send({ error: 'Not a family member' });
+        return reply.status(403).send({ error: "Not a family member" });
       }
 
       const { id } = request.params;
@@ -526,38 +615,48 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
         where: { id, familyId: membership.familyId, deletedAt: null },
       });
       if (!task) {
-        return reply.status(404).send({ error: 'Task not found' });
+        return reply.status(404).send({ error: "Task not found" });
       }
 
       // Check if already linked
       if (task.linkedCalendarEventId) {
-        return reply.status(400).send({ error: 'Task already has a linked calendar event' });
+        return reply
+          .status(400)
+          .send({ error: "Task already has a linked calendar event" });
       }
 
       // Must have a due date to create calendar event
       if (!task.dueAt) {
-        return reply.status(400).send({ error: 'Task must have a due date to create a calendar event' });
+        return reply.status(400).send({
+          error: "Task must have a due date to create a calendar event",
+        });
       }
 
       // Get Google account
       const googleAccount = await fastify.prisma.googleAccount.findFirst({
         where: { userId },
-        orderBy: { updatedAt: 'desc' },
+        orderBy: { updatedAt: "desc" },
       });
       if (!googleAccount) {
-        return reply.status(400).send({ error: 'Google account not connected' });
+        return reply
+          .status(400)
+          .send({ error: "Google account not connected" });
       }
 
-      const refreshToken = decryptSecret(googleAccount.refreshToken, fastify.config.TOKEN_ENCRYPTION_KEY);
+      const refreshToken = decryptSecret(
+        googleAccount.refreshToken,
+        fastify.config.TOKEN_ENCRYPTION_KEY,
+      );
 
       // Resolve calendar ID
       let resolvedCalendarId = calendarId;
       if (!resolvedCalendarId) {
-        const selectedCalendar = await fastify.prisma.selectedCalendar.findFirst({
-          where: { userId, isVisible: true },
-          orderBy: { createdAt: 'asc' },
-        });
-        resolvedCalendarId = selectedCalendar?.calendarId ?? 'primary';
+        const selectedCalendar =
+          await fastify.prisma.selectedCalendar.findFirst({
+            where: { userId, isVisible: true },
+            orderBy: { createdAt: "asc" },
+          });
+        resolvedCalendarId = selectedCalendar?.calendarId ?? "primary";
       }
 
       // Create OAuth client
@@ -586,7 +685,9 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       if (!event.id) {
-        return reply.status(500).send({ error: 'Failed to create calendar event' });
+        return reply
+          .status(500)
+          .send({ error: "Failed to create calendar event" });
       }
 
       // Update task with calendar link
@@ -607,7 +708,7 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
           htmlLink: event.htmlLink,
         },
       };
-    }
+    },
   );
 
   // ----------------------------------------------------------------------
@@ -617,34 +718,36 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
     Params: { id: string };
     Querystring: { deleteEvent?: string };
   }>(
-    '/:id/unlink-calendar-event',
+    "/:id/unlink-calendar-event",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const userId = request.user?.id;
       if (!userId) {
-        return reply.status(401).send({ error: 'Unauthorized' });
+        return reply.status(401).send({ error: "Unauthorized" });
       }
 
       const membership = await fastify.prisma.familyMember.findFirst({
         where: { profileId: userId, removedAt: null },
       });
       if (!membership) {
-        return reply.status(403).send({ error: 'Not a family member' });
+        return reply.status(403).send({ error: "Not a family member" });
       }
 
       const { id } = request.params;
-      const deleteEvent = request.query.deleteEvent === 'true';
+      const deleteEvent = request.query.deleteEvent === "true";
 
       // Find the task
       const task = await fastify.prisma.task.findFirst({
         where: { id, familyId: membership.familyId, deletedAt: null },
       });
       if (!task) {
-        return reply.status(404).send({ error: 'Task not found' });
+        return reply.status(404).send({ error: "Task not found" });
       }
 
       if (!task.linkedCalendarEventId) {
-        return reply.status(400).send({ error: 'Task has no linked calendar event' });
+        return reply
+          .status(400)
+          .send({ error: "Task has no linked calendar event" });
       }
 
       // Optionally delete the calendar event from Google
@@ -655,7 +758,10 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
 
         if (googleAccount) {
           try {
-            const refreshToken = decryptSecret(googleAccount.refreshToken, fastify.config.TOKEN_ENCRYPTION_KEY);
+            const refreshToken = decryptSecret(
+              googleAccount.refreshToken,
+              fastify.config.TOKEN_ENCRYPTION_KEY,
+            );
             const oauthClient = getAuthorizedClient({
               oauthClient: getOAuthClient({
                 clientId: fastify.config.GOOGLE_CLIENT_ID,
@@ -666,14 +772,14 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             // Import deleteEvent dynamically to avoid issues
-            const { deleteEvent: deleteGoogleEvent } = await import('../../lib/google/calendar.js');
+            const { deleteEvent: deleteGoogleEvent } =
+              await import("../../lib/google/calendar.js");
             await deleteGoogleEvent({
               auth: oauthClient,
               calendarId: task.linkedCalendarId,
               eventId: task.linkedCalendarEventId,
             });
           } catch (error) {
-            console.error('Failed to delete Google Calendar event:', error);
             // Continue with unlinking even if Google deletion fails
           }
         }
@@ -690,7 +796,7 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return mapTaskToApi(updatedTask);
-    }
+    },
   );
 };
 
@@ -698,25 +804,35 @@ const tasksRoutes: FastifyPluginAsync = async (fastify) => {
 function calculateNextOccurrence(
   currentDate: Date,
   rule: {
-    frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+    frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
     interval?: number;
     byDay?: string[];
     byMonthDay?: number[];
-  }
+  },
 ): Date | null {
   const interval = rule.interval ?? 1;
   const next = new Date(currentDate);
 
   switch (rule.frequency) {
-    case 'DAILY':
+    case "DAILY":
       next.setDate(next.getDate() + interval);
       break;
 
-    case 'WEEKLY':
+    case "WEEKLY":
       if (rule.byDay && rule.byDay.length > 0) {
         // Find next matching day
-        const dayMap: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
-        const targetDays = rule.byDay.map((d) => dayMap[d]).sort((a, b) => a - b);
+        const dayMap: Record<string, number> = {
+          SU: 0,
+          MO: 1,
+          TU: 2,
+          WE: 3,
+          TH: 4,
+          FR: 5,
+          SA: 6,
+        };
+        const targetDays = rule.byDay
+          .map((d) => dayMap[d])
+          .sort((a, b) => a - b);
         const currentDay = next.getDay();
 
         // Find next day in the list
@@ -738,7 +854,7 @@ function calculateNextOccurrence(
       }
       break;
 
-    case 'MONTHLY':
+    case "MONTHLY":
       if (rule.byMonthDay && rule.byMonthDay.length > 0) {
         const currentMonthDay = next.getDate();
         const sortedDays = [...rule.byMonthDay].sort((a, b) => a - b);
@@ -762,7 +878,7 @@ function calculateNextOccurrence(
       }
       break;
 
-    case 'YEARLY':
+    case "YEARLY":
       next.setFullYear(next.getFullYear() + interval);
       break;
 

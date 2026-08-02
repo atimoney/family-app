@@ -39,7 +39,7 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Enable pnpm (corepack is included in node:20-alpine)
+# Enable pnpm (corepack is included in node:22-alpine)
 RUN corepack enable
 
 # Copy only what we need

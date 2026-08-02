@@ -45,7 +45,6 @@ export function TaskCalendarLinkButton({ task, onUpdate, variant = 'button', dis
       toast.success('Calendar event created');
       onUpdate?.(result.task);
     } catch (error) {
-      console.error('Failed to create calendar event:', error);
       toast.error('Failed to create calendar event');
     } finally {
       setLoading(false);
@@ -60,7 +59,6 @@ export function TaskCalendarLinkButton({ task, onUpdate, variant = 'button', dis
       toast.success(deleteEvent ? 'Calendar event removed' : 'Calendar event unlinked');
       onUpdate?.(updatedTask);
     } catch (error) {
-      console.error('Failed to unlink calendar event:', error);
       toast.error('Failed to unlink calendar event');
     } finally {
       setLoading(false);
@@ -111,11 +109,7 @@ export function TaskCalendarLinkButton({ task, onUpdate, variant = 'button', dis
     if (canLink) {
       return (
         <Tooltip title="Add to calendar">
-          <IconButton
-            size="small"
-            onClick={handleCreateEvent}
-            disabled={loading || disabled}
-          >
+          <IconButton size="small" onClick={handleCreateEvent} disabled={loading || disabled}>
             {loading ? (
               <CircularProgress size={16} />
             ) : (
@@ -139,11 +133,7 @@ export function TaskCalendarLinkButton({ task, onUpdate, variant = 'button', dis
           onClick={handleLinkedClick}
           disabled={loading || disabled}
           startIcon={
-            loading ? (
-              <CircularProgress size={16} />
-            ) : (
-              <Iconify icon="solar:calendar-date-bold" />
-            )
+            loading ? <CircularProgress size={16} /> : <Iconify icon="solar:calendar-date-bold" />
           }
           sx={{ justifyContent: 'flex-start' }}
         >
@@ -171,13 +161,7 @@ export function TaskCalendarLinkButton({ task, onUpdate, variant = 'button', dis
       color="inherit"
       onClick={handleCreateEvent}
       disabled={!canLink || loading || disabled}
-      startIcon={
-        loading ? (
-          <CircularProgress size={16} />
-        ) : (
-          <Iconify icon="mingcute:add-line" />
-        )
-      }
+      startIcon={loading ? <CircularProgress size={16} /> : <Iconify icon="mingcute:add-line" />}
       sx={{ justifyContent: 'flex-start' }}
     >
       {!task.dueAt ? 'Set due date to add to calendar' : 'Add to Calendar'}

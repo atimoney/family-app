@@ -30,12 +30,9 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
     try {
       setLoading(true);
       setError(null);
-      console.log('Fetching Google connection status...');
       const result = await getGoogleConnectionStatus();
-      console.log('Google connection status:', result);
       setStatus(result);
     } catch (err) {
-      console.error('Failed to fetch Google status:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch status'));
     } finally {
       setLoading(false);
@@ -44,18 +41,14 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
 
   const connect = useCallback(async () => {
     try {
-      console.log('Getting OAuth URL...');
       const response = await getGoogleOAuthUrl();
-      console.log('OAuth URL response:', response);
       if (response?.url) {
         // Redirect to Google OAuth
         window.location.href = response.url;
       } else {
-        console.error('No URL in response:', response);
         setError(new Error('No OAuth URL returned'));
       }
     } catch (err) {
-      console.error('Failed to get OAuth URL:', err);
       setError(err instanceof Error ? err : new Error('Failed to get OAuth URL'));
     }
   }, []);
@@ -65,12 +58,9 @@ export function useGoogleIntegration(): UseGoogleIntegrationReturn {
       try {
         setSyncing(true);
         setError(null);
-        console.log('Syncing Google Calendar...', options);
         const result = await syncGoogleCalendar(options);
-        console.log('Sync result:', result);
         return result;
       } catch (err) {
-        console.error('Failed to sync Google Calendar:', err);
         setError(err instanceof Error ? err : new Error('Failed to sync calendar'));
         return null;
       } finally {

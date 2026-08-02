@@ -51,7 +51,10 @@ import { CalendarFiltersResult } from '../calendar-filters-result';
 import { CalendarFiltersSidebar } from '../calendar-filters-sidebar';
 import { useMemberLookup, useEventFiltering } from '../hooks/use-event-filtering';
 import { useEventAssignments, CalendarEventContent } from '../calendar-event-content';
-import { useCalendarPreferences, getStoredCalendarPreferences } from '../hooks/use-calendar-preferences';
+import {
+  useCalendarPreferences,
+  getStoredCalendarPreferences,
+} from '../hooks/use-calendar-preferences';
 
 // ----------------------------------------------------------------------
 
@@ -64,7 +67,7 @@ export function CalendarView() {
   const { calendars } = useSelectedCalendars();
   const { family } = useFamily();
   const [localEvents, setLocalEvents] = useState<CalendarEventItem[]>([]);
-  
+
   // Check shared calendar access for family members
   const {
     hasAccess: hasSharedCalendarAccess,
@@ -74,16 +77,17 @@ export function CalendarView() {
 
   // Determine if we should show the shared calendar warning
   const isOwner = family?.myMembership?.role === 'owner';
-  const showSharedCalendarWarning = family && !sharedCalendarLoading && (
-    !hasSharedCalendar || (!isOwner && !hasSharedCalendarAccess)
-  );
-  
+  const showSharedCalendarWarning =
+    family &&
+    !sharedCalendarLoading &&
+    (!hasSharedCalendar || (!isOwner && !hasSharedCalendarAccess));
+
   // Dashboard mode indicator
   const { isDashboardMode, dashboardDeviceName } = useAppPreferences();
-  
+
   // Audit tracking for event changes
   const { getAuditInfo } = useEventAudit();
-  
+
   // Read stored preferences fresh on each mount (lazy initializer runs once per mount)
   const [initialPrefs] = useState(() => getStoredCalendarPreferences());
 
@@ -245,7 +249,8 @@ export function CalendarView() {
   }, []);
 
   // Can reset if any filters are active (members, categories, calendars, or date range)
-  const hasCalendarFilter = calendars.length > 0 && filters.selectedCalendarIds.length < calendars.length;
+  const hasCalendarFilter =
+    calendars.length > 0 && filters.selectedCalendarIds.length < calendars.length;
   const canResetFilters =
     filters.selectedMemberIds.length > 0 ||
     filters.selectedCategoryIds.length > 0 ||
@@ -261,7 +266,12 @@ export function CalendarView() {
   );
 
   // Mutations with auto-sync
-  const { createEvent, updateEvent, deleteEvent, loading: mutating } = useCalendarMutations(refresh);
+  const {
+    createEvent,
+    updateEvent,
+    deleteEvent,
+    loading: mutating,
+  } = useCalendarMutations(refresh);
 
   // Handle view changes - persist to localStorage
   const handleViewChange = useCallback(
@@ -355,7 +365,7 @@ export function CalendarView() {
         });
         onCloseForm();
       } catch (err) {
-        console.error('Failed to create event:', err);
+        // Error handled by caller
       }
     },
     [createEvent, onCloseForm, getAuditInfo]
@@ -434,7 +444,10 @@ export function CalendarView() {
 
         // Check if calendar changed - need to pass sourceCalendarId for move operation
         const sourceCalendarId = existingEvent?.calendarId;
-        const calendarChanged = sourceCalendarId && updatedEvent.calendarId && sourceCalendarId !== updatedEvent.calendarId;
+        const calendarChanged =
+          sourceCalendarId &&
+          updatedEvent.calendarId &&
+          sourceCalendarId !== updatedEvent.calendarId;
 
         // Persist to Google Calendar
         await updateEvent(googleEventId, {
@@ -455,7 +468,6 @@ export function CalendarView() {
           updateScope,
         });
       } catch (err) {
-        console.error('Failed to update event:', err);
         // Revert on failure
         await refresh();
       }
@@ -475,7 +487,7 @@ export function CalendarView() {
         await deleteEvent(googleEventId, event?.calendarId);
         onCloseForm();
       } catch (err) {
-        console.error('Failed to delete event:', err);
+        // Error handled by caller
       }
     },
     [deleteEvent, mergedEvents, onCloseForm]
@@ -486,7 +498,7 @@ export function CalendarView() {
     try {
       await sync({ force: false });
     } catch (err) {
-      console.error('Sync failed:', err);
+      // Error handled by sync hook
     }
   }, [sync]);
 
@@ -513,7 +525,6 @@ export function CalendarView() {
         const event = mergedEvents.find((e) => e.id === eventData.id);
         const googleEventId = event?.extendedProps?.googleEventId;
         if (!googleEventId) {
-          console.error('Event not found or missing Google Event ID');
           return;
         }
         try {
@@ -524,7 +535,6 @@ export function CalendarView() {
             calendarId: event?.calendarId,
           });
         } catch (err) {
-          console.error('Failed to update event:', err);
           // Revert on failure
           await refresh();
         }
@@ -617,27 +627,21 @@ export function CalendarView() {
 
         {/* Shared Calendar Warning */}
         {showSharedCalendarWarning && (
-          <Alert 
-            severity="warning" 
+          <Alert
+            severity="warning"
             sx={{ mb: 3 }}
             action={
-              <Button 
-                color="inherit" 
-                size="small" 
-                href="/settings"
-              >
+              <Button color="inherit" size="small" href="/settings">
                 {isOwner ? 'Configure' : 'Settings'}
               </Button>
             }
           >
             <AlertTitle>Shared Family Calendar Required</AlertTitle>
-            {!hasSharedCalendar ? (
-              isOwner 
+            {!hasSharedCalendar
+              ? isOwner
                 ? 'No shared family calendar has been selected. Go to Settings to select the Google Calendar that will be shared with your family.'
                 : 'The family owner has not set up a shared family calendar yet. Please ask them to configure it in Settings.'
-            ) : (
-              'You don\'t have access to the family shared calendar. Make sure you have access to the calendar in Google Calendar and have it selected in your Integrations settings.'
-            )}
+              : "You don't have access to the family shared calendar. Make sure you have access to the calendar in Google Calendar and have it selected in your Integrations settings."}
           </Alert>
         )}
 
@@ -681,7 +685,11 @@ export function CalendarView() {
                 { value: 'dayGridMonth', label: 'Month', icon: 'mingcute:calendar-month-line' },
                 { value: 'timeGridWeek', label: 'Week', icon: 'mingcute:calendar-week-line' },
                 { value: 'timeGridDay', label: 'Day', icon: 'mingcute:calendar-day-line' },
-                { value: 'resourceTimeGridDay', label: 'Family', icon: 'solar:users-group-rounded-bold' },
+                {
+                  value: 'resourceTimeGridDay',
+                  label: 'Family',
+                  icon: 'solar:users-group-rounded-bold',
+                },
                 { value: 'listWeek', label: 'Agenda', icon: 'custom:calendar-agenda-outline' },
               ]}
             />

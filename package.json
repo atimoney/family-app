@@ -2,6 +2,9 @@
   "name": "family-platform",
   "private": true,
   "packageManager": "pnpm@10.28.1+sha512.7d7dbbca9e99447b7c3bf7a73286afaaf6be99251eb9498baefa7d406892f67b879adb3a1d7e687fc4ccc1a388c7175fbaae567a26ab44d1067b54fcb0d6a316",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "pnpm --filter @family/web dev",
     "build": "pnpm --filter @family/web build",
@@ -12,10 +15,28 @@
     "db:generate": "pnpm --filter ./apps/api exec prisma generate",
     "db:migrate": "pnpm --filter ./apps/api exec prisma migrate dev",
     "db:push": "pnpm --filter ./apps/api exec prisma db push",
-    "db:studio": "pnpm --filter ./apps/api exec prisma studio"
+    "test": "pnpm --filter './apps/*' run test",
+    "test:web": "pnpm --filter @family/web test",
+    "test:api": "pnpm --filter @family/api test",
+    "db:studio": "pnpm --filter ./apps/api exec prisma studio",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "apps/web/src/**/*.{ts,tsx}": [
+      "pnpm --filter @family/web exec eslint --fix",
+      "prettier --write"
+    ],
+    "apps/api/src/**/*.ts": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@prisma/client": "^7.3.0",
     "prisma": "^7.3.0"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.3",
+    "prettier": "^3.8.1"
   }
 }

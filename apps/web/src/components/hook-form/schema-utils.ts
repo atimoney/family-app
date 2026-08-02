@@ -156,6 +156,7 @@ export function testCase<T extends z.ZodTypeAny>(schema: T, values: unknown[]) {
       : color.red(`❌ Error - ${serializedValue}`);
     const payload = success ? data : z.treeifyError(error);
 
+    // eslint-disable-next-line no-console
     console.info(`${label} ${type}:`, JSON.stringify(payload, null, 2));
   });
 }

@@ -27,31 +27,24 @@ function RootRedirect() {
   useEffect(() => {
     const handleHashTokens = async () => {
       const hash = window.location.hash;
-      
+
       if (hash && hash.includes('access_token=')) {
-        console.log('[RootRedirect] Found OAuth tokens in hash, processing...');
         const hashParams = new URLSearchParams(hash.substring(1));
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
 
         if (accessToken && refreshToken) {
           try {
-            const { error } = await supabase.auth.setSession({
+            await supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: refreshToken,
             });
-
-            if (error) {
-              console.error('[RootRedirect] Error setting session:', error);
-            } else {
-              console.log('[RootRedirect] Session established successfully');
-            }
-          } catch (err) {
-            console.error('[RootRedirect] Exception setting session:', err);
+          } catch {
+            // Session setup failed - will be handled by auth guard
           }
         }
       }
-      
+
       setReady(true);
     };
 

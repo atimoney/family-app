@@ -61,7 +61,6 @@ export function InviteAcceptView() {
       toast.success(`Welcome to ${validation?.familyName}!`);
       navigate('/family', { replace: true });
     } catch (err) {
-      console.error('Failed to accept invite:', err);
       toast.error('Failed to accept invite');
     } finally {
       setProcessing(false);
@@ -77,7 +76,6 @@ export function InviteAcceptView() {
       toast.info('Invite declined');
       navigate('/family', { replace: true });
     } catch (err) {
-      console.error('Failed to decline invite:', err);
       toast.error('Failed to decline invite');
     } finally {
       setProcessing(false);
@@ -130,8 +128,12 @@ export function InviteAcceptView() {
       >
         <Card sx={{ maxWidth: 420, width: '100%', p: 4 }}>
           <Stack alignItems="center" spacing={3}>
-            <Iconify icon="solar:users-group-rounded-bold-duotone" width={64} sx={{ color: 'primary.main' }} />
-            
+            <Iconify
+              icon="solar:users-group-rounded-bold-duotone"
+              width={64}
+              sx={{ color: 'primary.main' }}
+            />
+
             <Box sx={{ textAlign: 'center' }}>
               <Typography variant="h5" gutterBottom>
                 Join {validation.familyName}
@@ -172,8 +174,12 @@ export function InviteAcceptView() {
     >
       <Card sx={{ maxWidth: 420, width: '100%', p: 4 }}>
         <Stack alignItems="center" spacing={3}>
-          <Iconify icon="solar:users-group-rounded-bold-duotone" width={64} sx={{ color: 'primary.main' }} />
-          
+          <Iconify
+            icon="solar:users-group-rounded-bold-duotone"
+            width={64}
+            sx={{ color: 'primary.main' }}
+          />
+
           <Box sx={{ textAlign: 'center' }}>
             <Typography variant="h5" gutterBottom>
               Join {validation.familyName}
@@ -205,10 +211,7 @@ export function InviteAcceptView() {
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                   Your Role
                 </Typography>
-                <Label
-                  variant="soft"
-                  color={validation.role === 'admin' ? 'info' : 'default'}
-                >
+                <Label variant="soft" color={validation.role === 'admin' ? 'info' : 'default'}>
                   {validation.role === 'admin' ? 'Admin' : 'Member'}
                 </Label>
               </Stack>
@@ -224,7 +227,8 @@ export function InviteAcceptView() {
           </Box>
 
           <Typography variant="caption" sx={{ color: 'text.secondary', textAlign: 'center' }}>
-            By accepting, you&apos;ll gain access to the family&apos;s shared calendars, tasks, shopping lists, and more.
+            By accepting, you&apos;ll gain access to the family&apos;s shared calendars, tasks,
+            shopping lists, and more.
           </Typography>
 
           <Stack direction="row" spacing={2} sx={{ width: '100%' }}>
@@ -257,7 +261,7 @@ export function InviteAcceptView() {
 
 function getErrorMessage(validation: InviteValidation | null): string {
   if (!validation) return 'Invalid invite link';
-  
+
   switch (validation.reason) {
     case 'not_found':
       return 'This invite link is invalid or has been revoked';
@@ -286,7 +290,7 @@ function InviteErrorState({ message, validation }: InviteErrorStateProps) {
 
   const getIcon = () => {
     if (!validation) return 'solar:danger-triangle-bold';
-    
+
     switch (validation.reason) {
       case 'expired':
         return 'solar:clock-circle-bold';
@@ -310,7 +314,7 @@ function InviteErrorState({ message, validation }: InviteErrorStateProps) {
     // Get the invite token to redirect back after sign-in
     const inviteToken = window.location.pathname.split('/invite/')[1] || '';
     const invitePath = inviteToken ? `/invite/${inviteToken}` : '';
-    
+
     try {
       // Actually sign out the user
       await signOut();
@@ -320,7 +324,6 @@ function InviteErrorState({ message, validation }: InviteErrorStateProps) {
         : paths.auth.supabase.signIn;
       navigate(signInUrl, { replace: true });
     } catch (error) {
-      console.error('Failed to sign out:', error);
       toast.error('Failed to sign out');
     }
   };
@@ -337,12 +340,8 @@ function InviteErrorState({ message, validation }: InviteErrorStateProps) {
     >
       <Card sx={{ maxWidth: 420, width: '100%', p: 4 }}>
         <Stack alignItems="center" spacing={3}>
-          <Iconify
-            icon={getIcon() as any}
-            width={64}
-            sx={{ color: `${getColor()}.main` }}
-          />
-          
+          <Iconify icon={getIcon() as any} width={64} sx={{ color: `${getColor()}.main` }} />
+
           <Box sx={{ textAlign: 'center' }}>
             <Typography variant="h5" gutterBottom>
               {validation?.reason === 'already_member' ? 'Already a Member' : 'Invalid Invite'}
@@ -375,15 +374,9 @@ function InviteErrorState({ message, validation }: InviteErrorStateProps) {
                 <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.5 }}>
                   This invite is for:
                 </Typography>
-                <Typography variant="subtitle2">
-                  {validation.email}
-                </Typography>
+                <Typography variant="subtitle2">{validation.email}</Typography>
               </Box>
-              <Button
-                fullWidth
-                variant="contained"
-                onClick={handleSignOut}
-              >
+              <Button fullWidth variant="contained" onClick={handleSignOut}>
                 Sign In With Different Account
               </Button>
             </>

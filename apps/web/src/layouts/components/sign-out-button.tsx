@@ -27,8 +27,8 @@ export function SignOutButton({ onClose, sx, ...other }: Props) {
 
       onClose?.();
       router.refresh();
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // Sign-out failure is non-critical
     }
   }, [checkUserSession, onClose, router]);
 
