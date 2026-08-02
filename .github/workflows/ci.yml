@@ -33,5 +33,8 @@ jobs:
       - name: Typecheck web
         run: pnpm typecheck
 
+      - name: Generate Prisma client
+        run: NODE_ENV=production pnpm --filter @family/api exec prisma generate
+
       - name: Build API
         run: pnpm --filter @family/api build
