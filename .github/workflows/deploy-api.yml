@@ -50,6 +50,8 @@ on:
       # Only trigger on changes to API or shared packages
       - 'apps/api/**'
       - 'packages/shared/**'
+      - 'packages/agent-core/**'
+      - 'packages/mcp-server/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/deploy-api.yml'
 
