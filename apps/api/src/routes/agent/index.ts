@@ -1,17 +1,14 @@
 import type { FastifyPluginAsync, FastifyBaseLogger } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import {
-  orchestrate,
-  registerAgentExecutor,
-  executeTasksAgent,
-  executeTasksConfirmedAction,
-  executeCalendarAgent,
-  executeCalendarConfirmedAction,
-  executeMealsAgent,
-  executeMealsConfirmedAction,
-  pendingActionStore,
+  runFamilyAgent,
+  type AgentAction,
+  type AgentDomain,
+  type AgentLogger,
+  type AgentResponse,
+  type AgentToolSpec,
+  type ToolResult,
 } from '@family/agent-core';
-import type { AgentRequest, AgentRunContext, AgentLogger, ToolResult } from '@family/agent-core';
 import {
   toolRegistry,
   registerTaskToolHandlers,
@@ -30,23 +27,66 @@ import {
   createPrefsToolHandlers,
 } from '../../lib/agent/index.js';
 import {
-  chatRequestSchema,
-  mcpInvokeRequestSchema,
-} from './schema.js';
+  appendChatMessages,
+  consumePendingAction,
+  createPendingAction,
+  loadChatHistory,
+} from '../../lib/agent/assistant-store.js';
+import { chatRequestSchema } from './schema.js';
 import { rateLimits } from '../../lib/rate-limiter.js';
+
+// ----------------------------------------------------------------------
+// TOOL POLICY
+// ----------------------------------------------------------------------
+
+/** Mutating tools are queued for explicit user confirmation before running. */
+const CONFIRM_TOOLS = new Set([
+  'calendar.create',
+  'calendar.update',
+  'calendar.batchUpdate',
+  'tasks.create',
+  'tasks.assign',
+  'meals.savePlan',
+  'shopping.addItems',
+  'shopping.checkItems',
+  'prefs.delete',
+]);
+
+/** Internal tools never exposed to the model. */
+const HIDDEN_TOOLS = new Set(['system.ping', 'system.listTools']);
+
+function buildToolSpecs(): AgentToolSpec[] {
+  return toolRegistry
+    .getDefinitions()
+    .filter((tool) => !HIDDEN_TOOLS.has(tool.name))
+    .map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      requiresConfirmation: CONFIRM_TOOLS.has(tool.name),
+    }));
+}
+
+function deriveDomain(toolNames: string[]): AgentDomain {
+  for (const name of toolNames) {
+    const prefix = name.split('.')[0];
+    if (prefix === 'calendar') return 'calendar';
+    if (prefix === 'tasks') return 'tasks';
+    if (prefix === 'meals') return 'meals';
+    if (prefix === 'shopping') return 'lists';
+  }
+  return 'unknown';
+}
+
+function isDestructive(toolNames: string[]): boolean {
+  return toolNames.some((name) => name.includes('delete') || name.includes('batchUpdate'));
+}
 
 // ----------------------------------------------------------------------
 // HELPERS
 // ----------------------------------------------------------------------
 
-/**
- * Create a child logger with requestId context.
- */
-function createRequestLogger(
-  baseLogger: FastifyBaseLogger,
-  requestId: string
-): AgentLogger {
-  // Use the Fastify logger with added context
+function createRequestLogger(baseLogger: FastifyBaseLogger, requestId: string): AgentLogger {
   return {
     info: (obj, msg) => baseLogger.info({ ...obj, requestId }, msg),
     warn: (obj, msg) => baseLogger.warn({ ...obj, requestId }, msg),
@@ -55,156 +95,99 @@ function createRequestLogger(
   };
 }
 
+type FamilyMemberSummary = {
+  id: string;
+  name: string;
+  role: string;
+};
+
+function buildSystemPrompt(options: {
+  familyName: string;
+  members: FamilyMemberSummary[];
+  currentMemberName: string;
+  timezone: string;
+}): string {
+  const { familyName, members, currentMemberName, timezone } = options;
+  const now = new Date();
+  const today = new Intl.DateTimeFormat('en-AU', {
+    timeZone: timezone,
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(now);
+
+  const memberLines = members
+    .map((m) => `- ${m.name} (${m.role}) [familyMemberId: ${m.id}]`)
+    .join('\n');
+
+  return `You are the household assistant for the "${familyName}" family. You help manage the shared calendar, tasks, meal plans, shopping lists, and family preferences using the tools provided.
+
+Current date: ${today}
+Timezone: ${timezone} (interpret all natural-language dates in this timezone; pass timestamps to tools as ISO 8601)
+You are speaking with: ${currentMemberName}
+
+Family members:
+${memberLines}
+
+Guidelines:
+- Use tools to look up real data before answering; never invent events, tasks, or list items.
+- Mutating tools (creating/updating events, tasks, plans, list items) are QUEUED for the user's confirmation rather than executed. After queuing, clearly summarize exactly what will happen once they confirm, and never claim it already happened.
+- You may chain multiple tool calls to complete a request (e.g. search for events, then update them).
+- Be concise and friendly. Format replies with Markdown (short lists, bold for key details).
+- If a request is ambiguous (which event, which person, what time), ask a brief clarifying question instead of guessing.`;
+}
+
+function buildConfirmationText(results: AgentAction[]): string {
+  const failed = results.filter((action) => !action.result.success);
+  if (failed.length === 0) {
+    return results.length === 1
+      ? 'Done! The change has been applied. ✅'
+      : `Done! All ${results.length} changes have been applied. ✅`;
+  }
+  const failureLines = failed
+    .map((action) => `- ${action.tool}: ${action.result.error ?? 'unknown error'}`)
+    .join('\n');
+  const okCount = results.length - failed.length;
+  return `${okCount} of ${results.length} changes were applied. These failed:\n${failureLines}`;
+}
+
 // ----------------------------------------------------------------------
 // ROUTES
 // ----------------------------------------------------------------------
 
 const agentRoutes: FastifyPluginAsync = async (fastify) => {
-  // Register auth plugin
   await fastify.register(authPlugin);
 
   // --------------------------------------------------------------------------
-  // REGISTER TASK TOOL HANDLERS
+  // REGISTER TOOL HANDLERS (wire Prisma/Google-backed implementations into the
+  // shared tool registry)
   // --------------------------------------------------------------------------
-  const taskHandlers = createTaskToolHandlers({ prisma: fastify.prisma });
-  registerTaskToolHandlers(taskHandlers);
+  registerTaskToolHandlers(createTaskToolHandlers({ prisma: fastify.prisma }));
+  registerCalendarToolHandlers(
+    createCalendarToolHandlers({
+      prisma: fastify.prisma,
+      googleOAuth: {
+        clientId: fastify.config.GOOGLE_CLIENT_ID,
+        clientSecret: fastify.config.GOOGLE_CLIENT_SECRET,
+        redirectUri: fastify.config.GOOGLE_REDIRECT_URL,
+      },
+      tokenEncryptionKey: fastify.config.TOKEN_ENCRYPTION_KEY,
+    })
+  );
+  registerMealToolHandlers(createMealToolHandlers({ prisma: fastify.prisma }));
+  registerShoppingToolHandlers(createShoppingToolHandlers({ prisma: fastify.prisma }));
+  registerPrefsToolHandlers(createPrefsToolHandlers({ prisma: fastify.prisma }));
+  fastify.log.info('Agent tool handlers registered');
 
-  fastify.log.info('Task tool handlers registered');
+  const toolSpecs = buildToolSpecs();
+  fastify.log.info({ tools: toolSpecs.map((t) => t.name) }, 'Assistant tools exposed to model');
 
-  // --------------------------------------------------------------------------
-  // REGISTER CALENDAR TOOL HANDLERS
-  // --------------------------------------------------------------------------
-  const calendarHandlers = createCalendarToolHandlers({
-    prisma: fastify.prisma,
-    googleOAuth: {
-      clientId: fastify.config.GOOGLE_CLIENT_ID,
-      clientSecret: fastify.config.GOOGLE_CLIENT_SECRET,
-      redirectUri: fastify.config.GOOGLE_REDIRECT_URL,
-    },
-    tokenEncryptionKey: fastify.config.TOKEN_ENCRYPTION_KEY,
-  });
-  registerCalendarToolHandlers(calendarHandlers);
-
-  fastify.log.info('Calendar tool handlers registered');
-
-  // --------------------------------------------------------------------------
-  // REGISTER MEAL TOOL HANDLERS
-  // --------------------------------------------------------------------------
-  const mealHandlers = createMealToolHandlers({ prisma: fastify.prisma });
-  registerMealToolHandlers(mealHandlers);
-
-  fastify.log.info('Meal tool handlers registered');
-
-  // --------------------------------------------------------------------------
-  // REGISTER SHOPPING TOOL HANDLERS
-  // --------------------------------------------------------------------------
-  const shoppingHandlers = createShoppingToolHandlers({ prisma: fastify.prisma });
-  registerShoppingToolHandlers(shoppingHandlers);
-
-  fastify.log.info('Shopping tool handlers registered');
-
-  // --------------------------------------------------------------------------
-  // REGISTER PREFS (MEMORY) TOOL HANDLERS
-  // --------------------------------------------------------------------------
-  const prefsHandlers = createPrefsToolHandlers({ prisma: fastify.prisma });
-  registerPrefsToolHandlers(prefsHandlers);
-
-  fastify.log.info('Prefs tool handlers registered');
-
-  // --------------------------------------------------------------------------
-  // REGISTER TASKS AGENT EXECUTOR
-  // --------------------------------------------------------------------------
-  registerAgentExecutor('tasks', async (message, context) => {
-    // Create a tool executor that uses the MCP registry
-    const toolExecutor = async (
-      toolName: string,
-      input: Record<string, unknown>
-    ): Promise<ToolResult> => {
-      const toolContext: ToolContext = {
-        requestId: context.requestId,
-        userId: context.userId,
-        familyId: context.familyId,
-        familyMemberId: context.familyMemberId,
-        roles: context.roles ?? ['member'],
-        timezone: context.timezone,
-        logger: context.logger,
-      };
-
-      return toolRegistry.invoke(toolName, input, toolContext);
-    };
-
-    return executeTasksAgent(message, context, toolExecutor);
-  });
-
-  fastify.log.info('TasksAgent executor registered');
-
-  // --------------------------------------------------------------------------
-  // REGISTER CALENDAR AGENT EXECUTOR
-  // --------------------------------------------------------------------------
-  registerAgentExecutor('calendar', async (message, context) => {
-    // Create a tool executor that uses the MCP registry
-    const toolExecutor = async (
-      toolName: string,
-      input: Record<string, unknown>
-    ): Promise<ToolResult> => {
-      const toolContext: ToolContext = {
-        requestId: context.requestId,
-        userId: context.userId,
-        familyId: context.familyId,
-        familyMemberId: context.familyMemberId,
-        roles: context.roles ?? ['member'],
-        timezone: context.timezone,
-        logger: context.logger,
-      };
-
-      return toolRegistry.invoke(toolName, input, toolContext);
-    };
-
-    return executeCalendarAgent(message, context, toolExecutor);
-  });
-
-  fastify.log.info('CalendarAgent executor registered');
-
-  // --------------------------------------------------------------------------
-  // REGISTER MEALS AGENT EXECUTOR
-  // --------------------------------------------------------------------------
-  registerAgentExecutor('meals', async (message, context) => {
-    // Create a tool executor that uses the MCP registry
-    const toolExecutor = async (
-      toolName: string,
-      input: Record<string, unknown>
-    ): Promise<ToolResult> => {
-      const toolContext: ToolContext = {
-        requestId: context.requestId,
-        userId: context.userId,
-        familyId: context.familyId,
-        familyMemberId: context.familyMemberId,
-        roles: context.roles ?? ['member'],
-        timezone: context.timezone,
-        logger: context.logger,
-      };
-
-      return toolRegistry.invoke(toolName, input, toolContext);
-    };
-
-    return executeMealsAgent(message, context, toolExecutor);
-  });
-
-  fastify.log.info('MealsAgent executor registered');
-
-  // Helper to get user's family membership
   async function getUserFamilyMembership(userId: string) {
-    const membership = await fastify.prisma.familyMember.findFirst({
-      where: {
-        profileId: userId,
-        removedAt: null,
-      },
-      include: {
-        family: true,
-        profile: true,
-      },
+    return fastify.prisma.familyMember.findFirst({
+      where: { profileId: userId, removedAt: null },
+      include: { family: true, profile: true },
     });
-    return membership;
   }
 
   // --------------------------------------------------------------------------
@@ -212,11 +195,11 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
   // --------------------------------------------------------------------------
   fastify.post<{
     Body: {
-      message: string;
+      message?: string;
       conversationId?: string;
-      domainHint?: string;
       confirmationToken?: string;
       confirmed?: boolean;
+      timezone?: string;
     };
   }>('/chat', { preHandler: [fastify.authenticate, rateLimits.agentChat] }, async (request, reply) => {
     const userId = request.user?.id;
@@ -224,7 +207,6 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ error: 'Unauthorized' });
     }
 
-    // Validate request body
     const parsed = chatRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({
@@ -235,199 +217,181 @@ const agentRoutes: FastifyPluginAsync = async (fastify) => {
 
     const membership = await getUserFamilyMembership(userId);
     if (!membership) {
-      return reply.status(404).send({ error: 'No family found. Please join or create a family first.' });
+      return reply
+        .status(404)
+        .send({ error: 'No family found. Please join or create a family first.' });
     }
 
     const requestId = randomUUID();
     const conversationId = parsed.data.conversationId ?? randomUUID();
     const logger = createRequestLogger(fastify.log, requestId);
+    const timezone = membership.profile.timezone ?? parsed.data.timezone ?? 'UTC';
+    const chatScope = { conversationId, userId, familyId: membership.familyId };
 
-    // Build agent run context
-    // Use profile timezone, fallback to request timezone from browser, then UTC
-    const context: AgentRunContext = {
-      requestId,
-      userId,
-      familyId: membership.familyId,
-      familyMemberId: membership.id,
-      roles: [membership.role],
-      timezone: membership.profile.timezone ?? parsed.data.timezone ?? undefined,
-      conversationId,
-      logger,
-    };
-
-    // --------------------------------------------------------------------------
-    // HANDLE CONFIRMATION FLOW
-    // --------------------------------------------------------------------------
-    if (parsed.data.confirmationToken && parsed.data.confirmed === true) {
-      logger.info(
-        {
-          userId,
-          familyId: membership.familyId,
-          token: parsed.data.confirmationToken,
-        },
-        'Processing confirmation request'
-      );
-
-      // Create a tool executor for the confirmed action
-      const toolExecutor = async (
-        toolName: string,
-        input: Record<string, unknown>
-      ): Promise<ToolResult> => {
-        const toolContext: ToolContext = {
-          requestId: context.requestId,
-          userId: context.userId,
-          familyId: context.familyId,
-          familyMemberId: context.familyMemberId,
-          roles: context.roles ?? ['member'],
-          timezone: context.timezone,
-          logger: context.logger,
-        };
-        return toolRegistry.invoke(toolName, input, toolContext);
-      };
-
-      // Peek at the pending action to determine which agent's confirmed handler to use
-      const pendingResult = pendingActionStore.get(
-        parsed.data.confirmationToken,
-        context.userId,
-        context.familyId
-      );
-
-      // Determine domain from pending action tool name
-      let domain: 'tasks' | 'calendar' | 'meals' = 'tasks';
-      let executeConfirmedFn = executeTasksConfirmedAction;
-
-      if (pendingResult.found) {
-        const toolName = pendingResult.action.toolCall.toolName;
-        if (toolName.startsWith('calendar.')) {
-          domain = 'calendar';
-          executeConfirmedFn = executeCalendarConfirmedAction;
-        } else if (toolName.startsWith('meals.') || toolName.startsWith('shopping.')) {
-          domain = 'meals';
-          executeConfirmedFn = executeMealsConfirmedAction;
-        }
-      }
-
-      // Execute the confirmed action using the appropriate agent
-      const result = await executeConfirmedFn(
-        parsed.data.confirmationToken,
-        context,
-        toolExecutor
-      );
-
-      return {
-        text: result.text,
-        actions: result.actions,
-        payload: result.payload,
-        domain,
-        conversationId,
-        requestId,
-        requiresConfirmation: result.requiresConfirmation,
-        pendingAction: result.pendingAction,
-      };
-    }
-
-    // --------------------------------------------------------------------------
-    // REGULAR CHAT FLOW
-    // --------------------------------------------------------------------------
-    // At this point, message should be defined (validated by schema refine)
-    const message = parsed.data.message ?? '';
-    
-    logger.info(
-      {
-        userId,
-        familyId: membership.familyId,
-        message: message.substring(0, 100),
-      },
-      'Agent chat request received'
-    );
-
-    // Build agent request
-    const agentRequest: AgentRequest = {
-      message,
-      conversationId,
-      domainHint: parsed.data.domainHint as AgentRequest['domainHint'],
-    };
-
-    // Orchestrate the request
-    const response = await orchestrate(agentRequest, context);
-
-    return response;
-  });
-
-  // --------------------------------------------------------------------------
-  // POST /mcp/invoke - Direct tool invocation endpoint
-  // --------------------------------------------------------------------------
-  fastify.post<{
-    Body: { toolName: string; input: Record<string, unknown> };
-  }>('/mcp/invoke', { preHandler: [fastify.authenticate, rateLimits.mcpInvoke] }, async (request, reply) => {
-    const userId = request.user?.id;
-    if (!userId) {
-      return reply.status(401).send({ error: 'Unauthorized' });
-    }
-
-    // Validate request body
-    const parsed = mcpInvokeRequestSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.status(400).send({
-        error: 'Validation failed',
-        details: parsed.error.flatten().fieldErrors,
-      });
-    }
-
-    const membership = await getUserFamilyMembership(userId);
-    if (!membership) {
-      return reply.status(404).send({ error: 'No family found. Please join or create a family first.' });
-    }
-
-    const requestId = randomUUID();
-    const logger = createRequestLogger(fastify.log, requestId);
-
-    logger.info(
-      {
-        userId,
-        familyId: membership.familyId,
-        toolName: parsed.data.toolName,
-      },
-      'MCP tool invocation request received'
-    );
-
-    // Build tool context
     const toolContext: ToolContext = {
       requestId,
       userId,
       familyId: membership.familyId,
       familyMemberId: membership.id,
       roles: [membership.role],
-      timezone: membership.profile.timezone ?? undefined,
+      timezone,
       logger,
     };
 
-    // Invoke the tool
-    const result = await toolRegistry.invoke(
-      parsed.data.toolName,
-      parsed.data.input,
-      toolContext
-    );
+    const executeTool = (toolName: string, input: Record<string, unknown>): Promise<ToolResult> =>
+      toolRegistry.invoke(toolName, input, toolContext);
 
-    return {
-      toolName: parsed.data.toolName,
-      requestId,
-      result,
-    };
-  });
+    // ------------------------------------------------------------------------
+    // CONFIRMATION FLOW - execute previously queued mutating actions
+    // ------------------------------------------------------------------------
+    if (parsed.data.confirmationToken && parsed.data.confirmed === true) {
+      const pending = await consumePendingAction(
+        fastify.prisma,
+        parsed.data.confirmationToken,
+        userId,
+        membership.familyId
+      );
 
-  // --------------------------------------------------------------------------
-  // GET /mcp/tools - List available tools
-  // --------------------------------------------------------------------------
-  fastify.get('/mcp/tools', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const userId = request.user?.id;
-    if (!userId) {
-      return reply.status(401).send({ error: 'Unauthorized' });
+      if (!pending.found) {
+        const text =
+          pending.reason === 'expired'
+            ? 'That confirmation has expired. Please ask me again.'
+            : 'I could not find that pending action - it may have already been applied or expired. Please ask me again.';
+        const response: AgentResponse = {
+          text,
+          actions: [],
+          domain: 'unknown',
+          conversationId,
+          requestId,
+        };
+        return response;
+      }
+
+      logger.info(
+        { count: pending.actions.length, familyId: membership.familyId },
+        'Executing confirmed actions'
+      );
+
+      const actions: AgentAction[] = [];
+      for (const call of pending.actions) {
+        const result = await executeTool(call.toolName, call.input);
+        actions.push({ tool: call.toolName, input: call.input, result });
+      }
+
+      const text = buildConfirmationText(actions);
+      await appendChatMessages(fastify.prisma, chatScope, [{ role: 'assistant', content: text }]);
+
+      const response: AgentResponse = {
+        text,
+        actions,
+        domain: deriveDomain(actions.map((a) => a.tool)),
+        conversationId,
+        requestId,
+      };
+      return response;
     }
 
-    const tools = toolRegistry.getAllTools();
+    // ------------------------------------------------------------------------
+    // REGULAR CHAT FLOW - native Claude tool-use loop
+    // ------------------------------------------------------------------------
+    const message = parsed.data.message ?? '';
 
-    return { tools };
+    if (!fastify.anthropic) {
+      const response: AgentResponse = {
+        text: 'The AI assistant is not configured on this server yet (missing ANTHROPIC_API_KEY). Everything else in the app still works!',
+        actions: [],
+        domain: 'unknown',
+        conversationId,
+        requestId,
+      };
+      return response;
+    }
+
+    logger.info(
+      { userId, familyId: membership.familyId, message: message.substring(0, 100) },
+      'Agent chat request received'
+    );
+
+    const members = await fastify.prisma.familyMember.findMany({
+      where: { familyId: membership.familyId, removedAt: null },
+      include: { profile: true },
+    });
+
+    const systemPrompt = buildSystemPrompt({
+      familyName: membership.family.name,
+      members: members.map((m) => ({
+        id: m.id,
+        name: m.displayName ?? m.profile?.displayName ?? 'Unknown',
+        role: m.role,
+      })),
+      currentMemberName:
+        membership.displayName ?? membership.profile?.displayName ?? 'a family member',
+      timezone,
+    });
+
+    const history = await loadChatHistory(fastify.prisma, chatScope);
+
+    let result;
+    try {
+      result = await runFamilyAgent({
+        client: fastify.anthropic,
+        model: fastify.config.AI_MODEL,
+        maxTokens: fastify.config.AI_MAX_TOKENS,
+        systemPrompt,
+        history,
+        message,
+        tools: toolSpecs,
+        executeTool,
+        logger,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Assistant run failed'
+      );
+      return reply
+        .status(502)
+        .send({ error: 'The assistant is temporarily unavailable. Please try again.' });
+    }
+
+    const response: AgentResponse = {
+      text: result.text,
+      actions: result.actions,
+      domain: deriveDomain([
+        ...result.actions.map((a) => a.tool),
+        ...result.queuedActions.map((a) => a.toolName),
+      ]),
+      conversationId,
+      requestId,
+    };
+
+    if (result.queuedActions.length > 0) {
+      const description =
+        result.queuedActions.length === 1
+          ? `Run ${result.queuedActions[0].toolName}`
+          : `Apply ${result.queuedActions.length} changes`;
+      const { token, expiresAt } = await createPendingAction(fastify.prisma, {
+        ...chatScope,
+        description,
+        actions: result.queuedActions,
+      });
+      response.requiresConfirmation = true;
+      response.pendingAction = {
+        token,
+        description,
+        toolName: result.queuedActions[0].toolName,
+        inputPreview: result.queuedActions[0].input,
+        expiresAt: expiresAt.toISOString(),
+        isDestructive: isDestructive(result.queuedActions.map((a) => a.toolName)),
+      };
+    }
+
+    await appendChatMessages(fastify.prisma, chatScope, [
+      { role: 'user', content: message },
+      { role: 'assistant', content: result.text },
+    ]);
+
+    return response;
   });
 };
 

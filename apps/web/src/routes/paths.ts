@@ -27,7 +27,6 @@ export const paths = {
     root: '/family',
     calendar: '/family/calendar',
     tasks: '/family/tasks',
-    shopping: '/family/shopping',
   },
   // LISTS
   lists: {

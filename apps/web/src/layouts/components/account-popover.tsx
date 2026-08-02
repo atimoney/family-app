@@ -18,7 +18,7 @@ import { useFamily } from 'src/features/family/hooks/use-family';
 import { Label } from 'src/components/label';
 import { CustomPopover } from 'src/components/custom-popover';
 
-import { useMockedUser } from 'src/auth/hooks';
+import { useAuthContext } from 'src/auth/hooks';
 
 import { AccountButton } from './account-button';
 import { SignOutButton } from './sign-out-button';
@@ -39,7 +39,7 @@ export function AccountPopover({ data = [], sx, ...other }: AccountPopoverProps)
 
   const { open, anchorEl, onClose, onOpen } = usePopover();
 
-  const { user } = useMockedUser();
+  const { user } = useAuthContext();
   const { family } = useFamily();
 
   // Get the current member's color from the family membership

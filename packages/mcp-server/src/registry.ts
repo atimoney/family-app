@@ -44,6 +44,14 @@ class ToolRegistry {
   }
 
   /**
+   * Get all registered tool definitions, including input schemas.
+   * Used to expose tools to the LLM for native tool-calling.
+   */
+  getDefinitions(): ToolDefinition<unknown, unknown>[] {
+    return Array.from(this.tools.values());
+  }
+
+  /**
    * Get all tool definitions (for listing/documentation).
    */
   getAllTools(): Array<{ name: string; description: string }> {

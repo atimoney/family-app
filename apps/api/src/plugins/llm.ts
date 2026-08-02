@@ -1,28 +1,29 @@
 import type { FastifyPluginAsync } from 'fastify';
 import fp from 'fastify-plugin';
-import { configureRouter, OpenAIProvider, MockLLMProvider } from '@family/agent-core';
+import Anthropic from '@anthropic-ai/sdk';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** Anthropic client for the family assistant, or null when no API key is configured. */
+    anthropic: Anthropic | null;
+  }
+}
 
 /**
- * LLM Plugin - Configures the agent router with the appropriate LLM provider.
+ * LLM Plugin - provides the Anthropic client used by the assistant.
  *
- * If OPENAI_API_KEY is set, uses OpenAI. Otherwise, falls back to MockLLMProvider.
+ * If ANTHROPIC_API_KEY is not set the assistant endpoints stay up but reply
+ * with a "not configured" message instead of calling the model.
  */
 const llmPlugin: FastifyPluginAsync = async (fastify) => {
-  const { OPENAI_API_KEY, AI_MODEL, AI_MAX_TOKENS, AI_TEMPERATURE } = fastify.config;
+  const { ANTHROPIC_API_KEY, AI_MODEL } = fastify.config;
 
-  if (OPENAI_API_KEY) {
-    const provider = new OpenAIProvider({
-      apiKey: OPENAI_API_KEY,
-      model: AI_MODEL,
-      maxTokens: AI_MAX_TOKENS,
-      temperature: AI_TEMPERATURE,
-    });
-
-    configureRouter({ llmProvider: provider });
-    fastify.log.info({ model: AI_MODEL }, 'LLM configured with OpenAI provider');
+  if (ANTHROPIC_API_KEY) {
+    fastify.decorate('anthropic', new Anthropic({ apiKey: ANTHROPIC_API_KEY }));
+    fastify.log.info({ model: AI_MODEL }, 'Assistant configured with Anthropic provider');
   } else {
-    configureRouter({ llmProvider: new MockLLMProvider() });
-    fastify.log.warn('OPENAI_API_KEY not set - using MockLLMProvider (keyword-based routing only)');
+    fastify.decorate('anthropic', null);
+    fastify.log.warn('ANTHROPIC_API_KEY not set - AI assistant is disabled');
   }
 };
 

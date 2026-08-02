@@ -310,6 +310,9 @@ jobs:
           SECRET_TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
           SECRET_CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
           SECRET_FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          SECRET_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SECRET_AI_MODEL: ${{ secrets.AI_MODEL }}
+          SECRET_SUPABASE_JWT_AUDIENCE: ${{ secrets.SUPABASE_JWT_AUDIENCE }}
         run: |
           echo "🚀 Deploying to Container App: ${{ secrets.CONTAINERAPP_NAME }}"
           echo "   Resource Group: ${{ secrets.RESOURCE_GROUP }}"
@@ -334,6 +337,17 @@ jobs:
               "oauth-state-secret=$SECRET_OAUTH_STATE_SECRET" \
               "token-encryption-key=$SECRET_TOKEN_ENCRYPTION_KEY" \
             || echo "⚠️ Some secrets may already exist, continuing..."
+
+          # AI assistant key is optional - set separately so its absence doesn't fail the deploy
+          if [[ -n "$SECRET_ANTHROPIC_API_KEY" ]]; then
+            az containerapp secret set \
+              --name "${{ secrets.CONTAINERAPP_NAME }}" \
+              --resource-group "${{ secrets.RESOURCE_GROUP }}" \
+              --secrets "anthropic-api-key=$SECRET_ANTHROPIC_API_KEY" \
+              || echo "⚠️ anthropic-api-key secret may already exist, continuing..."
+          else
+            echo "⚠️ ANTHROPIC_API_KEY not set - AI assistant will be disabled in this deployment"
+          fi
           
           # =====================================================================
           # STEP 2: Update container with image and env vars referencing secrets
@@ -359,6 +373,9 @@ jobs:
           [[ -n "$SECRET_GOOGLE_SCOPES" ]] && ENV_ARGS+=("GOOGLE_SCOPES=$SECRET_GOOGLE_SCOPES")
           [[ -n "$SECRET_CORS_ORIGIN" ]] && ENV_ARGS+=("CORS_ORIGIN=$SECRET_CORS_ORIGIN")
           [[ -n "$SECRET_FRONTEND_URL" ]] && ENV_ARGS+=("FRONTEND_URL=$SECRET_FRONTEND_URL")
+          [[ -n "$SECRET_SUPABASE_JWT_AUDIENCE" ]] && ENV_ARGS+=("SUPABASE_JWT_AUDIENCE=$SECRET_SUPABASE_JWT_AUDIENCE")
+          [[ -n "$SECRET_ANTHROPIC_API_KEY" ]] && ENV_ARGS+=("ANTHROPIC_API_KEY=secretref:anthropic-api-key")
+          [[ -n "$SECRET_AI_MODEL" ]] && ENV_ARGS+=("AI_MODEL=$SECRET_AI_MODEL")
           
           echo "📝 Setting ${#ENV_ARGS[@]} environment variables..."
           

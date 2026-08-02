@@ -11,7 +11,7 @@ import { fToNow } from 'src/utils/format-time';
 
 import { Iconify } from 'src/components/iconify';
 
-import { useMockedUser } from 'src/auth/hooks';
+import { useAuthContext } from 'src/auth/hooks';
 
 import { AssistantDebugPanel } from './assistant-debug-panel';
 import { AssistantConfirmationCard } from './assistant-confirmation-card';
@@ -25,7 +25,7 @@ type Props = {
 };
 
 export function AssistantMessageItem({ message, onConfirm, onCancel }: Props) {
-  const { user } = useMockedUser();
+  const { user } = useAuthContext();
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
   const isSending = message.status === 'sending';

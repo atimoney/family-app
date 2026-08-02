@@ -435,6 +435,38 @@ model AgentAuditLog {
   @@map("agent_audit_logs")
 }
 
+// Persisted assistant conversation history (server-side memory for the agent)
+model AgentChatMessage {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  familyId       String   @map("family_id")
+  userId         String   @map("user_id")
+  role           String   // 'user' | 'assistant'
+  content        String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([conversationId, createdAt])
+  @@index([familyId, createdAt])
+  @@map("agent_chat_messages")
+}
+
+// Mutating tool calls awaiting user confirmation.
+// Database-backed so confirmations survive restarts and multiple replicas.
+model AgentPendingAction {
+  token          String   @id // pa_<32 hex>
+  familyId       String   @map("family_id")
+  userId         String   @map("user_id")
+  conversationId String   @map("conversation_id")
+  description    String
+  actions        Json     // Array<{ toolName: string; input: object }>
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("agent_pending_actions")
+}
+
 // ============================================================================
 // FAMILY EVENTS (Agent-managed calendar)
 // ============================================================================

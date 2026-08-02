@@ -1,5 +1,5 @@
 # ---------- Build stage ----------
-FROM node:20-bookworm AS builder
+FROM node:22-bookworm AS builder
 
 WORKDIR /app
 
@@ -17,8 +17,12 @@ COPY apps/api ./apps/api
 # Install deps (prod + build deps)
 RUN pnpm install --frozen-lockfile
 
-# Build shared package first (API depends on it)
+# Build workspace packages the API depends on (dist/ is excluded by .dockerignore,
+# so each package's "exports" -> ./dist/index.js must be produced here or the API
+# crashes at runtime with ERR_MODULE_NOT_FOUND)
 RUN pnpm --filter @family/shared build
+RUN pnpm --filter @family/agent-core build
+RUN pnpm --filter @family/mcp-server build
 
 # Build API (adjust if your build script name differs)
 WORKDIR /app/apps/api
@@ -30,7 +34,7 @@ RUN pnpm build
 
 # ---------- Runtime stage ----------
 # Using Alpine for better compatibility with Azure Container Apps cgroups
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -51,5 +55,6 @@ ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 
 EXPOSE 3000
 
-# Use exec form for proper signal handling
-CMD ["node", "dist/index.js"]
+# Entrypoint runs prisma migrate deploy before starting the server, then execs
+# node so SIGTERM still reaches the app directly
+CMD ["sh", "docker-entrypoint.sh"]

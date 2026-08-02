@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@family/agent-core": "workspace:*",
     "@family/mcp-server": "workspace:*",
     "@family/shared": "workspace:*",

@@ -14,7 +14,6 @@ const icon = (name: string) => (
 );
 
 const ICONS = {
-  order: icon('ic-order'),
   kanban: icon('ic-kanban'),
   calendar: icon('ic-calendar'),
   dashboard: icon('ic-dashboard'),
@@ -34,7 +33,6 @@ export const familyNavData: NavSectionProps['data'] = [
       { title: 'Home', path: paths.family.root, icon: ICONS.dashboard },
       { title: 'Calendar', path: paths.family.calendar, icon: ICONS.calendar },
       { title: 'Tasks', path: paths.family.tasks, icon: ICONS.kanban },
-      { title: 'Shopping', path: paths.family.shopping, icon: ICONS.order },
       { title: 'Assistant', path: paths.assistant, icon: ICONS.assistant },
     ],
   },

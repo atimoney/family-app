@@ -1,23 +1,13 @@
 import { z } from 'zod';
-import type { ConversationContext } from './conversation-context.js';
 
 // ----------------------------------------------------------------------
 // CORE TYPES
 // ----------------------------------------------------------------------
 
 /**
- * Domain that an agent can handle.
+ * Domain that an agent can handle (kept for API/web response compatibility).
  */
 export type AgentDomain = 'tasks' | 'calendar' | 'meals' | 'lists' | 'unknown';
-
-/**
- * Intent routing result from the router.
- */
-export type IntentRoute = {
-  domain: AgentDomain;
-  confidence: number; // 0-1
-  reasons: string[];
-};
 
 /**
  * A single tool invocation requested by an agent.
@@ -124,8 +114,6 @@ export type AgentRunContext = {
   conversationId: string;
   /** Structured logger */
   logger: AgentLogger;
-  /** Previous conversation context for multi-turn interactions */
-  previousContext?: ConversationContext | null;
 };
 
 /**
