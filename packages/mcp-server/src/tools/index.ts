@@ -21,6 +21,7 @@ export {
   calendarCreateTool,
   calendarUpdateTool,
   calendarBatchUpdateTool,
+  calendarDeleteTool,
   registerCalendarToolHandlers,
   calendarToolHandlers,
   type CalendarToolHandler,

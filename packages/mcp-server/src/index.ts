@@ -23,6 +23,7 @@ import {
   calendarCreateTool,
   calendarUpdateTool,
   calendarBatchUpdateTool,
+  calendarDeleteTool,
   mealsGeneratePlanTool,
   mealsSavePlanTool,
   mealsGetPlanTool,
@@ -47,6 +48,7 @@ toolRegistry.register(calendarSearchTool);
 toolRegistry.register(calendarCreateTool);
 toolRegistry.register(calendarUpdateTool);
 toolRegistry.register(calendarBatchUpdateTool);
+toolRegistry.register(calendarDeleteTool);
 
 // Register meal tools
 toolRegistry.register(mealsGeneratePlanTool);

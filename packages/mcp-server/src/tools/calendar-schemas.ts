@@ -154,6 +154,31 @@ export const calendarBatchUpdateOutputSchema = z.object({
 export type CalendarBatchUpdateOutput = z.infer<typeof calendarBatchUpdateOutputSchema>;
 
 // ----------------------------------------------------------------------
+// CALENDAR.DELETE
+// ----------------------------------------------------------------------
+
+export const calendarDeleteInputSchema = z.object({
+  /** Event IDs to delete (from calendar.search results) */
+  eventIds: z.array(z.string().min(1)).min(1).max(25),
+});
+
+export type CalendarDeleteInput = z.infer<typeof calendarDeleteInputSchema>;
+
+export const calendarDeleteOutputSchema = z.object({
+  /** Number of events successfully deleted */
+  deleted: z.number(),
+  /** Event IDs that failed to delete */
+  failed: z.array(z.string()),
+  /** Details of deleted events */
+  deletedEvents: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+  })).optional(),
+});
+
+export type CalendarDeleteOutput = z.infer<typeof calendarDeleteOutputSchema>;
+
+// ----------------------------------------------------------------------
 // VALIDATION HELPERS
 // ----------------------------------------------------------------------
 

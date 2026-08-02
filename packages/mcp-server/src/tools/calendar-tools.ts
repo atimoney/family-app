@@ -9,6 +9,8 @@ import {
   calendarUpdateOutputSchema,
   calendarBatchUpdateInputSchema,
   calendarBatchUpdateOutputSchema,
+  calendarDeleteInputSchema,
+  calendarDeleteOutputSchema,
   type CalendarSearchInput,
   type CalendarSearchOutput,
   type CalendarCreateInput,
@@ -17,6 +19,8 @@ import {
   type CalendarUpdateOutput,
   type CalendarBatchUpdateInput,
   type CalendarBatchUpdateOutput,
+  type CalendarDeleteInput,
+  type CalendarDeleteOutput,
 } from './calendar-schemas.js';
 
 // ----------------------------------------------------------------------
@@ -41,6 +45,7 @@ export const calendarToolHandlers: {
   create?: CalendarToolHandler<CalendarCreateInput, CalendarCreateOutput>;
   update?: CalendarToolHandler<CalendarUpdateInput, CalendarUpdateOutput>;
   batchUpdate?: CalendarToolHandler<CalendarBatchUpdateInput, CalendarBatchUpdateOutput>;
+  delete?: CalendarToolHandler<CalendarDeleteInput, CalendarDeleteOutput>;
 } = {};
 
 /**
@@ -51,11 +56,13 @@ export function registerCalendarToolHandlers(handlers: {
   create: CalendarToolHandler<CalendarCreateInput, CalendarCreateOutput>;
   update: CalendarToolHandler<CalendarUpdateInput, CalendarUpdateOutput>;
   batchUpdate: CalendarToolHandler<CalendarBatchUpdateInput, CalendarBatchUpdateOutput>;
+  delete: CalendarToolHandler<CalendarDeleteInput, CalendarDeleteOutput>;
 }): void {
   calendarToolHandlers.search = handlers.search;
   calendarToolHandlers.create = handlers.create;
   calendarToolHandlers.update = handlers.update;
   calendarToolHandlers.batchUpdate = handlers.batchUpdate;
+  calendarToolHandlers.delete = handlers.delete;
 }
 
 // ----------------------------------------------------------------------
@@ -133,5 +140,22 @@ export const calendarBatchUpdateTool = defineTool({
       return { success: false, error: 'Calendar batchUpdate handler not registered' };
     }
     return calendarToolHandlers.batchUpdate(input, context);
+  },
+});
+
+/**
+ * calendar.delete - Delete one or more calendar events
+ */
+export const calendarDeleteTool = defineTool({
+  name: 'calendar.delete',
+  description:
+    'Permanently delete one or more calendar events. Use calendar.search first to find the event IDs.',
+  inputSchema: calendarDeleteInputSchema,
+  outputSchema: calendarDeleteOutputSchema,
+  execute: async (input, context) => {
+    if (!calendarToolHandlers.delete) {
+      return { success: false, error: 'Calendar delete handler not registered' };
+    }
+    return calendarToolHandlers.delete(input, context);
   },
 });

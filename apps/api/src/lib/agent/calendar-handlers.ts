@@ -1,5 +1,5 @@
-import { type PrismaClient, Prisma } from '@prisma/client';
-import type { ToolContext, ToolResult } from '@family/mcp-server';
+import { type PrismaClient, Prisma } from "@prisma/client";
+import type { ToolContext, ToolResult } from "@family/mcp-server";
 import type {
   CalendarSearchInput,
   CalendarSearchOutput,
@@ -10,12 +10,19 @@ import type {
   CalendarEventOutput,
   CalendarBatchUpdateInput,
   CalendarBatchUpdateOutput,
-} from '@family/mcp-server';
-import { google, type calendar_v3 } from 'googleapis';
-import type { OAuth2Client } from 'google-auth-library';
-import { createEvent as createGoogleEvent, listEvents as listGoogleEvents, updateEvent as updateGoogleEvent } from '../google/calendar.js';
-import { getOAuthClient, getAuthorizedClient } from '../google/oauth.js';
-import { decryptSecret } from '../crypto.js';
+  CalendarDeleteInput,
+  CalendarDeleteOutput,
+} from "@family/mcp-server";
+import { google, type calendar_v3 } from "googleapis";
+import type { OAuth2Client } from "google-auth-library";
+import {
+  createEvent as createGoogleEvent,
+  listEvents as listGoogleEvents,
+  updateEvent as updateGoogleEvent,
+  deleteEvent as deleteGoogleEvent,
+} from "../google/calendar.js";
+import { getOAuthClient, getAuthorizedClient } from "../google/oauth.js";
+import { decryptSecret } from "../crypto.js";
 
 // ----------------------------------------------------------------------
 // TYPES
@@ -59,16 +66,18 @@ type FamilyMemberWithProfile = {
 
 function mapEventToOutput(
   event: DbEvent,
-  memberMap?: Map<string, FamilyMemberWithProfile>
+  memberMap?: Map<string, FamilyMemberWithProfile>,
 ): CalendarEventOutput {
   const attendees = event.attendees?.map((a) => {
     const member = memberMap?.get(a.userId);
     return {
       userId: a.userId,
       displayName: member
-        ? member.displayName || member.profile.displayName || member.profile.email
+        ? member.displayName ||
+          member.profile.displayName ||
+          member.profile.email
         : null,
-      status: a.status as 'pending' | 'accepted' | 'declined',
+      status: a.status as "pending" | "accepted" | "declined",
     };
   });
 
@@ -103,7 +112,7 @@ async function writeAuditLog(
   toolName: string,
   input: Record<string, unknown>,
   result: ToolResult,
-  executionMs: number
+  executionMs: number,
 ): Promise<void> {
   try {
     await prisma.agentAuditLog.create({
@@ -113,7 +122,10 @@ async function writeAuditLog(
         familyId: context.familyId,
         toolName,
         input: redactInput(input) as Prisma.InputJsonValue,
-        output: result.success && result.data ? (result.data as Prisma.InputJsonValue) : Prisma.JsonNull,
+        output:
+          result.success && result.data
+            ? (result.data as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
         success: result.success,
         errorMessage: result.error ?? null,
         executionMs,
@@ -122,7 +134,7 @@ async function writeAuditLog(
   } catch (err) {
     context.logger.error(
       { err, toolName, requestId: context.requestId },
-      'Failed to write audit log'
+      "Failed to write audit log",
     );
   }
 }
@@ -149,7 +161,7 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
 
   // Helper to get family members map
   async function getFamilyMembersMap(
-    familyId: string
+    familyId: string,
   ): Promise<Map<string, FamilyMemberWithProfile>> {
     const members = await prisma.familyMember.findMany({
       where: { familyId, removedAt: null },
@@ -164,14 +176,16 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
    * Helper to get an authorized Google Calendar OAuth client for a user.
    * Returns null if Google OAuth is not configured or user has no account.
    */
-  async function getGoogleCalendarAuth(userId: string): Promise<OAuth2Client | null> {
+  async function getGoogleCalendarAuth(
+    userId: string,
+  ): Promise<OAuth2Client | null> {
     if (!googleOAuth || !tokenEncryptionKey) {
       return null;
     }
 
     const googleAccount = await prisma.googleAccount.findFirst({
       where: { userId },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
     });
 
     if (!googleAccount) {
@@ -179,7 +193,10 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
     }
 
     try {
-      const refreshToken = decryptSecret(googleAccount.refreshToken, tokenEncryptionKey);
+      const refreshToken = decryptSecret(
+        googleAccount.refreshToken,
+        tokenEncryptionKey,
+      );
       const oauthClient = getOAuthClient(googleOAuth);
       return getAuthorizedClient({ oauthClient, refreshToken });
     } catch (err) {
@@ -193,7 +210,7 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
   // --------------------------------------------------------------------------
   async function search(
     input: CalendarSearchInput,
-    context: ToolContext
+    context: ToolContext,
   ): Promise<ToolResult<CalendarSearchOutput>> {
     const startTime = Date.now();
 
@@ -203,12 +220,13 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       if (!authClient) {
         return {
           success: false,
-          error: 'Google Calendar not connected. Please connect your Google account in Settings.',
+          error:
+            "Google Calendar not connected. Please connect your Google account in Settings.",
         };
       }
 
       // Determine which calendar to use (same logic as create)
-      let calendarId: string = 'primary';
+      let calendarId: string = "primary";
 
       const family = await prisma.family.findUnique({
         where: { id: context.familyId },
@@ -221,7 +239,7 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
         // Fall back to user's first selected calendar
         const selectedCalendar = await prisma.selectedCalendar.findFirst({
           where: { userId: context.userId, isVisible: true },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: "asc" },
         });
         if (selectedCalendar) {
           calendarId = selectedCalendar.calendarId;
@@ -231,7 +249,9 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       // Set default date range if not provided (default to next 30 days)
       const now = new Date();
       const timeMin = input.from ?? now.toISOString();
-      const timeMax = input.to ?? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const timeMax =
+        input.to ??
+        new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
       // Fetch events from Google Calendar
       const googleEvents = await listGoogleEvents({
@@ -246,8 +266,8 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       if (input.query) {
         const queryLower = input.query.toLowerCase();
         filteredEvents = googleEvents.filter((event) => {
-          const title = event.summary?.toLowerCase() ?? '';
-          const description = event.description?.toLowerCase() ?? '';
+          const title = event.summary?.toLowerCase() ?? "";
+          const description = event.description?.toLowerCase() ?? "";
           return title.includes(queryLower) || description.includes(queryLower);
         });
       }
@@ -259,26 +279,30 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       // Map Google Calendar events to our output format
       const events: CalendarEventOutput[] = limitedEvents.map((event) => {
         // Parse start/end times
-        const startAt = event.start?.dateTime ?? event.start?.date ?? '';
-        const endAt = event.end?.dateTime ?? event.end?.date ?? '';
+        const startAt = event.start?.dateTime ?? event.start?.date ?? "";
+        const endAt = event.end?.dateTime ?? event.end?.date ?? "";
         const allDay = !event.start?.dateTime;
 
         return {
-          id: event.id ?? '',
+          id: event.id ?? "",
           familyId: context.familyId,
-          title: event.summary ?? 'Untitled Event',
+          title: event.summary ?? "Untitled Event",
           startAt,
           endAt,
           location: event.location ?? null,
           notes: event.description ?? null,
           allDay,
           createdByUserId: context.familyMemberId,
-          attendees: event.attendees?.map((a) => ({
-            userId: a.email ?? '',
-            displayName: a.displayName ?? a.email ?? null,
-            status: (a.responseStatus === 'accepted' ? 'accepted' :
-                    a.responseStatus === 'declined' ? 'declined' : 'pending') as 'pending' | 'accepted' | 'declined',
-          })) ?? [],
+          attendees:
+            event.attendees?.map((a) => ({
+              userId: a.email ?? "",
+              displayName: a.displayName ?? a.email ?? null,
+              status: (a.responseStatus === "accepted"
+                ? "accepted"
+                : a.responseStatus === "declined"
+                  ? "declined"
+                  : "pending") as "pending" | "accepted" | "declined",
+            })) ?? [],
           createdAt: event.created ?? new Date().toISOString(),
           updatedAt: event.updated ?? new Date().toISOString(),
         };
@@ -293,12 +317,19 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       };
 
       const executionMs = Date.now() - startTime;
-      await writeAuditLog(prisma, context, 'calendar.search', input, result, executionMs);
+      await writeAuditLog(
+        prisma,
+        context,
+        "calendar.search",
+        input,
+        result,
+        executionMs,
+      );
 
       return result;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      context.logger.error({ err, input }, 'calendar.search failed');
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      context.logger.error({ err, input }, "calendar.search failed");
 
       const result: ToolResult<CalendarSearchOutput> = {
         success: false,
@@ -306,7 +337,14 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       };
 
       const executionMs = Date.now() - startTime;
-      await writeAuditLog(prisma, context, 'calendar.search', input, result, executionMs);
+      await writeAuditLog(
+        prisma,
+        context,
+        "calendar.search",
+        input,
+        result,
+        executionMs,
+      );
 
       return result;
     }
@@ -317,7 +355,7 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
   // --------------------------------------------------------------------------
   async function create(
     input: CalendarCreateInput,
-    context: ToolContext
+    context: ToolContext,
   ): Promise<ToolResult<CalendarCreateOutput>> {
     const startTime = Date.now();
 
@@ -329,7 +367,7 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       if (endAt <= startAt) {
         return {
           success: false,
-          error: 'End time must be after start time',
+          error: "End time must be after start time",
         };
       }
 
@@ -338,7 +376,8 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       if (!authClient) {
         return {
           success: false,
-          error: 'Google Calendar not connected. Please connect your Google account in Settings.',
+          error:
+            "Google Calendar not connected. Please connect your Google account in Settings.",
         };
       }
 
@@ -346,7 +385,7 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       // 1. Family's shared calendar (if set)
       // 2. User's first selected calendar
       // 3. Primary calendar as fallback
-      let calendarId: string = 'primary';
+      let calendarId: string = "primary";
 
       const family = await prisma.family.findUnique({
         where: { id: context.familyId },
@@ -359,7 +398,7 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
         // Fall back to user's first selected calendar
         const selectedCalendar = await prisma.selectedCalendar.findFirst({
           where: { userId: context.userId, isVisible: true },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: "asc" },
         });
         if (selectedCalendar) {
           calendarId = selectedCalendar.calendarId;
@@ -375,15 +414,21 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
           description: input.notes ?? undefined,
           location: input.location ?? undefined,
           start: input.allDay
-            ? { date: startAt.toISOString().split('T')[0] }
-            : { dateTime: startAt.toISOString(), timeZone: context.timezone ?? 'UTC' },
+            ? { date: startAt.toISOString().split("T")[0] }
+            : {
+                dateTime: startAt.toISOString(),
+                timeZone: context.timezone ?? "UTC",
+              },
           end: input.allDay
-            ? { date: endAt.toISOString().split('T')[0] }
-            : { dateTime: endAt.toISOString(), timeZone: context.timezone ?? 'UTC' },
+            ? { date: endAt.toISOString().split("T")[0] }
+            : {
+                dateTime: endAt.toISOString(),
+                timeZone: context.timezone ?? "UTC",
+              },
         },
       });
 
-      const eventId = googleEvent.id ?? '';
+      const eventId = googleEvent.id ?? "";
 
       // Store metadata in EventLink (same pattern as calendar page)
       if (eventId) {
@@ -391,8 +436,8 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
           tags: [] as string[],
           category: null,
           notes: input.notes ?? null,
-          audience: 'family',
-          createdVia: 'ai-agent',
+          audience: "family",
+          createdVia: "ai-agent",
         };
 
         await prisma.eventLink.upsert({
@@ -437,17 +482,24 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       };
 
       const executionMs = Date.now() - startTime;
-      await writeAuditLog(prisma, context, 'calendar.create', input, result, executionMs);
+      await writeAuditLog(
+        prisma,
+        context,
+        "calendar.create",
+        input,
+        result,
+        executionMs,
+      );
 
       context.logger.info(
         { eventId, title: input.title, calendarId },
-        'Created calendar event in Google Calendar'
+        "Created calendar event in Google Calendar",
       );
 
       return result;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      context.logger.error({ err, input }, 'calendar.create failed');
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      context.logger.error({ err, input }, "calendar.create failed");
 
       const result: ToolResult<CalendarCreateOutput> = {
         success: false,
@@ -455,7 +507,14 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       };
 
       const executionMs = Date.now() - startTime;
-      await writeAuditLog(prisma, context, 'calendar.create', input, result, executionMs);
+      await writeAuditLog(
+        prisma,
+        context,
+        "calendar.create",
+        input,
+        result,
+        executionMs,
+      );
 
       return result;
     }
@@ -466,7 +525,7 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
   // --------------------------------------------------------------------------
   async function update(
     input: CalendarUpdateInput,
-    context: ToolContext
+    context: ToolContext,
   ): Promise<ToolResult<CalendarUpdateOutput>> {
     const startTime = Date.now();
 
@@ -521,7 +580,7 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
         if (newEndAt <= newStartAt) {
           return {
             success: false,
-            error: 'End time must be after start time',
+            error: "End time must be after start time",
           };
         }
       }
@@ -545,17 +604,24 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       };
 
       const executionMs = Date.now() - startTime;
-      await writeAuditLog(prisma, context, 'calendar.update', input, result, executionMs);
+      await writeAuditLog(
+        prisma,
+        context,
+        "calendar.update",
+        input,
+        result,
+        executionMs,
+      );
 
       context.logger.info(
         { eventId: event.id, patch: Object.keys(input.patch) },
-        'Updated calendar event'
+        "Updated calendar event",
       );
 
       return result;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      context.logger.error({ err, input }, 'calendar.update failed');
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      context.logger.error({ err, input }, "calendar.update failed");
 
       const result: ToolResult<CalendarUpdateOutput> = {
         success: false,
@@ -563,7 +629,14 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       };
 
       const executionMs = Date.now() - startTime;
-      await writeAuditLog(prisma, context, 'calendar.update', input, result, executionMs);
+      await writeAuditLog(
+        prisma,
+        context,
+        "calendar.update",
+        input,
+        result,
+        executionMs,
+      );
 
       return result;
     }
@@ -574,7 +647,7 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
   // --------------------------------------------------------------------------
   async function batchUpdate(
     input: CalendarBatchUpdateInput,
-    context: ToolContext
+    context: ToolContext,
   ): Promise<ToolResult<CalendarBatchUpdateOutput>> {
     const startTime = Date.now();
 
@@ -584,12 +657,13 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       if (!authClient) {
         return {
           success: false,
-          error: 'Google Calendar not connected. Please connect your Google account in Settings.',
+          error:
+            "Google Calendar not connected. Please connect your Google account in Settings.",
         };
       }
 
       // Determine which calendar to use
-      let calendarId: string = 'primary';
+      let calendarId: string = "primary";
 
       const family = await prisma.family.findUnique({
         where: { id: context.familyId },
@@ -601,14 +675,14 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       } else {
         const selectedCalendar = await prisma.selectedCalendar.findFirst({
           where: { userId: context.userId, isVisible: true },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: "asc" },
         });
         if (selectedCalendar) {
           calendarId = selectedCalendar.calendarId;
         }
       }
 
-      const calendar = google.calendar({ version: 'v3', auth: authClient });
+      const calendar = google.calendar({ version: "v3", auth: authClient });
       let updated = 0;
       const failed: string[] = [];
       const updatedEvents: Array<{ id: string; title: string }> = [];
@@ -633,20 +707,24 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
             if (input.patch.allDay) {
               // Convert to all-day: use date instead of dateTime
               const startDate = current.start?.dateTime
-                ? new Date(current.start.dateTime).toISOString().split('T')[0]
+                ? new Date(current.start.dateTime).toISOString().split("T")[0]
                 : current.start?.date;
-              
+
               // For end date, Google Calendar uses exclusive end date for all-day events
               // So a single day event on Feb 5 needs end date of Feb 6
               let endDate: string;
               if (current.end?.dateTime) {
                 const endDateTime = new Date(current.end.dateTime);
                 // If end is same day as start, make it next day
-                const startDateTime = current.start?.dateTime ? new Date(current.start.dateTime) : new Date();
-                if (endDateTime.toDateString() === startDateTime.toDateString()) {
+                const startDateTime = current.start?.dateTime
+                  ? new Date(current.start.dateTime)
+                  : new Date();
+                if (
+                  endDateTime.toDateString() === startDateTime.toDateString()
+                ) {
                   endDateTime.setDate(endDateTime.getDate() + 1);
                 }
-                endDate = endDateTime.toISOString().split('T')[0];
+                endDate = endDateTime.toISOString().split("T")[0];
               } else {
                 endDate = current.end?.date ?? startDate!;
               }
@@ -680,18 +758,19 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
               updated++;
               updatedEvents.push({
                 id: eventId,
-                title: current.summary ?? 'Untitled',
+                title: current.summary ?? "Untitled",
               });
 
               context.logger.info(
                 { eventId, title: current.summary, startDate, endDate },
-                'Converted event to all-day'
+                "Converted event to all-day",
               );
             } else {
               // Convert from all-day to timed (default to 9am-10am)
-              const startDate = current.start?.date ?? new Date().toISOString().split('T')[0];
-              const tz = context.timezone ?? 'UTC';
-              
+              const startDate =
+                current.start?.date ?? new Date().toISOString().split("T")[0];
+              const tz = context.timezone ?? "UTC";
+
               const fullEventUpdate: calendar_v3.Schema$Event = {
                 summary: input.patch.title ?? current.summary,
                 description: current.description,
@@ -715,18 +794,18 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
               updated++;
               updatedEvents.push({
                 id: eventId,
-                title: current.summary ?? 'Untitled',
+                title: current.summary ?? "Untitled",
               });
 
               context.logger.info(
                 { eventId, title: current.summary },
-                'Converted event from all-day to timed'
+                "Converted event from all-day to timed",
               );
             }
           } else {
             // Handle non-allDay updates (title, location only)
             const eventUpdate: calendar_v3.Schema$Event = {};
-            
+
             if (input.patch.title) {
               eventUpdate.summary = input.patch.title;
             }
@@ -737,7 +816,10 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
 
             // Only update if there are changes
             if (Object.keys(eventUpdate).length === 0) {
-              context.logger.debug({ eventId }, 'No changes to apply, skipping');
+              context.logger.debug(
+                { eventId },
+                "No changes to apply, skipping",
+              );
               continue;
             }
 
@@ -752,17 +834,25 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
             updated++;
             updatedEvents.push({
               id: eventId,
-              title: current.summary ?? 'Untitled',
+              title: current.summary ?? "Untitled",
             });
 
             context.logger.info(
-              { eventId, title: current.summary, changes: Object.keys(eventUpdate) },
-              'Batch updated calendar event'
+              {
+                eventId,
+                title: current.summary,
+                changes: Object.keys(eventUpdate),
+              },
+              "Batch updated calendar event",
             );
           }
         } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-          context.logger.error({ err, eventId }, `Failed to update event in batch: ${errorMessage}`);
+          const errorMessage =
+            err instanceof Error ? err.message : "Unknown error";
+          context.logger.error(
+            { err, eventId },
+            `Failed to update event in batch: ${errorMessage}`,
+          );
           failed.push(eventId);
         }
       }
@@ -777,12 +867,19 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       };
 
       const executionMs = Date.now() - startTime;
-      await writeAuditLog(prisma, context, 'calendar.batchUpdate', input as unknown as Record<string, unknown>, result, executionMs);
+      await writeAuditLog(
+        prisma,
+        context,
+        "calendar.batchUpdate",
+        input as unknown as Record<string, unknown>,
+        result,
+        executionMs,
+      );
 
       return result;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      context.logger.error({ err, input }, 'calendar.batchUpdate failed');
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      context.logger.error({ err, input }, "calendar.batchUpdate failed");
 
       const result: ToolResult<CalendarBatchUpdateOutput> = {
         success: false,
@@ -790,7 +887,138 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
       };
 
       const executionMs = Date.now() - startTime;
-      await writeAuditLog(prisma, context, 'calendar.batchUpdate', input as unknown as Record<string, unknown>, result, executionMs);
+      await writeAuditLog(
+        prisma,
+        context,
+        "calendar.batchUpdate",
+        input as unknown as Record<string, unknown>,
+        result,
+        executionMs,
+      );
+
+      return result;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // calendar.delete - Permanently delete one or more events
+  // --------------------------------------------------------------------------
+  async function deleteEvents(
+    input: CalendarDeleteInput,
+    context: ToolContext,
+  ): Promise<ToolResult<CalendarDeleteOutput>> {
+    const startTime = Date.now();
+
+    try {
+      // Get Google OAuth client for the user
+      const authClient = await getGoogleCalendarAuth(context.userId);
+      if (!authClient) {
+        return {
+          success: false,
+          error:
+            "Google Calendar not connected. Please connect your Google account in Settings.",
+        };
+      }
+
+      // Determine which calendar to use (same resolution as search/batchUpdate)
+      let calendarId: string = "primary";
+
+      const family = await prisma.family.findUnique({
+        where: { id: context.familyId },
+        select: { sharedCalendarId: true },
+      });
+
+      if (family?.sharedCalendarId) {
+        calendarId = family.sharedCalendarId;
+      } else {
+        const selectedCalendar = await prisma.selectedCalendar.findFirst({
+          where: { userId: context.userId, isVisible: true },
+          orderBy: { createdAt: "asc" },
+        });
+        if (selectedCalendar) {
+          calendarId = selectedCalendar.calendarId;
+        }
+      }
+
+      const calendar = google.calendar({ version: "v3", auth: authClient });
+      let deleted = 0;
+      const failed: string[] = [];
+      const deletedEvents: Array<{ id: string; title: string }> = [];
+
+      for (const eventId of input.eventIds) {
+        try {
+          // Fetch first so we can report what was deleted (and fail fast on bad IDs)
+          const currentEvent = await calendar.events.get({
+            calendarId,
+            eventId,
+          });
+          const title = currentEvent.data?.summary ?? "Untitled";
+
+          await deleteGoogleEvent({ auth: authClient, calendarId, eventId });
+
+          // Soft-delete any local cache rows so the UI reflects it before the next sync
+          await prisma.calendarEvent.updateMany({
+            where: { googleEventId: eventId, deletedAt: null },
+            data: { deletedAt: new Date() },
+          });
+
+          deleted++;
+          deletedEvents.push({ id: eventId, title });
+
+          context.logger.info({ eventId, title }, "Deleted calendar event");
+        } catch (err) {
+          const errorMessage =
+            err instanceof Error ? err.message : "Unknown error";
+          context.logger.error(
+            { err, eventId },
+            `Failed to delete event: ${errorMessage}`,
+          );
+          failed.push(eventId);
+        }
+      }
+
+      const result: ToolResult<CalendarDeleteOutput> = {
+        success: failed.length < input.eventIds.length,
+        data: {
+          deleted,
+          failed,
+          deletedEvents,
+        },
+        error:
+          failed.length === input.eventIds.length
+            ? "Failed to delete any of the requested events"
+            : undefined,
+      };
+
+      const executionMs = Date.now() - startTime;
+      await writeAuditLog(
+        prisma,
+        context,
+        "calendar.delete",
+        input as unknown as Record<string, unknown>,
+        result,
+        executionMs,
+      );
+
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      context.logger.error({ err, input }, "calendar.delete failed");
+
+      const result: ToolResult<CalendarDeleteOutput> = {
+        success: false,
+        error: `Failed to delete events: ${errorMessage}`,
+      };
+
+      const executionMs = Date.now() - startTime;
+      await writeAuditLog(
+        prisma,
+        context,
+        "calendar.delete",
+        input as unknown as Record<string, unknown>,
+        result,
+        executionMs,
+      );
 
       return result;
     }
@@ -801,5 +1029,6 @@ export function createCalendarToolHandlers(deps: CalendarHandlerDependencies) {
     create,
     update,
     batchUpdate,
+    delete: deleteEvents,
   };
 }

@@ -3,6 +3,8 @@ import {
   calendarSearchInputSchema,
   calendarCreateInputSchema,
   calendarUpdateInputSchema,
+  calendarDeleteInputSchema,
+  calendarDeleteOutputSchema,
   calendarEventSchema,
   validateDateRange,
 } from './calendar-schemas.js';
@@ -212,5 +214,48 @@ describe('validateDateRange', () => {
       '2026-02-10T10:00:00.000Z',
       '2026-02-10T09:00:00.000Z'
     )).toBe(false);
+  });
+});
+
+describe('calendarDeleteInputSchema', () => {
+  it('should accept a single event ID', () => {
+    const result = calendarDeleteInputSchema.safeParse({ eventIds: ['evt123'] });
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept multiple event IDs', () => {
+    const result = calendarDeleteInputSchema.safeParse({ eventIds: ['a', 'b', 'c'] });
+    expect(result.success).toBe(true);
+  });
+
+  it('should reject an empty eventIds array', () => {
+    const result = calendarDeleteInputSchema.safeParse({ eventIds: [] });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject more than 25 event IDs', () => {
+    const result = calendarDeleteInputSchema.safeParse({
+      eventIds: Array.from({ length: 26 }, (_, i) => `evt${i}`),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject empty-string event IDs', () => {
+    const result = calendarDeleteInputSchema.safeParse({ eventIds: [''] });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('calendarDeleteOutputSchema', () => {
+  it('should accept a valid delete result', () => {
+    const result = calendarDeleteOutputSchema.safeParse({
+      deleted: 2,
+      failed: [],
+      deletedEvents: [
+        { id: 'evt1', title: 'Swimming' },
+        { id: 'evt2', title: 'Dentist' },
+      ],
+    });
+    expect(result.success).toBe(true);
   });
 });
